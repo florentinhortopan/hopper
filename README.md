@@ -50,6 +50,53 @@ Open [http://localhost:3000](http://localhost:3000).
 | `comfy/` | Model registry (Z-Image-Turbo default) — Slice B |
 | `data/` | Library, campaigns, packages |
 
-## Env
+## Env / API keys
 
-Copy [`.env.example`](.env.example). Secrets go in `.env` (gitignored). Web uses `apps/web/.env.local` for `NEXT_PUBLIC_API_URL`.
+Copy [`.env.example`](.env.example) → **`.env`** at the repo root (gitignored). The orchestrator loads that file on boot. The Next app also reads **`apps/web/.env.local`** for web-only vars.
+
+### Required for live generation
+
+| Variable | Where | What |
+|----------|--------|------|
+| `COMFY_API_KEY` | root `.env` | [Comfy Platform](https://platform.comfy.org) API key (`X-API-Key` for Comfy Cloud). Without it, Comfy falls back to stub / local-only depending on `COMFY_MODE`. |
+
+Typical Comfy Cloud setup in `.env`:
+
+```bash
+COMFY_API_KEY=comfyui-...
+COMFY_BASE_URL=https://cloud.comfy.org
+COMFY_MODE=auto          # live if reachable, else stub
+COMFY_MODEL_PROFILE=sd15 # free SD 1.5 default
+```
+
+You can point `COMFY_BASE_URL` at a local ComfyUI (`http://127.0.0.1:8188`) instead; the key is still used when the server expects it.
+
+### Web UI (local / Vercel)
+
+| Variable | Where | What |
+|----------|--------|------|
+| `NEXT_PUBLIC_API_URL` | `apps/web/.env.local` (and Vercel) | Orchestrator base URL. Default `http://127.0.0.1:8787`. |
+| `SITE_PASSWORD` | `apps/web/.env.local` (and Vercel) | Shared password for the login wall. **Leave empty locally** to skip the gate. Set the same value in Vercel for a deployed UI. |
+
+### Optional — library import / categorize
+
+Not needed for matrix assemble or Remotion. Only if you use batch import features:
+
+| Variable | What |
+|----------|------|
+| `ATTATTA_LLM_API_KEY` | Vision LLM for auto-categorizing import media (OpenAI-compatible). |
+| `ATTATTA_LLM_BASE_URL` | Default `https://api.openai.com/v1`. |
+| `ATTATTA_LLM_VISION_MODEL` | Default `gpt-4o-mini`. |
+| `DROPBOX_ACCESS_TOKEN` | Pull folders from Dropbox into import staging. |
+| `FRAMEIO_TOKEN` | Pull media from Frame.io. |
+| `ATTATTA_IMPORT_URL_ALLOWLIST` | Comma-separated host allowlist for HTTPS zip / remote-folder import (SSRF guard). |
+
+Without the LLM key, import still works — kinds fall back to filename heuristics and human review.
+
+### Minimum local loop (no keys)
+
+```bash
+pnpm install && pnpm seed && pnpm dev
+```
+
+UI + Remotion assemble work; Comfy variant gen stays stub/`auto` until `COMFY_API_KEY` is set.
