@@ -1,0 +1,66 @@
+[
+  {
+    "id": "ted_front_offer_03",
+    "kind": "talent",
+    "label": "Ted · front · offer line 03",
+    "path": "libraries/default_vk5Qg/talent/ted_front_offer_03.mp4",
+    "tags": [
+      "front",
+      "offer",
+      "flat-light"
+    ],
+    "locks": {
+      "face_locked": true,
+      "voice_locked": true,
+      "performance_locked": true
+    },
+    "contract": {
+      "face_locked": true,
+      "voice_locked": true,
+      "performance_locked": true,
+      "allow_attire": true,
+      "allow_background": true,
+      "allow_props_on_talent": true,
+      "allow_hands_variants": true,
+      "notes": "Demo contract — wardrobe/BG/props allowed; face/voice/performance locked."
+    },
+    "promptHint": "male spokesperson Ted, front-facing, natural flat light, offer delivery",
+    "negativeHint": "different identity, face morph",
+    "mediaType": "video",
+    "status": "ready",
+    "sourceMode": "upload",
+    "sourceTalentId": null
+  },
+  {
+    "id": "elias_Pz9jHT",
+    "kind": "talent",
+    "label": "Elias",
+    "path": "libraries/default_vk5Qg/talent/elias_Pz9jHT.mp4",
+    "tags": [
+      "table",
+      "jacket",
+      "indoor"
+    ],
+    "locks": {
+      "face_locked": true,
+      "voice_locked": true,
+      "performance_locked": true
+    },
+    "contract": {
+      "face_locked": true,
+      "voice_locked": true,
+      "performance_locked": true,
+      "allow_attire": true,
+      "allow_background": true,
+      "allow_props_on_talent": true,
+      "allow_hands_variants": true,
+      "notes": ""
+    },
+    "promptHint": "Seated actor talking to a camera with a table in front, moving hands",
+    "negativeHint": "Not outdoor, not full body.",
+    "mediaType": "video",
+    "status": "ready",
+    "sourceMode": "upload",
+    "sourceTalentId": null
+  }
+]

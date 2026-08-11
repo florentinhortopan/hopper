@@ -1,0 +1,15 @@
+{
+  "profileId": "sd15",
+  "workflowFile": "sd15.api.json",
+  "patches": {
+    "seed": { "nodeId": "3", "input": "seed", "type": "int" },
+    "steps": { "nodeId": "3", "input": "steps", "type": "int" },
+    "cfg": { "nodeId": "3", "input": "cfg", "type": "number" },
+    "denoise": { "nodeId": "3", "input": "denoise", "type": "number" },
+    "prompt": { "nodeId": "6", "input": "text", "type": "string" },
+    "negative_prompt": { "nodeId": "7", "input": "text", "type": "string" },
+    "width": { "nodeId": "5", "input": "width", "type": "int" },
+    "height": { "nodeId": "5", "input": "height", "type": "int" }
+  },
+  "notes": "SD1.5 text2img base. Adapter uploads product/talent stills and injects img2img (or IPAdapter when available) for identity."
+}

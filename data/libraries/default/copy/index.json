@@ -1,0 +1,90 @@
+[
+  {
+    "id": "copy_line_1",
+    "kind": "copy",
+    "label": "Copy line 1",
+    "path": "libraries/default/copy/copy_line_1.json",
+    "tags": [
+      "copy",
+      "demo"
+    ],
+    "promptHint": "Tired of guessing which plan fits?",
+    "negativeHint": "",
+    "mediaType": "json",
+    "status": "ready",
+    "sourceMode": "upload",
+    "sourceTalentId": null,
+    "copy": {
+      "setup": "Tired of guessing which plan fits?",
+      "punchline": "See the right option in one swipe.",
+      "endcard": "Start free this week",
+      "cta": "Learn more"
+    }
+  },
+  {
+    "id": "copy_line_2",
+    "kind": "copy",
+    "label": "Copy line 2",
+    "path": "libraries/default/copy/copy_line_2.json",
+    "tags": [
+      "copy",
+      "demo"
+    ],
+    "promptHint": "Your phone already knows your routine.",
+    "negativeHint": "",
+    "mediaType": "json",
+    "status": "ready",
+    "sourceMode": "upload",
+    "sourceTalentId": null,
+    "copy": {
+      "setup": "Your phone already knows your routine.",
+      "punchline": "We just make the next step obvious.",
+      "endcard": "Get the offer",
+      "cta": "Shop now"
+    }
+  },
+  {
+    "id": "copy_line_3",
+    "kind": "copy",
+    "label": "Copy line 3",
+    "path": "libraries/default/copy/copy_line_3.json",
+    "tags": [
+      "copy",
+      "demo"
+    ],
+    "promptHint": "Small moment. Big clarity.",
+    "negativeHint": "",
+    "mediaType": "json",
+    "status": "ready",
+    "sourceMode": "upload",
+    "sourceTalentId": null,
+    "copy": {
+      "setup": "Small moment. Big clarity.",
+      "punchline": "Hands-on demo, zero fluff.",
+      "endcard": "Try it today",
+      "cta": "Get started"
+    }
+  },
+  {
+    "id": "attire_blazer_navy_draft",
+    "kind": "copy",
+    "label": "Navy blazer (prompt-only)",
+    "path": "libraries/default/copy/attire_blazer_navy_draft.json",
+    "tags": [
+      "blazer",
+      "formal"
+    ],
+    "promptHint": "navy blazer over white tee, business casual",
+    "negativeHint": "hoodie",
+    "mediaType": "json",
+    "status": "ready",
+    "sourceMode": "generated",
+    "sourceTalentId": "elias_Pz9jHT",
+    "copy": {
+      "setup": "navy blazer over white tee, business casual",
+      "punchline": "",
+      "endcard": "",
+      "cta": "Learn more"
+    }
+  }
+]

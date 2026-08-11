@@ -1,0 +1,10 @@
+{
+  "profileId": "cloud",
+  "workflowFile": "cloud.api.json",
+  "patches": {
+    "seed": { "nodeId": "3", "input": "seed", "type": "int" },
+    "talentVideo": { "nodeId": "4", "input": "file" },
+    "backgroundImage": { "nodeId": "8", "input": "image" },
+    "backgroundVideo": { "nodeId": "10", "input": "file" }
+  }
+}

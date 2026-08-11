@@ -1,0 +1,34 @@
+[
+  {
+    "id": "attire_casual_hoodie",
+    "kind": "attire",
+    "label": "Casual hoodie",
+    "path": "libraries/default_vk5Qg/attire/attire_casual_hoodie.mp4",
+    "tags": [
+      "hoodie",
+      "casual"
+    ],
+    "promptHint": "soft charcoal hoodie, casual wardrobe",
+    "negativeHint": "formal suit",
+    "mediaType": "video",
+    "status": "ready",
+    "sourceMode": "generated",
+    "sourceTalentId": "elias_Pz9jHT"
+  },
+  {
+    "id": "attire_blazer_navy_draft",
+    "kind": "attire",
+    "label": "Navy blazer (prompt-only)",
+    "path": "libraries/default_vk5Qg/attire/attire_blazer_navy_draft.mp4",
+    "tags": [
+      "blazer",
+      "formal"
+    ],
+    "promptHint": "navy blazer over white tee, business casual",
+    "negativeHint": "hoodie",
+    "mediaType": "video",
+    "status": "ready",
+    "sourceMode": "generated",
+    "sourceTalentId": "elias_Pz9jHT"
+  }
+]

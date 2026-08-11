@@ -1,0 +1,18 @@
+[
+  {
+    "id": "hands_phone_tap_b",
+    "kind": "hands",
+    "label": "Hands · phone tap B",
+    "path": "libraries/default_vk5Qg/hands/hands_phone_tap_b.mp4",
+    "tags": [
+      "phone",
+      "tap"
+    ],
+    "promptHint": "hands tapping on smartphone screen",
+    "negativeHint": "blur or text",
+    "mediaType": "video",
+    "status": "ready",
+    "sourceMode": "generated",
+    "sourceTalentId": "ted_front_offer_03"
+  }
+]

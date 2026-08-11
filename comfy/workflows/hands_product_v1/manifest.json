@@ -1,0 +1,21 @@
+{
+  "workflowId": "hands_product_v1",
+  "knob": "hands",
+  "label": "Hands / product plate",
+  "contractFlags": {
+    "touches_face": false,
+    "touches_voice": false
+  },
+  "compatibleProfiles": ["sd15", "z_image_turbo", "sdxl", "flux_schnell"],
+  "defaultProfileId": "sd15",
+  "semanticPatches": [
+    "seed",
+    "productRef",
+    "motionToken",
+    "backgroundHint",
+    "propHints",
+    "prompt",
+    "negative_prompt"
+  ],
+  "notes": "Author z_image_turbo.api.json first (primary). Prompt packs are English natural language from ATTATTA; SDXL also gets negative_prompt."
+}

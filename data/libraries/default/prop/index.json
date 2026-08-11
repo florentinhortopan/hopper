@@ -1,0 +1,47 @@
+[
+  {
+    "id": "prop_hat_red",
+    "kind": "prop",
+    "label": "Red hat",
+    "path": "libraries/default/prop/prop_hat_red.mp4",
+    "tags": [
+      "hat",
+      "accessory"
+    ],
+    "promptHint": "bright red baseball cap accessory",
+    "negativeHint": "",
+    "mediaType": "video",
+    "status": "ready",
+    "sourceMode": "generated",
+    "sourceTalentId": "elias_Pz9jHT"
+  },
+  {
+    "id": "prop_ribbon_gold",
+    "kind": "prop",
+    "label": "Gold ribbon",
+    "path": "libraries/default/prop/prop_ribbon_gold.png",
+    "tags": [
+      "ribbon",
+      "promo"
+    ],
+    "promptHint": "gold promo ribbon accent",
+    "negativeHint": "",
+    "mediaType": "image",
+    "status": "ready",
+    "sourceMode": "upload",
+    "sourceTalentId": "ted_front_offer_03"
+  },
+  {
+    "id": "import_test_prop_4QZ-0y",
+    "kind": "prop",
+    "label": "Import test prop",
+    "path": "libraries/default/prop/import_test_prop_4QZ-0y.png",
+    "tags": [],
+    "promptHint": "Import test prop",
+    "negativeHint": "",
+    "mediaType": "image",
+    "status": "ready",
+    "sourceMode": "upload",
+    "sourceTalentId": null
+  }
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "id": "gesture_medium_v1",
+    "kind": "motion",
+    "label": "Gesture medium v1",
+    "path": "libraries/default_vk5Qg/motion/gesture_medium_v1.json",
+    "tags": [
+      "medium"
+    ],
+    "promptHint": "medium energy gesture, natural pacing",
+    "negativeHint": "",
+    "mediaType": "json",
+    "status": "ready",
+    "sourceMode": "upload",
+    "sourceTalentId": null
+  },
+  {
+    "id": "gesture_punchy_v1",
+    "kind": "motion",
+    "label": "Gesture punchy v1",
+    "path": "libraries/default_vk5Qg/motion/gesture_punchy_v1.json",
+    "tags": [
+      "punchy"
+    ],
+    "promptHint": "punchy energetic gesture",
+    "negativeHint": "",
+    "mediaType": "json",
+    "status": "ready",
+    "sourceMode": "upload",
+    "sourceTalentId": null
+  }
+]

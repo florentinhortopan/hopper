@@ -1,0 +1,18 @@
+[
+  {
+    "id": "attire_casual_hoodie",
+    "kind": "attire",
+    "label": "Casual hoodie",
+    "path": "libraries/default/attire/attire_casual_hoodie.mp4",
+    "tags": [
+      "hoodie",
+      "casual"
+    ],
+    "promptHint": "soft charcoal hoodie, casual wardrobe",
+    "negativeHint": "formal suit",
+    "mediaType": "video",
+    "status": "ready",
+    "sourceMode": "generated",
+    "sourceTalentId": "elias_Pz9jHT"
+  }
+]

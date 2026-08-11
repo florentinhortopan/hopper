@@ -1,0 +1,83 @@
+[
+  {
+    "id": "bg_soft_daylight_desk",
+    "kind": "background",
+    "label": "Soft daylight desk",
+    "path": "libraries/default/background/bg_soft_daylight_desk.mp4",
+    "tags": [
+      "desk",
+      "daylight"
+    ],
+    "promptHint": "soft daylight home office desk, shallow depth of field",
+    "negativeHint": "busy crowd, neon club",
+    "mediaType": "video",
+    "status": "ready",
+    "sourceMode": "generated",
+    "sourceTalentId": "ted_front_offer_03"
+  },
+  {
+    "id": "christmas_background_NQ9OxE",
+    "kind": "background",
+    "label": "Christmas Background",
+    "path": "libraries/default/background/christmas_background_NQ9OxE.mp4",
+    "tags": [],
+    "promptHint": "A fantastic sparkling Christmas living room of a mansion house. shot taken from a normal tall human, hyper real, cinematic take",
+    "negativeHint": "",
+    "mediaType": "video",
+    "status": "ready",
+    "sourceMode": "generated",
+    "sourceTalentId": null
+  },
+  {
+    "id": "outdoor_camping_scene_ntaCZY",
+    "kind": "background",
+    "label": "Outdoor camping scene",
+    "path": "libraries/default/background/outdoor_camping_scene_ntaCZY.mp4",
+    "tags": [],
+    "promptHint": "A background video of a camping spot with a nice lake in the background and redwoods all around it.",
+    "negativeHint": "",
+    "mediaType": "video",
+    "status": "ready",
+    "sourceMode": "generated",
+    "sourceTalentId": null
+  },
+  {
+    "id": "camping_spot_2_YIkTC8",
+    "kind": "background",
+    "label": "Camping spot 2",
+    "path": "libraries/default/background/camping_spot_2_YIkTC8.mp4",
+    "tags": [],
+    "promptHint": "A nice american camping spot with lake, redwood trees and a sunset. a little breeze, some birds flying, hyper-realistic.",
+    "negativeHint": "",
+    "mediaType": "video",
+    "status": "ready",
+    "sourceMode": "generated",
+    "sourceTalentId": "elias_Pz9jHT"
+  },
+  {
+    "id": "camping_3_k_TykV",
+    "kind": "background",
+    "label": "Camping 3",
+    "path": "libraries/default/background/camping_3_k_TykV.mp4",
+    "tags": [],
+    "promptHint": "A nice american camping spot with lake, redwood trees and a sunset. a little breeze, some birds flying, hyper-realistic.",
+    "negativeHint": "",
+    "mediaType": "video",
+    "status": "ready",
+    "sourceMode": "generated",
+    "sourceTalentId": "ted_front_offer_03"
+  },
+  {
+    "id": "pizza_rest_ierVCi",
+    "kind": "background",
+    "label": "Pizza rest",
+    "path": "libraries/default/background/pizza_rest_ierVCi.mp4",
+    "tags": [],
+    "promptHint": "Pizza restaurant from a seated person POV with slightly blurred bar and stools in the back with people baking pizza and serving others. Golden hour lighting, hyper realistic and cinematic take as in a Canon EOS.",
+    "negativeHint": "",
+    "mediaType": "video",
+    "status": "ready",
+    "sourceMode": "generated",
+    "sourceTalentId": "ted_front_offer_03"
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "profileId": "sd15",
+  "workflowFile": "sd15.api.json",
+  "patches": {
+    "seed": { "nodeId": "3", "input": "seed", "type": "int" },
+    "steps": { "nodeId": "3", "input": "steps", "type": "int" },
+    "denoise": { "nodeId": "3", "input": "denoise", "type": "number" },
+    "prompt": { "nodeId": "6", "input": "text", "type": "string" },
+    "negative_prompt": { "nodeId": "7", "input": "text", "type": "string" },
+    "width": { "nodeId": "5", "input": "width", "type": "int" },
+    "height": { "nodeId": "5", "input": "height", "type": "int" }
+  },
+  "notes": "Wardrobe plate. Adapter face-protects via talent still img2img (low denoise) or IPAdapter when server nodes exist. Full contextual prompt from pack — wardrobeHint is not applied as a CLIP overwrite."
+}

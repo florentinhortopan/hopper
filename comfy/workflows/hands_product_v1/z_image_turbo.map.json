@@ -1,0 +1,13 @@
+{
+  "profileId": "z_image_turbo",
+  "workflowFile": "z_image_turbo.api.json",
+  "patches": {
+    "seed": { "nodeId": "TODO", "input": "seed", "type": "int" },
+    "prompt": { "nodeId": "TODO", "input": "text", "type": "string" },
+    "width": { "nodeId": "TODO", "input": "width", "type": "int" },
+    "height": { "nodeId": "TODO", "input": "height", "type": "int" },
+    "steps": { "nodeId": "TODO", "input": "steps", "type": "int" },
+    "productRef": { "nodeId": "TODO", "input": "image", "type": "upload_image" }
+  },
+  "notes": "Fill nodeIds after exporting API-format workflow from Comfy (Z-Image-Turbo Text→Image template)."
+}

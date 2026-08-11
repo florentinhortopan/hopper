@@ -1,0 +1,10 @@
+{
+  "id": "copy_line_2",
+  "label": "Copy line 2",
+  "copy": {
+    "setup": "Your phone already knows your routine.",
+    "punchline": "We just make the next step obvious.",
+    "endcard": "Get the offer",
+    "cta": "Shop now"
+  }
+}

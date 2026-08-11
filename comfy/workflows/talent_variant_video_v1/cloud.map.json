@@ -1,0 +1,16 @@
+{
+  "profileId": "cloud",
+  "workflowFile": "cloud.api.json",
+  "patches": {
+    "seed": { "nodeId": "4", "input": "seed", "type": "int" },
+    "prompt": { "nodeId": "4", "input": "model.prompt" },
+    "resolution": { "nodeId": "4", "input": "model.resolution" },
+    "ratio": { "nodeId": "4", "input": "model.ratio" },
+    "duration": { "nodeId": "4", "input": "model.duration", "type": "int" },
+    "talentVideo": { "nodeId": "20", "input": "file" },
+    "refImage1": { "nodeId": "21", "input": "image" },
+    "refImage2": { "nodeId": "22", "input": "image" },
+    "refImage3": { "nodeId": "23", "input": "image" },
+    "refImage4": { "nodeId": "24", "input": "image" }
+  }
+}

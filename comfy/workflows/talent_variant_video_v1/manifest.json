@@ -1,0 +1,24 @@
+{
+  "workflowId": "talent_variant_video_v1",
+  "knob": "attire",
+  "label": "Matrix combinatorial video (MiniMax H3 R2V)",
+  "contractFlags": {
+    "touches_face": true,
+    "touches_voice": false
+  },
+  "compatibleProfiles": ["cloud", "sd15"],
+  "defaultProfileId": "cloud",
+  "semanticPatches": [
+    "seed",
+    "prompt",
+    "talentVideo",
+    "refImage1",
+    "refImage2",
+    "refImage3",
+    "refImage4",
+    "duration",
+    "ratio",
+    "resolution"
+  ],
+  "notes": "MiniMax H3 Reference-to-Video partner node. Prompt references Image N / Video 1 from connected refs. Talent video is Video 1; ingredient stills are Image 1.."
+}

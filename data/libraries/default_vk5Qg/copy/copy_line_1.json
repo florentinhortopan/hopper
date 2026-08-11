@@ -1,0 +1,10 @@
+{
+  "id": "copy_line_1",
+  "label": "Copy line 1",
+  "copy": {
+    "setup": "Tired of guessing which plan fits?",
+    "punchline": "See the right option in one swipe.",
+    "endcard": "Start free this week",
+    "cta": "Learn more"
+  }
+}

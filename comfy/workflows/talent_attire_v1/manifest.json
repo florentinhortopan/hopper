@@ -1,0 +1,19 @@
+{
+  "workflowId": "talent_attire_v1",
+  "knob": "attire",
+  "label": "Talent wardrobe (face-protect)",
+  "contractFlags": {
+    "touches_face": false,
+    "touches_voice": false
+  },
+  "compatibleProfiles": ["sd15", "z_image_turbo", "sdxl", "flux_schnell"],
+  "defaultProfileId": "sd15",
+  "semanticPatches": [
+    "seed",
+    "wardrobeRef",
+    "wardrobeHint",
+    "prompt",
+    "negative_prompt"
+  ],
+  "notes": "Face-protect mask required. Prompt language: English natural (Z-Image/Flux) or SDXL negative block."
+}

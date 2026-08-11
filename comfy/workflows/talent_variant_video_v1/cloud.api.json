@@ -1,0 +1,55 @@
+{
+  "20": {
+    "class_type": "LoadVideo",
+    "inputs": {
+      "file": "talent.mp4"
+    }
+  },
+  "21": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ref1.png"
+    }
+  },
+  "22": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ref2.png"
+    }
+  },
+  "23": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ref3.png"
+    }
+  },
+  "24": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ref4.png"
+    }
+  },
+  "4": {
+    "class_type": "MinimaxHailuo03ReferenceNode",
+    "inputs": {
+      "model": "MiniMax H3",
+      "model.prompt": "Use Video 1 as the spokesperson performance. Match identity and motion.",
+      "model.resolution": "768P",
+      "model.ratio": "9:16",
+      "model.duration": 5,
+      "model.reference_videos.video_1": ["20", 0],
+      "model.reference_images.image_1": ["21", 0],
+      "seed": 42,
+      "watermark": false
+    }
+  },
+  "3": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": ["4", 0],
+      "filename_prefix": "video/attatta_variant",
+      "format": "auto",
+      "codec": "auto"
+    }
+  }
+}

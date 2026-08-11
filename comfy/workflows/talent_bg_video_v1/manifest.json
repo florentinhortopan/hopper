@@ -1,0 +1,18 @@
+{
+  "workflowId": "talent_bg_video_v1",
+  "knob": "background",
+  "label": "Talent video background replace (Bria)",
+  "contractFlags": {
+    "touches_face": false,
+    "touches_voice": false
+  },
+  "compatibleProfiles": ["cloud", "sd15"],
+  "defaultProfileId": "cloud",
+  "semanticPatches": [
+    "seed",
+    "talentVideo",
+    "backgroundImage",
+    "backgroundVideo"
+  ],
+  "notes": "Bria partner node. Foreground = talent talking-head video. Exactly one of backgroundImage or backgroundVideo."
+}

@@ -1,0 +1,19 @@
+{
+  "id": "brand_default_v3",
+  "label": "Brand Default v3",
+  "colors": {
+    "background": "#1c1917",
+    "foreground": "#fafaf9",
+    "accent": "#ea580c",
+    "muted": "#44403c"
+  },
+  "fonts": {
+    "display": "Georgia, serif",
+    "body": "system-ui, sans-serif"
+  },
+  "endCardLayout": {
+    "ctaStyle": "solid",
+    "logoPosition": "bottom"
+  },
+  "socialChrome": false
+}

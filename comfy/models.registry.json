@@ -1,0 +1,100 @@
+{
+  "$schema": "./models.registry.schema.json",
+  "defaultProfileId": "sd15",
+  "profiles": {
+    "sd15": {
+      "id": "sd15",
+      "label": "SD 1.5 (free)",
+      "priority": 1,
+      "provider": "comfyui",
+      "family": "sd15",
+      "status": "primary",
+      "license": "CreativeML OpenRAIL-M",
+      "licenseNote": "Classic free checkpoint — works on Comfy Cloud as v1-5-pruned-emaonly-fp16.safetensors",
+      "files": {
+        "checkpoint": "v1-5-pruned-emaonly-fp16.safetensors"
+      },
+      "defaults": {
+        "steps": 16,
+        "cfg": 7.0,
+        "width": 576,
+        "height": 1024
+      },
+      "vramHintGb": 6,
+      "strengths": ["free", "fast on cloud", "ATTATTA default for live gen"]
+    },
+    "z_image_turbo": {
+      "id": "z_image_turbo",
+      "label": "Z-Image-Turbo",
+      "priority": 2,
+      "provider": "comfyui",
+      "family": "z-image",
+      "status": "alternate",
+      "license": "Apache-2.0",
+      "licenseNote": "Primary local quality target — requires authoring z_image_turbo.api.json",
+      "huggingface": {
+        "comfyPack": "Comfy-Org/z_image_turbo",
+        "upstream": "Tongyi-MAI/Z-Image-Turbo"
+      },
+      "files": {
+        "diffusion": "models/diffusion_models/z_image_turbo_bf16.safetensors",
+        "textEncoder": "models/text_encoders/qwen_3_4b.safetensors",
+        "vae": "models/vae/ae.safetensors"
+      },
+      "defaults": {
+        "steps": 8,
+        "cfg": 1.0,
+        "width": 1024,
+        "height": 1024
+      },
+      "vramHintGb": 16,
+      "strengths": ["fast iteration", "photoreal plates"]
+    },
+    "sdxl": {
+      "id": "sdxl",
+      "label": "SDXL 1.0",
+      "priority": 3,
+      "provider": "comfyui",
+      "family": "sdxl",
+      "status": "alternate",
+      "licenseNote": "OpenRAIL — ControlNet/LoRA ecosystem",
+      "huggingface": {
+        "checkpoint": "stabilityai/stable-diffusion-xl-base-1.0"
+      },
+      "files": {
+        "checkpoint": "models/checkpoints/sd_xl_base_1.0.safetensors"
+      },
+      "defaults": {
+        "steps": 25,
+        "cfg": 7.0,
+        "width": 1024,
+        "height": 1024
+      },
+      "vramHintGb": 10,
+      "strengths": ["ControlNet / LoRA ecosystem"]
+    },
+    "flux_schnell": {
+      "id": "flux_schnell",
+      "label": "FLUX.1 Schnell",
+      "priority": 4,
+      "provider": "comfyui",
+      "family": "flux",
+      "status": "alternate",
+      "licenseNote": "Apache 2.0 — available on Comfy Cloud as flux1-schnell-fp8.safetensors",
+      "huggingface": {
+        "repo": "black-forest-labs/FLUX.1-schnell"
+      },
+      "files": {
+        "diffusion": "flux1-schnell-fp8.safetensors"
+      },
+      "defaults": {
+        "steps": 4,
+        "cfg": 1.0,
+        "width": 1024,
+        "height": 1024
+      },
+      "vramHintGb": 12,
+      "strengths": ["prompt adherence", "quality A/B"]
+    }
+  }
+}

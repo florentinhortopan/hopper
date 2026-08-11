@@ -1,0 +1,38 @@
+# Secrets & local env
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+.cursor/
+
+# Runtime / builds
+node_modules/
+dist/
+.out/
+.next/
+.pnpm-store/
+data/campaigns/
+data/packages/
+data/imports/
+data/library/**/*.mp4
+data/library/gen/
+data/libraries/**/*.mp4
+data/libraries/**/gen/
+*.webm
+*.mov
+.env.local
+
+# Local scratch media at repo root
+/shot-1.mp4
+/Step-workflow.mp4
+/Screen Recording*.mov
+/assets-for-others/
+
+# Keep seed JSON under data/
+!data/**/*.json
+*.tsbuildinfo

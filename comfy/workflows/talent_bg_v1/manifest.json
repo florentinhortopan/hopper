@@ -1,0 +1,19 @@
+{
+  "workflowId": "talent_bg_v1",
+  "knob": "background",
+  "label": "Talent background re-site (face-protect)",
+  "contractFlags": {
+    "touches_face": false,
+    "touches_voice": false
+  },
+  "compatibleProfiles": ["sd15", "z_image_turbo", "sdxl", "flux_schnell"],
+  "defaultProfileId": "sd15",
+  "semanticPatches": [
+    "seed",
+    "backgroundRef",
+    "backgroundHint",
+    "prompt",
+    "negative_prompt"
+  ],
+  "notes": "Preserve face region. English prompt pack from ATTATTA PromptPack builder."
+}
