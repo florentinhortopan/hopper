@@ -355,6 +355,8 @@ async function main() {
         outputPath: null,
         previewPath: null,
         genOmitIds: [],
+        promptOverride: null,
+        negativeOverride: null,
         sizeAssets: outputSizes.map((s) => ({
           sizeId: s.id,
           width: s.width,

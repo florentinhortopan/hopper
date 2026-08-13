@@ -978,13 +978,16 @@ app.put("/campaigns/:id/matrix", async (req, res) => {
   res.json(await saveCampaign(campaign));
 });
 
-/** Per-row plate toggles for Comfy (genOmitIds) — does not rebuild the matrix. */
+/** Per-row plate toggles + prompt overrides — does not rebuild the matrix. */
 app.patch("/campaigns/:id/cells/:cellId", async (req, res) => {
   try {
     const campaign = await getCampaign(req.params.id);
     const body = z
       .object({
         genOmitIds: z.array(z.string()).optional(),
+        /** null / empty clears override (auto prompt resumes). */
+        promptOverride: z.string().nullable().optional(),
+        negativeOverride: z.string().nullable().optional(),
       })
       .parse(req.body);
     const cell = campaign.matrix.cells.find((c) => c.cellId === req.params.cellId);
@@ -994,6 +997,14 @@ app.patch("/campaigns/:id/cells/:cellId", async (req, res) => {
     }
     if (body.genOmitIds !== undefined) {
       cell.genOmitIds = [...new Set(body.genOmitIds.filter(Boolean))];
+    }
+    if (body.promptOverride !== undefined) {
+      const t = (body.promptOverride ?? "").trim();
+      cell.promptOverride = t ? t : null;
+    }
+    if (body.negativeOverride !== undefined) {
+      const t = (body.negativeOverride ?? "").trim();
+      cell.negativeOverride = t ? t : null;
     }
     res.json(await saveCampaign(campaign));
   } catch (err) {
@@ -1099,6 +1110,8 @@ app.post("/campaigns/:id/matrix/build-sparse", async (req, res) => {
             themeId: hero.themeId,
             propIds,
             genOmitIds: [],
+            promptOverride: null,
+            negativeOverride: null,
             copy: defaultCellCopy,
             designTokenPackId: campaign.designTokenPackId,
             needsGen,
@@ -1128,6 +1141,8 @@ app.post("/campaigns/:id/matrix/build-sparse", async (req, res) => {
             // Same visual combo — keep Comfy / Remotion media + stable cellId
             draft.cellId = live.cellId;
             draft.genOmitIds = [...(live.genOmitIds ?? [])];
+            draft.promptOverride = live.promptOverride ?? null;
+            draft.negativeOverride = live.negativeOverride ?? null;
             draft.sizeAssets = sizes.map((s) => {
               // Never inherit genPath from a different aspect
               const old = live.sizeAssets?.find((a) => a.sizeId === s.id);

@@ -68,11 +68,16 @@ export const api = {
     req<Campaign>(`/campaigns/${id}/rail`, { method: "PUT", body: JSON.stringify(rail) }),
   putMatrix: (id: string, matrix: Matrix) =>
     req<Campaign>(`/campaigns/${id}/matrix`, { method: "PUT", body: JSON.stringify(matrix) }),
-  /** Per-row Comfy plate includes/omits (matrix checkboxes). */
+  /** Per-row Comfy plate includes/omits + prompt overrides. */
   patchCell: (
     id: string,
     cellId: string,
-    body: { genOmitIds?: string[] },
+    body: {
+      genOmitIds?: string[];
+      /** null / "" clears override (auto prompt resumes). */
+      promptOverride?: string | null;
+      negativeOverride?: string | null;
+    },
   ) =>
     req<Campaign>(`/campaigns/${id}/cells/${encodeURIComponent(cellId)}`, {
       method: "PATCH",

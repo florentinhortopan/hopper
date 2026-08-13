@@ -134,6 +134,10 @@ export const MatrixCellSchema = z.object({
    * Does not change the combo / archive identity (handsId etc. stay set).
    */
   genOmitIds: z.array(z.string()).default([]),
+  /** Per-cell positive prompt override; non-empty trim wins over auto-built pack text. */
+  promptOverride: z.string().nullable().default(null),
+  /** Per-cell negative prompt override; non-empty trim wins over auto-built pack text. */
+  negativeOverride: z.string().nullable().default(null),
   copy: CopySchema,
   designTokenPackId: z.string(),
   needsGen: z.boolean().default(false),
@@ -304,6 +308,14 @@ export const RemotionPropsSchema = z.object({
 });
 export type RemotionProps = z.infer<typeof RemotionPropsSchema>;
 
+/** Which video/still pipeline will run for a matrix cell. */
+export const VideoPipelineSchema = z.enum([
+  "bria_replace",
+  "minimax_h3_r2v",
+  "still",
+]);
+export type VideoPipelineId = z.infer<typeof VideoPipelineSchema>;
+
 /** Model-ready generation payload (English) for Comfy / selected profile */
 export const PromptPackSchema = z.object({
   language: z.literal("en"),
@@ -329,6 +341,16 @@ export const PromptPackSchema = z.object({
         .default("other"),
     }),
   ),
+  /** Pipeline picked for this cell (same as Comfy job path). */
+  pipeline: VideoPipelineSchema.default("still"),
+  /** Whether the current pipeline consumes positive prompt text. */
+  promptTextUsed: z.boolean().default(true),
+  /** Whether the current pipeline consumes negative prompt text. */
+  negativeTextUsed: z.boolean().default(true),
+  /** True when cell.promptOverride replaced the auto-built positive. */
+  promptOverridden: z.boolean().default(false),
+  /** True when cell.negativeOverride replaced the auto-built negative. */
+  negativeOverridden: z.boolean().default(false),
   context: z
     .object({
       cellId: z.string(),

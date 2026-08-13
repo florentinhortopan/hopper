@@ -237,6 +237,11 @@ export default function MatrixPage() {
   const [packPreview, setPackPreview] = useState<Awaited<
     ReturnType<typeof api.promptPack>
   > | null>(null);
+  const [packCellId, setPackCellId] = useState<string | null>(null);
+  const [packDraftPositive, setPackDraftPositive] = useState("");
+  const [packDraftNegative, setPackDraftNegative] = useState("");
+  const [packDirty, setPackDirty] = useState(false);
+  const [packSaving, setPackSaving] = useState(false);
   const [packError, setPackError] = useState<string | null>(null);
   const [packBusy, setPackBusy] = useState(false);
   /** Live fill-missing jobs keyed by cellId:sizeId — in-matrix progress, no redirect. */
@@ -473,6 +478,81 @@ export default function MatrixPage() {
       return next;
     });
   }
+
+  function pipelineUsageHint(pack: NonNullable<typeof packPreview>): string {
+    const pipeline = pack.pipeline ?? "still";
+    if (pipeline === "bria_replace") {
+      return "Bria replace: positive/negative text usually unused — background comes from media bind.";
+    }
+    if (pipeline === "minimax_h3_r2v") {
+      return "MiniMax: positive prompt is used; negative is unused.";
+    }
+    return "Still pipeline: both positive and negative prompts are used.";
+  }
+
+  async function loadPackForCell(cellId: string) {
+    const pack = await api.promptPack(id, cellId);
+    setPackPreview(pack);
+    setPackCellId(cellId);
+    setPackDraftPositive(pack.positive);
+    setPackDraftNegative(pack.negative);
+    setPackDirty(false);
+    return pack;
+  }
+
+  async function saveCellPromptOverrides() {
+    if (!packCellId) return;
+    setPackSaving(true);
+    setPackError(null);
+    try {
+      const next = await api.patchCell(id, packCellId, {
+        promptOverride: packDraftPositive.trim() || null,
+        negativeOverride: packDraftNegative.trim() || null,
+      });
+      setCampaign(next);
+      await loadPackForCell(packCellId);
+    } catch (e) {
+      setPackError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPackSaving(false);
+    }
+  }
+
+  async function resetCellPromptOverrides() {
+    if (!packCellId) return;
+    setPackSaving(true);
+    setPackError(null);
+    try {
+      const next = await api.patchCell(id, packCellId, {
+        promptOverride: null,
+        negativeOverride: null,
+      });
+      setCampaign(next);
+      await loadPackForCell(packCellId);
+    } catch (e) {
+      setPackError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPackSaving(false);
+    }
+  }
+
+  // While the prompt panel is open, follow the first selected row (skip if dirty).
+  const selectedKey = selectedIds.join("\0");
+  useEffect(() => {
+    if (!packPreview || !campaign || packDirty || packBusy || packSaving) return;
+    const nextId =
+      selectedIds.find((cid) =>
+        campaign.matrix.cells.some((cell) => cell.cellId === cid),
+      ) || null;
+    if (!nextId || nextId === packCellId) return;
+    setPackBusy(true);
+    setPackError(null);
+    void loadPackForCell(nextId)
+      .catch((e) => setPackError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setPackBusy(false));
+    // Intentionally keyed on selection + panel state, not loadPackForCell identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey, packPreview, packCellId, packDirty, packBusy, packSaving, campaign]);
 
   /** Toggle plate on/off for this row’s Comfy prompt only. */
   async function toggleCellPlate(cellId: string, plateId: string) {
@@ -761,6 +841,11 @@ export default function MatrixPage() {
         <button
           type="button"
           disabled={packBusy}
+          title={
+            selectedIds.length
+              ? `Preview / edit model prompt for selected row (${selectedIds[0]})`
+              : "Select a matrix row first"
+          }
           className="rounded-md border border-ink-200 bg-white px-4 py-2 text-sm text-ink-900 disabled:opacity-40"
           onClick={async () => {
             setPackBusy(true);
@@ -771,12 +856,19 @@ export default function MatrixPage() {
                 c = await api.buildSparse(id);
                 setCampaign(c);
               }
-              const cellId = c.matrix.cells[0]?.cellId;
+              const cellId =
+                selectedIds.find((cid) =>
+                  c.matrix.cells.some((cell) => cell.cellId === cid),
+                ) || null;
               if (!cellId) {
-                setPackError("Build the matrix first (no cells).");
+                setPackError(
+                  c.matrix.cells.length
+                    ? "Select a matrix row to preview its model prompt."
+                    : "Build the matrix first (no cells).",
+                );
                 return;
               }
-              setPackPreview(await api.promptPack(id, cellId));
+              await loadPackForCell(cellId);
             } catch (e) {
               setPackError(e instanceof Error ? e.message : String(e));
             } finally {
@@ -914,33 +1006,97 @@ export default function MatrixPage() {
       {packError ? (
         <p className="mt-3 text-sm text-red-700">{packError}</p>
       ) : null}
-      {packPreview ? (
+      {packPreview && packCellId ? (
         <div className="mt-4 rounded-xl border border-ink-200 bg-white/80 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-lg">Model prompt preview</h2>
             <button
               type="button"
               className="text-xs underline text-ink-700"
-              onClick={() => setPackPreview(null)}
+              onClick={() => {
+                setPackPreview(null);
+                setPackCellId(null);
+                setPackDirty(false);
+              }}
             >
               Dismiss
             </button>
           </div>
           <p className="mt-1 font-mono text-xs text-ink-700">
-            {packPreview.workflowId} · {packPreview.knob} · {packPreview.format}
+            {packCellId} · {packPreview.workflowId} · {packPreview.knob} ·{" "}
+            {packPreview.pipeline ?? "still"} · {packPreview.format}
           </p>
-          <div className="mt-3 space-y-2 text-sm">
-            <div>
-              <div className="text-xs uppercase tracking-wider text-ink-700">Positive</div>
-              <p className="mt-1 whitespace-pre-wrap rounded bg-ink-50 p-3">
-                {packPreview.positive}
-              </p>
-            </div>
-            <div>
-              <div className="text-xs uppercase tracking-wider text-ink-700">Negative</div>
-              <p className="mt-1 whitespace-pre-wrap rounded bg-ink-50 p-3">
-                {packPreview.negative}
-              </p>
+          <p className="mt-2 text-[11px] leading-snug text-ink-600">
+            {pipelineUsageHint(packPreview)}
+            {packPreview.promptOverridden || packPreview.negativeOverridden
+              ? " Cell overrides are active."
+              : " Showing auto-built pack (same as Comfy)."}
+          </p>
+          <div className="mt-3 space-y-3 text-sm">
+            <label className="block min-w-0">
+              <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-600">
+                Positive
+                {packPreview.promptTextUsed === false ? " · unused by pipeline" : ""}
+                {packPreview.promptOverridden ? " · override" : ""}
+              </span>
+              <textarea
+                value={packDraftPositive}
+                rows={4}
+                disabled={packSaving || packBusy}
+                className="mt-1 box-border min-h-[4.5rem] w-full min-w-0 resize-y rounded-lg border border-warm-line bg-white px-2.5 py-2 text-xs leading-relaxed text-ink-900 placeholder:text-ink-400 focus:border-ink-400 focus:outline-none disabled:opacity-50"
+                onChange={(e) => {
+                  setPackDraftPositive(e.target.value);
+                  setPackDirty(true);
+                }}
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-600">
+                Negative
+                {packPreview.negativeTextUsed === false
+                  ? " · unused by pipeline"
+                  : ""}
+                {packPreview.negativeOverridden ? " · override" : ""}
+              </span>
+              <textarea
+                value={packDraftNegative}
+                rows={2}
+                disabled={packSaving || packBusy}
+                className="mt-1 box-border min-h-[2.75rem] w-full min-w-0 resize-y rounded-lg border border-warm-line bg-white px-2.5 py-2 text-xs leading-relaxed text-ink-900 placeholder:text-ink-400 focus:border-ink-400 focus:outline-none disabled:opacity-50"
+                onChange={(e) => {
+                  setPackDraftNegative(e.target.value);
+                  setPackDirty(true);
+                }}
+              />
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={packSaving || packBusy || !packDirty}
+                className="rounded-md bg-ink-900 px-3 py-1.5 text-xs text-white disabled:opacity-40"
+                onClick={() => void saveCellPromptOverrides()}
+              >
+                {packSaving ? "Saving…" : "Save overrides"}
+              </button>
+              <button
+                type="button"
+                disabled={
+                  packSaving ||
+                  packBusy ||
+                  !(
+                    packPreview.promptOverridden ||
+                    packPreview.negativeOverridden ||
+                    packDirty
+                  )
+                }
+                className="rounded-md border border-ink-200 bg-white px-3 py-1.5 text-xs text-ink-800 disabled:opacity-40"
+                onClick={() => void resetCellPromptOverrides()}
+              >
+                Reset to auto
+              </button>
+              {packDirty ? (
+                <span className="text-[10px] text-ink-500">Unsaved changes</span>
+              ) : null}
             </div>
           </div>
         </div>

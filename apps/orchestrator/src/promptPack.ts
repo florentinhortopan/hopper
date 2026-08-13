@@ -83,6 +83,21 @@ export function variantVideoEnabled(): boolean {
 
 export type VideoPipeline = "bria_replace" | "minimax_h3_r2v" | "still";
 
+/** Which prompt fields the live Comfy adapter actually wires for this pipeline. */
+export function pipelinePromptUsage(pipeline: VideoPipeline): {
+  promptTextUsed: boolean;
+  negativeTextUsed: boolean;
+} {
+  if (pipeline === "bria_replace") {
+    // Bria replace binds talent + background media; text prompt is unused.
+    return { promptTextUsed: false, negativeTextUsed: false };
+  }
+  if (pipeline === "minimax_h3_r2v") {
+    return { promptTextUsed: true, negativeTextUsed: false };
+  }
+  return { promptTextUsed: true, negativeTextUsed: true };
+}
+
 /** Library / Ingredients plate generate: still vs partner video. */
 export type IngredientOutputMode = "image" | "video";
 
@@ -328,7 +343,7 @@ export async function buildPromptPack(
     );
   }
 
-  const positive = parts.filter(Boolean).join(". ").replace(/\.\./g, ".");
+  const autoPositive = parts.filter(Boolean).join(". ").replace(/\.\./g, ".");
 
   const negBits = [
     ...brief.mustNot,
@@ -348,7 +363,16 @@ export async function buildPromptPack(
     "text overlay",
   ].filter((x): x is string => Boolean(x && String(x).trim()));
 
-  const negative = negBits.join(", ");
+  const autoNegative = negBits.join(", ");
+
+  const promptOverride = cell.promptOverride?.trim() || "";
+  const negativeOverride = cell.negativeOverride?.trim() || "";
+  const promptOverridden = Boolean(promptOverride);
+  const negativeOverridden = Boolean(negativeOverride);
+  const positive = promptOverridden ? promptOverride : autoPositive;
+  const negative = negativeOverridden ? negativeOverride : autoNegative;
+  const { promptTextUsed, negativeTextUsed } =
+    pipelinePromptUsage(videoPipeline);
 
   const refs = [
     talent,
@@ -470,6 +494,11 @@ export async function buildPromptPack(
     promptHash,
     patches,
     refs,
+    pipeline: videoPipeline,
+    promptTextUsed,
+    negativeTextUsed,
+    promptOverridden,
+    negativeOverridden,
     context: {
       cellId: cell.cellId,
       sizeId: resolvedSize.id,
