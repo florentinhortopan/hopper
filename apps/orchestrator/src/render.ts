@@ -8,6 +8,7 @@ import {
 } from "@remotion/renderer";
 import type { RemotionProps } from "@attatta/shared";
 import { PATHS, PUBLIC_BASE, REPO_ROOT } from "./config.js";
+import { h264SafeScaledRender } from "./h264Scale.js";
 
 let bundleLocation: string | null = null;
 
@@ -63,8 +64,16 @@ export async function renderAd(opts: {
 }) {
   const serveUrl = await getBundle();
   // Prefer real library / Comfy plates under data/ (publicDir). Empty src → labeled fallback.
+  // H264 needs even W/H after Remotion scale (4:5 1080×1350 @ 0.5 → 675 odd).
+  const safe = h264SafeScaledRender(
+    opts.props.width,
+    opts.props.height,
+    opts.scale ?? 1,
+  );
   const inputProps: RemotionProps = {
     ...opts.props,
+    width: safe.width,
+    height: safe.height,
     talentVideoSrc: toPublicMediaSrc(opts.props.talentVideoSrc),
     handsVideoSrc: toPublicMediaSrc(opts.props.handsVideoSrc),
   };
@@ -88,7 +97,7 @@ export async function renderAd(opts: {
       codec: "h264",
       outputLocation: opts.outputPath,
       inputProps,
-      scale: opts.scale ?? 1,
+      scale: safe.scale,
       overwrite: true,
       cancelSignal,
       // Library plates download over HTTP; leave headroom for first fetch
