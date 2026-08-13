@@ -3,6 +3,7 @@ import { Composition } from "remotion";
 import {
   PaidSocial9x16,
   TOTAL_FRAMES,
+  totalFramesFromRecipe,
 } from "./PaidSocial9x16";
 import type { RemotionProps } from "@attatta/shared";
 
@@ -54,6 +55,7 @@ export const RemotionRoot: React.FC = () => {
       calculateMetadata={({ props }) => ({
         width: props.width || 1080,
         height: props.height || 1920,
+        durationInFrames: totalFramesFromRecipe(props.assemblyRecipe, 30),
       })}
     />
   );

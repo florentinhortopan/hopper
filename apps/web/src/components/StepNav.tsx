@@ -6,7 +6,7 @@ const STEPS = [
   ["tokens", "Tokens"],
   ["ingredients", "Ingredients"],
   ["matrix", "Matrix / variants"],
-  ["preview", "Preview"],
+  ["variants", "Variant review"],
   ["queue", "Queue"],
   ["review", "Review"],
   ["package", "Package"],

@@ -64,7 +64,7 @@ export default function QueuePage() {
             }
           }}
         >
-          Final render (all sizes)
+          Assemble missing masters
         </button>
         <button
           type="button"
@@ -136,7 +136,7 @@ export default function QueuePage() {
       <ul className="mt-8 space-y-2">
         <li className="text-xs uppercase tracking-wider text-ink-700">Active jobs</li>
         {jobs.length === 0 ? (
-          <li className="text-sm text-ink-700">No jobs yet — queue a preview from Preview bay.</li>
+          <li className="text-sm text-ink-700">No jobs yet — generate variants on Matrix, then Assemble from Review.</li>
         ) : null}
         {jobs.map((j) => (
           <JobProgressRow key={j.id} job={j} onCancelled={() => void refresh()} />

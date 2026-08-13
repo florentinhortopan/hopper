@@ -205,7 +205,7 @@ export const MatrixSchema = z.object({
   cap: z.number().default(20),
   /**
    * Combos dropped by Build from activations (kept so media isn’t “lost”).
-   * Selectable in Preview / Review / Package; not in the live activation fan.
+   * Selectable in Variant review / Review / Package; not in the live activation fan.
    */
   retired: z.array(RetiredMatrixCellSchema).default([]),
 });
@@ -224,6 +224,66 @@ export const ReviewEntrySchema = z.object({
   updatedAt: z.string(),
 });
 export type ReviewEntry = z.infer<typeof ReviewEntrySchema>;
+
+/** Remotion assemble structure — one recipe for all output sizes. */
+export const AssemblySceneSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  role: z.enum(["setup", "punchline", "endcard", "custom"]).default("custom"),
+  durationSeconds: z.number().positive().default(3),
+});
+export type AssemblyScene = z.infer<typeof AssemblySceneSchema>;
+
+export const DEFAULT_ASSEMBLY_SCENES: AssemblyScene[] = [
+  { id: "setup", label: "Setup", role: "setup", durationSeconds: 3 },
+  { id: "punchline", label: "Punchline", role: "punchline", durationSeconds: 4 },
+  { id: "endcard", label: "End card", role: "endcard", durationSeconds: 3 },
+];
+
+export const AssemblyRecipeSchema = z.object({
+  scenes: z.array(AssemblySceneSchema).default(DEFAULT_ASSEMBLY_SCENES),
+  /** When set, scales scene durations to match; otherwise sum(scenes). */
+  targetDurationSeconds: z.number().positive().nullable().default(null),
+  /** Last copy-based suggestion shown in Settings (informational). */
+  copySuggestedSeconds: z.number().positive().nullable().default(null),
+});
+export type AssemblyRecipe = z.infer<typeof AssemblyRecipeSchema>;
+
+/** Soft speaking-rate estimate (~2.5 words/sec) from active copy — informs recipe, does not constrain. */
+export function suggestAssemblySecondsFromCopy(copy: {
+  setup?: string;
+  punchline?: string;
+  endcard?: string;
+}): number {
+  const text = [copy.setup, copy.punchline, copy.endcard].filter(Boolean).join(" ");
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  if (!words) return 10;
+  const secs = Math.round(words / 2.5);
+  return Math.min(30, Math.max(6, secs));
+}
+
+export function assemblyRecipeTotalSeconds(recipe: AssemblyRecipe): number {
+  if (recipe.targetDurationSeconds && recipe.targetDurationSeconds > 0) {
+    return recipe.targetDurationSeconds;
+  }
+  const sum = recipe.scenes.reduce((n, s) => n + s.durationSeconds, 0);
+  return sum > 0 ? sum : 10;
+}
+
+export function assemblySceneFrames(
+  recipe: AssemblyRecipe,
+  fps = 30,
+): { id: string; label: string; role: AssemblyScene["role"]; frames: number }[] {
+  const scenes = recipe.scenes.length ? recipe.scenes : DEFAULT_ASSEMBLY_SCENES;
+  const rawSum = scenes.reduce((n, s) => n + s.durationSeconds, 0) || 1;
+  const target = assemblyRecipeTotalSeconds({ ...recipe, scenes });
+  return scenes.map((s) => ({
+    id: s.id,
+    label: s.label,
+    role: s.role,
+    frames: Math.max(1, Math.round((s.durationSeconds / rawSum) * target * fps)),
+  }));
+}
 
 export const CampaignSchema = z.object({
   id: z.string(),
@@ -246,6 +306,12 @@ export const CampaignSchema = z.object({
     .default(resolveOutputSizes([...DEFAULT_OUTPUT_SIZE_IDS])),
   /** Which library pack this campaign reads ingredients from */
   libraryId: z.string().default("default"),
+  /** Remotion assemble structure (applies to all sizes) */
+  assemblyRecipe: AssemblyRecipeSchema.default({
+    scenes: DEFAULT_ASSEMBLY_SCENES,
+    targetDurationSeconds: null,
+    copySuggestedSeconds: null,
+  }),
   archived: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -305,6 +371,8 @@ export const RemotionPropsSchema = z.object({
   height: z.number().int().default(1920),
   sizeId: z.string().default("v_9x16_1080"),
   aspect: z.string().default("9:16"),
+  /** Optional assemble recipe; composition falls back to default 3/4/3s beats. */
+  assemblyRecipe: AssemblyRecipeSchema.optional(),
 });
 export type RemotionProps = z.infer<typeof RemotionPropsSchema>;
 

@@ -76,7 +76,7 @@ Login wall still uses `SITE_PASSWORD` on Vercel only.
 
 ## Notes
 
-- Remotion needs ~2GB+ RAM; if renders OOM, bump the Railway plan / memory.
+- Remotion assemble is a **single hi-res pass** (operators trigger from Review). Renders are serialized; needs ~2GB+ RAM — if OOM, bump the Railway plan / memory.
 - First seed: either upload plates via Library, or run `pnpm seed` locally and copy `data/` into the volume (advanced). Empty volume = empty library until you import.
 - Design tokens: image `data-seed/tokens` (incl. `brand_default_v3.json`) is copied into `/app/data/tokens` when missing; orchestrator also writes the embedded default on boot if the volume still lacks it. Redeploy/restart is enough — no manual volume copy for tokens.
 - Local dev unchanged: `pnpm dev` still uses `127.0.0.1:8787`.

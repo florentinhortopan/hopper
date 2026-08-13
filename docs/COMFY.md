@@ -20,7 +20,10 @@ Matrix “Generate variants”
   → One Comfy VIDEO job per needsGen cell @ primary size
   → Writes sizeAssets[].genPath (real MP4)
 
-Matrix / Preview “Assemble”
+Matrix “generate variants” / Review “Assemble”
+
+(There is a single hi-res Remotion assemble — no half-res preview pass.)
+
   → Remotion: library talent + hands, overridden by cell genPath
     · attire/background knob → talentVideoSrc = genPath
     · hands/prop knob → handsVideoSrc = genPath

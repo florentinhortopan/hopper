@@ -70,7 +70,8 @@ Altitude B — ComfyUI (headless or tech-only canvas)
 | 3 | **Design tokens** | Lock brand chrome for the batch | One pack selector + live end-card preview |
 | 4 | **Ingredient rail** | Pin what may be used | Talent / Hands / Motion columns + locks |
 | 5 | **Matrix** | Plan sparse tests | Grid of cells; open-knob fan only |
-| 6 | **Preview bay** | Judge story cheaply | Vertical player + beat markers + knob side panel |
+| 6 | **Variant review** | Inspect Comfy plates | Vertical player + return to Matrix |
+| 7 | **Review** | Assemble hi-res + Keep/Kill | Vertical player + Assemble CTA |
 | 7 | **Render queue** | Wait with trust | Progress list (Comfy + Remotion stages) |
 | 8 | **Review board** | Decide at volume | Thumb grid + Keep/Kill/Swap/Rewrite |
 | 9 | **Package** | Hand off to Celtra | Zip + matrix table download |

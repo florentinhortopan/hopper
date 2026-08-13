@@ -93,9 +93,8 @@ Operator can produce **≥1 approved** vertical MP4 + `matrix.json` zip **withou
 1. **Library** — upload or prompt-draft ingredients; generate plates  
 2. **Campaign → Ingredients** — activate set; honor talent contract  
 3. **Brief → Tokens → Ingredients → Matrix** — activate plates (2+ fans an axis; copy plates fan lines), build sparse cells  
-4. **Preview / Queue** — Comfy plates → Remotion assemble  
-5. **Review** — Keep at least one cell  
-6. **Package** — download Celtra zip  
+4. **Variant review / Review** — Inspect Comfy plates → Assemble hi-res Remotion once → Keep/Kill  
+5. **Package** — Zip approved masters (`outputPath`) for Celtra  
 
 ---
 
@@ -108,7 +107,7 @@ Operator can produce **≥1 approved** vertical MP4 + `matrix.json` zip **withou
 | FR-3 | Talent contract blocks disallowed attire/BG/props/hands |
 | FR-4 | Rail exposes only activated ingredients; matrix is sparse |
 | FR-5 | Generation stages are observable (queue progress / errors) |
-| FR-6 | Preview and final Remotion outputs per selected size |
+| FR-6 | Hi-res Remotion assemble per selected size (`outputPath`) |
 | FR-7 | Review decisions persist (approved / rejected / pending + notes) |
 | FR-8 | Package includes **approved-only** masters + matrix metadata |
 | FR-9 | Comfy is headless to operators; workflows versioned for techs |

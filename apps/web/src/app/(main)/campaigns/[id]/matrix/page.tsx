@@ -447,7 +447,6 @@ export default function MatrixPage() {
     );
   }, [campaign, libById]);
   const copyFan = Math.max(1, activeCopyPlates.length);
-  const assembleJobCount = selectedIds.length * sizes.length * copyFan;
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -622,30 +621,7 @@ export default function MatrixPage() {
     }
   }
 
-  async function runStage(stage: "preview" | "render") {
-    if (!selectedIds.length) return;
-    setBusy(stage);
-    setError(null);
-    setLastQueued(null);
-    try {
-      // Assemble uses library talent/hands + cell genPath when present
-      const opts = { skipComfy: true };
-      const res =
-        stage === "preview"
-          ? await api.preview(id, selectedIds, opts)
-          : await api.render(id, selectedIds, opts);
-      setLastQueued(res.jobs.length);
-      const c = await api.getCampaign(id);
-      setCampaign(c);
-      window.location.href = `/campaigns/${id}/queue`;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  /** Comfy each missing aspect, then Remotion assemble — stay on Matrix; Queue still lists jobs. */
+  /** Comfy each missing aspect — assemble later on Review. */
   async function fillMissingSizes() {
     const cellIds = selectedIds.length
       ? selectedIds
@@ -916,7 +892,7 @@ export default function MatrixPage() {
           title={
             missingSizeSlots === 0
               ? "All aspects already have their own Comfy media"
-              : "Comfy each missing aspect (correct framing), then Remotion assemble"
+              : "Comfy each missing aspect (correct framing) — assemble later on Review"
           }
           className={`rounded-md px-4 py-2 text-sm disabled:opacity-40 ${
             missingSizeSlots > 0
@@ -933,49 +909,25 @@ export default function MatrixPage() {
                 ? `Fill missing sizes (${missingSizeSlots})`
                 : "Fill missing sizes"}
         </button>
-        <button
-          type="button"
-          disabled={!selectedIds.length || busy !== null}
-          title={
-            activeCopyPlates.length
-              ? `Remotion × ${activeCopyPlates.length} copy plate(s) on each selected variant`
-              : "Remotion assemble using each cell’s default copy lines"
-          }
-          className="rounded-md bg-ink-900 px-4 py-2 text-sm text-white disabled:opacity-40"
-          onClick={() => void runStage("preview")}
-        >
-          {busy === "preview"
-            ? "Queueing…"
-            : `Assemble preview${selectedIds.length ? ` (${assembleJobCount})` : ""}`}
-        </button>
-        <button
-          type="button"
-          disabled={!selectedIds.length || busy !== null}
-          title={
-            activeCopyPlates.length
-              ? `Final Remotion × ${activeCopyPlates.length} copy plate(s)`
-              : "Final Remotion using cell default copy"
-          }
-          className="rounded-md border border-ink-900 bg-white px-4 py-2 text-sm text-ink-900 disabled:opacity-40"
-          onClick={() => void runStage("render")}
-        >
-          {busy === "render"
-            ? "Queueing…"
-            : `Final build${selectedIds.length ? ` (${assembleJobCount})` : ""}`}
-        </button>
         <a
           href={
             selectedIds.length
-              ? `/campaigns/${id}/preview?cells=${encodeURIComponent(selectedIds.join(","))}`
-              : `/campaigns/${id}/preview`
+              ? `/campaigns/${id}/variants?cells=${encodeURIComponent(selectedIds.join(","))}`
+              : `/campaigns/${id}/variants`
           }
           className={`rounded-md border border-ink-200 bg-white px-4 py-2 text-sm text-ink-900 ${
             !selectedIds.length ? "opacity-60" : ""
           }`}
         >
           {selectedIds.length
-            ? `Open preview bay (${selectedIds.length})`
-            : "Preview bay (all)"}
+            ? `Variant review (${selectedIds.length})`
+            : "Variant review"}
+        </a>
+        <a
+          href={`/campaigns/${id}/review`}
+          className="rounded-md border border-ember-500 bg-ember-500/10 px-4 py-2 text-sm text-ember-800"
+        >
+          Review / Assemble
         </a>
         {selectedIds.length ? (
           <button
@@ -987,7 +939,7 @@ export default function MatrixPage() {
           </button>
         ) : (
           <span className="text-xs text-ink-600">
-            Select rows → generate variants / assemble
+            Select rows → generate variants · review · assemble on Review
           </span>
         )}
       </div>
@@ -1410,7 +1362,7 @@ export default function MatrixPage() {
             {campaign.matrix.retired!.slice(0, 12).map((c) => {
               const hasGen = c.sizeAssets?.some((a) => a.genPath);
               const archRef = makeArchiveRef(archiveIdOf(c));
-              const previewHref = `/campaigns/${id}/preview?archive=${encodeURIComponent(archiveIdOf(c))}`;
+              const previewHref = `/campaigns/${id}/variants?archive=${encodeURIComponent(archiveIdOf(c))}`;
               return (
                 <li
                   key={archRef}
@@ -1446,7 +1398,7 @@ export default function MatrixPage() {
           {(campaign.matrix.retired?.length ?? 0) > 12 ? (
             <p className="mt-2 text-[11px] text-ink-500">
               Showing 12 of {campaign.matrix.retired!.length} (cap 40).{" "}
-              <a href={`/campaigns/${id}/preview`} className="underline">
+              <a href={`/campaigns/${id}/variants`} className="underline">
                 Open full archive in preview
               </a>
             </p>

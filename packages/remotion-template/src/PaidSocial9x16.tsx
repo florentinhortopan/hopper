@@ -8,7 +8,12 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import type { RemotionProps } from "@attatta/shared";
+import {
+  assemblySceneFrames,
+  DEFAULT_ASSEMBLY_SCENES,
+  type AssemblyRecipe,
+  type RemotionProps,
+} from "@attatta/shared";
 
 function isStill(src: string) {
   return /\.(png|jpe?g|webp|gif)$/i.test(src);
@@ -20,8 +25,6 @@ function PlateVideo({ src, label, color }: { src: string; label: string; color: 
   if (isStill(src)) {
     return <Img src={src} style={style} />;
   }
-  // OffthreadVideo for all video plates (http + relative). Remotion <Video>
-  // requires seekable Range responses and was hanging delayRender on /files.
   return <OffthreadVideo src={src} style={style} />;
 }
 
@@ -31,20 +34,36 @@ export const PUNCH_FRAMES = 4 * FPS;
 export const END_FRAMES = 3 * FPS;
 export const TOTAL_FRAMES = SETUP_FRAMES + PUNCH_FRAMES + END_FRAMES;
 
+function defaultRecipe(): AssemblyRecipe {
+  return {
+    scenes: DEFAULT_ASSEMBLY_SCENES,
+    targetDurationSeconds: null,
+    copySuggestedSeconds: null,
+  };
+}
+
+export function totalFramesFromRecipe(recipe?: AssemblyRecipe | null, fps = FPS): number {
+  const frames = assemblySceneFrames(recipe ?? defaultRecipe(), fps);
+  return Math.max(1, frames.reduce((n, s) => n + s.frames, 0));
+}
+
 export const PaidSocial9x16: React.FC<RemotionProps> = ({
   talentVideoSrc,
   handsVideoSrc,
   motionToken,
   copy,
   designTokens,
+  assemblyRecipe,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const scenes = assemblySceneFrames(assemblyRecipe ?? defaultRecipe(), fps);
 
-  const endStart = SETUP_FRAMES + PUNCH_FRAMES;
-  const endOpacity = interpolate(frame, [endStart, endStart + 10], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
+  let cursor = 0;
+  const sequenced = scenes.map((s) => {
+    const from = cursor;
+    cursor += s.frames;
+    return { ...s, from };
   });
 
   return (
@@ -55,74 +74,95 @@ export const PaidSocial9x16: React.FC<RemotionProps> = ({
         color: designTokens.colors.foreground,
       }}
     >
-      <Sequence from={0} durationInFrames={SETUP_FRAMES} name="Setup">
-        <AbsoluteFill>
-          <PlateVideo src={talentVideoSrc} label="Talent / Setup" color="#1c1917" />
-          <CaptionBar text={copy.setup} tokens={designTokens} />
-          <BeatChip label="Setup" />
-        </AbsoluteFill>
-      </Sequence>
+      {sequenced.map((s) => {
+        const role = s.role;
+        const isSetup = role === "setup" || (!role && s.id === "setup");
+        const isPunch = role === "punchline" || s.id === "punchline";
+        const isEnd = role === "endcard" || s.id === "endcard";
+        const src = isPunch ? handsVideoSrc : talentVideoSrc;
+        const caption = isEnd
+          ? null
+          : isPunch
+            ? copy.punchline
+            : copy.setup;
+        const endOpacity = isEnd
+          ? interpolate(frame, [s.from, s.from + 10], [0, 1], {
+              extrapolateLeft: "clamp",
+              extrapolateRight: "clamp",
+            })
+          : 1;
 
-      <Sequence from={SETUP_FRAMES} durationInFrames={PUNCH_FRAMES} name="Punchline">
-        <AbsoluteFill>
-          <PlateVideo src={handsVideoSrc} label="Hands / Punchline" color="#292524" />
-          <CaptionBar text={copy.punchline} tokens={designTokens} />
-          <BeatChip label={`Punchline · ${motionToken}`} />
-        </AbsoluteFill>
-      </Sequence>
-
-      <Sequence from={endStart} durationInFrames={END_FRAMES} name="EndCard">
-        <AbsoluteFill
-          style={{
-            opacity: endOpacity,
-            background: `linear-gradient(160deg, ${designTokens.colors.background} 0%, ${designTokens.colors.muted} 100%)`,
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "flex-end",
-            padding: 64,
-            gap: 28,
-          }}
-        >
-          <div
-            style={{
-              fontFamily: designTokens.fonts.display,
-              fontSize: 64,
-              fontWeight: 700,
-              lineHeight: 1.1,
-              letterSpacing: "-0.02em",
-              maxWidth: "90%",
-            }}
-          >
-            {copy.endcard}
-          </div>
-          <div
-            style={{
-              alignSelf: designTokens.endCardLayout.ctaStyle === "solid" ? "flex-start" : "flex-start",
-              background:
-                designTokens.endCardLayout.ctaStyle === "solid"
-                  ? designTokens.colors.accent
-                  : "transparent",
-              color:
-                designTokens.endCardLayout.ctaStyle === "solid"
-                  ? designTokens.colors.background
-                  : designTokens.colors.accent,
-              border: `2px solid ${designTokens.colors.accent}`,
-              padding: "18px 36px",
-              borderRadius: 8,
-              fontSize: 28,
-              fontWeight: 600,
-            }}
-          >
-            {copy.cta}
-          </div>
-          {designTokens.socialChrome ? (
-            <div style={{ position: "absolute", top: 40, right: 40, opacity: 0.5, fontSize: 18 }}>
-              IG · frame
-            </div>
-          ) : null}
-          <div style={{ fontSize: 16, opacity: 0.55 }}>{fps}fps · paid_social_9x16_v1</div>
-        </AbsoluteFill>
-      </Sequence>
+        return (
+          <Sequence key={s.id} from={s.from} durationInFrames={s.frames} name={s.label}>
+            {isEnd ? (
+              <AbsoluteFill
+                style={{
+                  opacity: endOpacity,
+                  background: `linear-gradient(160deg, ${designTokens.colors.background} 0%, ${designTokens.colors.muted} 100%)`,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "flex-end",
+                  padding: 64,
+                  gap: 28,
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: designTokens.fonts.display,
+                    fontSize: 64,
+                    fontWeight: 700,
+                    lineHeight: 1.1,
+                    letterSpacing: "-0.02em",
+                    maxWidth: "90%",
+                  }}
+                >
+                  {copy.endcard}
+                </div>
+                <div
+                  style={{
+                    alignSelf: "flex-start",
+                    background:
+                      designTokens.endCardLayout.ctaStyle === "solid"
+                        ? designTokens.colors.accent
+                        : "transparent",
+                    color:
+                      designTokens.endCardLayout.ctaStyle === "solid"
+                        ? designTokens.colors.background
+                        : designTokens.colors.accent,
+                    border: `2px solid ${designTokens.colors.accent}`,
+                    padding: "18px 36px",
+                    borderRadius: 8,
+                    fontSize: 28,
+                    fontWeight: 600,
+                  }}
+                >
+                  {copy.cta}
+                </div>
+                {designTokens.socialChrome ? (
+                  <div style={{ position: "absolute", top: 40, right: 40, opacity: 0.5, fontSize: 18 }}>
+                    IG · frame
+                  </div>
+                ) : null}
+                <div style={{ fontSize: 16, opacity: 0.55 }}>{fps}fps · paid_social_9x16_v1</div>
+              </AbsoluteFill>
+            ) : (
+              <AbsoluteFill>
+                <PlateVideo
+                  src={src}
+                  label={isPunch ? "Hands / Punchline" : "Talent / Setup"}
+                  color={isPunch ? "#292524" : "#1c1917"}
+                />
+                {caption ? <CaptionBar text={caption} tokens={designTokens} /> : null}
+                <BeatChip
+                  label={
+                    isPunch ? `Punchline · ${motionToken}` : isSetup ? "Setup" : s.label
+                  }
+                />
+              </AbsoluteFill>
+            )}
+          </Sequence>
+        );
+      })}
     </AbsoluteFill>
   );
 };

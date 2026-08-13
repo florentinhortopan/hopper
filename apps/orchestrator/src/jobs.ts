@@ -126,14 +126,30 @@ export function syncCampaignSizeAssets(campaign: Campaign): void {
   }
 }
 
+/** Soft gate: cell has at least one Comfy variant plate ready to assemble. */
+export function cellHasVariantReady(
+  cell: Campaign["matrix"]["cells"][number],
+): boolean {
+  return (cell.sizeAssets ?? []).some(
+    (a) => Boolean(a.genPath?.trim()) && a.status !== "failed",
+  );
+}
+
 function assetNeedsAssemble(
   cell: Campaign["matrix"]["cells"][number],
   sizeId: string,
-  stage: "preview" | "render",
+  _stage: "preview" | "render",
 ): boolean {
   const asset = cell.sizeAssets?.find((a) => a.sizeId === sizeId);
-  if (stage === "render") return !asset?.outputPath?.trim();
-  return !(asset?.previewPath?.trim() || asset?.outputPath?.trim());
+  // Single hi-res assemble: need master outputPath (previewPath alone is not enough)
+  return !asset?.outputPath?.trim();
+}
+
+/** Normalize legacy "preview" stage to hi-res assemble (same as render). */
+function assembleStage(
+  stage: "preview" | "render",
+): "render" {
+  return "render";
 }
 
 /** True when this size needs its own Comfy pass (missing or shared wrong-aspect gen). */
@@ -250,6 +266,7 @@ async function buildProps(
     height: size.height,
     sizeId: size.id,
     aspect: size.aspect,
+    assemblyRecipe: campaign.assemblyRecipe,
   };
 }
 
@@ -501,10 +518,11 @@ export async function enqueueCellSizeJob(
 ): Promise<Job> {
   const copyPlate = opts.copyPlate ?? null;
   const updateCellPaths = opts.updateCellPaths !== false;
-  // Default assemble-only from ingredient plates
+  // Default assemble-only from ingredient plates / existing genPath
   const skipComfy = opts.skipComfy !== false;
+  const remotionStage = assembleStage(stage);
   const etaSeconds = estimateQueueJobSeconds({
-    stage,
+    stage: remotionStage,
     includesComfy: !skipComfy,
   });
   const job: Job = {
@@ -515,7 +533,7 @@ export async function enqueueCellSizeJob(
     sizeId: size.id,
     width: size.width,
     height: size.height,
-    stage,
+    stage: remotionStage,
     status: "queued",
     progress: 0,
     message: copyPlate
@@ -585,17 +603,18 @@ export async function enqueueCellSizeJob(
       }
 
       assertJobNotCancelled(job.id);
+      const remotionStage = assembleStage(stage);
       touchJob(job, {
         message: copyPlate
-          ? `Remotion ${stage} · ${copyPlate.label}`
-          : `Remotion ${stage} ${size.width}×${size.height}`,
+          ? `Remotion assemble · ${copyPlate.label}`
+          : `Remotion assemble ${size.width}×${size.height}`,
         progress: skipComfy ? 0.15 : 0.55,
       });
       const props = await buildProps(campaign, cellId, size, copyPlate?.copy);
       const outputPath = campaignOutputPath(
         campaignId,
         outputPathCellKey(cellId),
-        stage,
+        remotionStage,
         size.id,
         copyPlate?.id,
       );
@@ -604,7 +623,7 @@ export async function enqueueCellSizeJob(
       await renderAd({
         props,
         outputPath,
-        scale: stage === "preview" ? 0.5 : 1,
+        scale: 1,
         signal,
         onProgress: (p, detail) => {
           touchJob(job, {
@@ -624,35 +643,24 @@ export async function enqueueCellSizeJob(
             }
             const assetIdx = c.sizeAssets.findIndex((a) => a.sizeId === size.id);
             if (assetIdx >= 0) {
-              if (stage === "preview") {
-                c.sizeAssets[assetIdx] = {
-                  ...c.sizeAssets[assetIdx],
-                  previewPath: outputPath,
-                  status: "preview_ok",
-                  error: null,
-                };
-              } else {
-                c.sizeAssets[assetIdx] = {
-                  ...c.sizeAssets[assetIdx],
-                  outputPath,
-                  status: "ready",
-                  error: null,
-                };
-              }
+              c.sizeAssets[assetIdx] = {
+                ...c.sizeAssets[assetIdx],
+                outputPath,
+                // Compat: mirror so older UI that reads previewPath still finds media
+                previewPath: outputPath,
+                status: "ready",
+                error: null,
+              };
             }
             const primary = c.sizeAssets[0];
-            if (stage === "preview") {
-              c.previewPath = primary?.previewPath ?? outputPath;
-              c.previewOk = c.sizeAssets.every(
-                (a) => a.status === "preview_ok" || a.status === "ready",
-              );
-              c.status = c.previewOk ? "preview_ok" : "previewing";
-            } else {
-              c.outputPath = primary?.outputPath ?? outputPath;
-              c.status = c.sizeAssets.every((a) => a.status === "ready")
-                ? "ready"
-                : "rendering";
-            }
+            c.outputPath = primary?.outputPath ?? outputPath;
+            c.previewPath = primary?.previewPath ?? outputPath;
+            c.previewOk = c.sizeAssets.every(
+              (a) => a.status === "ready" || Boolean(a.outputPath?.trim()),
+            );
+            c.status = c.sizeAssets.every((a) => a.status === "ready")
+              ? "ready"
+              : "rendering";
           });
         });
       }
@@ -710,13 +718,12 @@ export async function enqueueBatch(
     : allSizes;
   if (!sizes.length) throw new Error("No matching output sizes to assemble");
 
+  // Soft gate: when no cellIds, assemble cells that have variant plates ready
   const ids = (
     cellIds?.length
       ? cellIds
       : campaign.matrix.cells
-          .filter((c) =>
-            stage === "preview" ? true : c.previewOk || c.status === "preview_ok",
-          )
+          .filter((c) => cellHasVariantReady(c))
           .map((c) => c.cellId)
   ).filter(Boolean);
 
@@ -758,9 +765,12 @@ export async function enqueueBatch(
   }
   if (!jobs.length && opts.onlyMissing) {
     throw new Error(
-      stage === "render"
-        ? "No missing finals — every selected cell already has output for those sizes"
-        : "No missing sizes — every selected cell already has preview/final for those sizes",
+      "No missing masters — every selected cell already has assembled output for those sizes",
+    );
+  }
+  if (!jobs.length && !opts.onlyMissing) {
+    throw new Error(
+      "No cells ready to assemble — generate Comfy variants on Matrix first, then Assemble from Review",
     );
   }
   return jobs;
@@ -981,16 +991,11 @@ export async function enqueueMissingSizeVariantBatch(
           { signal, jobId: job.id },
         );
         assertJobNotCancelled(job.id);
-        // Separate Remotion job — correct aspect plate is already on sizeAssets
-        void enqueueCellSizeJob(campaignId, cellId, size, "preview", {
-          skipComfy: true,
-          copyPlate: null,
-          updateCellPaths: true,
-        });
+        // Do not auto-assemble — operator reviews variants then Assembles from Review
         touchJob(job, {
           status: "done",
           progress: 1,
-          message: `Comfy ready @ ${size.aspect} — assemble queued`,
+          message: `Comfy ready @ ${size.aspect} — review variants, then Assemble on Review`,
           resultPath: gen?.assetPath ?? null,
         });
         finishJobControl(job.id);

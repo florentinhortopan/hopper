@@ -375,6 +375,15 @@ async function main() {
       mustSay: ["free this week"],
       mustNot: ["guaranteed results"],
     },
+    assemblyRecipe: {
+      scenes: [
+        { id: "setup", label: "Setup", role: "setup", durationSeconds: 3 },
+        { id: "punchline", label: "Punchline", role: "punchline", durationSeconds: 4 },
+        { id: "endcard", label: "End card", role: "endcard", durationSeconds: 3 },
+      ],
+      targetDurationSeconds: 10,
+      copySuggestedSeconds: null,
+    },
     designTokenPackId: DEFAULT_BRAND_TOKEN_ID,
     rail: {
       hero: {

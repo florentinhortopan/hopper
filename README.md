@@ -34,8 +34,8 @@ Open [http://localhost:3000](http://localhost:3000).
 
 1. **Library** — create global ingredients (upload, prompt-only draft, or **copy** lines).  
 2. Open a campaign → **Ingredients** — activate plates (2+ of a kind fans that axis; copy plates fan messaging).  
-3. **Brief → Tokens → Matrix** — Build from activations; Preview model prompt; generate variants.  
-4. **Preview** → queue Remotion preview / **Queue** → Final render.  
+3. **Brief → Tokens → Matrix** — Build from activations; Preview model prompt; generate Comfy variants.
+4. **Variant review** → inspect plates → **Review** → Assemble (hi-res Remotion once) → Keep → **Package**.
 5. **Review** → Keep at least one cell with an output.  
 6. **Package** → download Celtra zip (`matrix.json` + mp4s).
 

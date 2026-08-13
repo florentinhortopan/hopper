@@ -12,6 +12,7 @@ import {
   BriefSchema,
   CampaignIngredientSetSchema,
   CampaignSchema,
+  AssemblyRecipeSchema,
   CopySchema,
   INGREDIENT_KINDS,
   IngredientRailSchema,
@@ -816,6 +817,7 @@ app.patch("/campaigns/:id", async (req, res) => {
         archived: z.boolean().optional(),
         modelProfileId: z.string().optional(),
         libraryId: z.string().optional(),
+        assemblyRecipe: AssemblyRecipeSchema.optional(),
       })
       .parse(req.body);
     if (body.name !== undefined) campaign.name = body.name;
@@ -827,6 +829,9 @@ app.patch("/campaigns/:id", async (req, res) => {
         return;
       }
       campaign.libraryId = body.libraryId;
+    }
+    if (body.assemblyRecipe !== undefined) {
+      campaign.assemblyRecipe = body.assemblyRecipe;
     }
     res.json(await saveCampaign(campaign));
   } catch (err) {
@@ -1250,14 +1255,14 @@ app.post("/campaigns/:id/generate-missing-sizes", async (req, res) => {
   }
 });
 
+/** @deprecated Alias of /render — single hi-res Remotion assemble (no half-res preview). */
 app.post("/campaigns/:id/preview", async (req, res) => {
   try {
     const cellIds = req.body?.cellIds as string[] | undefined;
     const copyIds = req.body?.copyIds as string[] | undefined;
     const sizeIds = req.body?.sizeIds as string[] | undefined;
-    // Assemble-only by default — ingredient plates are the SoT
     const skipComfy = req.body?.skipComfy !== false;
-    const jobs = await enqueueBatch(req.params.id, "preview", cellIds, {
+    const jobs = await enqueueBatch(req.params.id, "render", cellIds, {
       skipComfy,
       forceRegen: Boolean(req.body?.forceRegen),
       copyIds,
@@ -1289,8 +1294,9 @@ app.post("/campaigns/:id/render", async (req, res) => {
   }
 });
 
+/** @deprecated Alias of cell render — hi-res assemble only. */
 app.post("/campaigns/:id/cells/:cellId/preview", async (req, res) => {
-  const job = await enqueueCellJob(req.params.id, req.params.cellId, "preview");
+  const job = await enqueueCellJob(req.params.id, req.params.cellId, "render");
   res.status(202).json(job);
 });
 

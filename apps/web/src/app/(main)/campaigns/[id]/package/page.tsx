@@ -65,7 +65,9 @@ export default function PackagePage() {
                 ) : null}
                 {" · "}
                 {cell?.handsId || "—"} ·{" "}
-                {cell?.outputPath ? "has mp4" : "missing mp4"}
+                {cell?.outputPath
+                  ? "has master mp4"
+                  : "missing master mp4"}
               </li>
             );
           })}

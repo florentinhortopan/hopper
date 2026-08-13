@@ -40,7 +40,7 @@ Operators assemble and judge **stories**, not graphs. Comfy’s infinite node ca
 Global:  Campaigns · Library · Comfy
 Campaign steps:
   Brief → Settings → Tokens → Ingredients → Matrix
-  → Preview → Queue → Review → Package
+  → Variant review → Queue → Review (Assemble) → Package
   (Rail dissolved — activations derive the matrix axes)
 ```
 

@@ -53,6 +53,7 @@ export const api = {
       archived?: boolean;
       modelProfileId?: string;
       libraryId?: string;
+      assemblyRecipe?: import("@attatta/shared").AssemblyRecipe;
     },
   ) => req<Campaign>(`/campaigns/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteCampaign: (id: string) =>
