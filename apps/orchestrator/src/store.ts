@@ -17,6 +17,7 @@ import {
 } from "@attatta/shared";
 import { repairCampaignMediaPaths } from "./campaignMediaRepair.js";
 import { PATHS } from "./config.js";
+import { ensureDefaultBrandTokens } from "./defaultTokens.js";
 import { migrateLegacyLibraryPack, packKindDir } from "./libraryPacks.js";
 import { resolveDataMediaPath } from "./mediaPaths.js";
 
@@ -35,6 +36,8 @@ export async function ensureDataDirs() {
   ]) {
     await ensureDir(dir);
   }
+  // Railway empty/partial volumes: create brand_default_v3 if entrypoint missed it
+  await ensureDefaultBrandTokens();
   await migrateLegacyLibraryPack();
   // Compat symlink so absolute `data/library/gen/...` refs still resolve
   const legacyLibrary = path.join(PATHS.data, "library");
@@ -248,8 +251,19 @@ export async function saveReviews(campaignId: string, reviews: ReviewEntry[]) {
 }
 
 export async function getTokens(id: string): Promise<DesignTokens> {
+  await ensureDefaultBrandTokens();
   const file = path.join(PATHS.tokens, `${id}.json`);
-  return DesignTokensSchema.parse(JSON.parse(await readFile(file, "utf8")));
+  try {
+    return DesignTokensSchema.parse(JSON.parse(await readFile(file, "utf8")));
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (code === "ENOENT") {
+      throw new Error(
+        `Design token pack "${id}" not found at ${file}. Expected brand_default_v3 (or upload a pack under data/tokens/).`,
+      );
+    }
+    throw err;
+  }
 }
 
 export async function listTokenPacks(): Promise<DesignTokens[]> {

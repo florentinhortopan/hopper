@@ -37,6 +37,7 @@ import {
   type RetiredMatrixCell,
 } from "@attatta/shared";
 import { PORT, PUBLIC_BASE, PATHS, REPO_ROOT } from "./config.js";
+import { DEFAULT_BRAND_TOKEN_ID } from "./defaultTokens.js";
 import {
   enqueueBatch,
   enqueueCellJob,
@@ -715,7 +716,7 @@ app.post("/campaigns", async (req, res) => {
   const name = String(req.body?.name || "Untitled campaign");
   const now = new Date().toISOString();
   const tokens = await listTokenPacks();
-  const tokenId = tokens[0]?.id || "brand_default_v3";
+  const tokenId = tokens[0]?.id || DEFAULT_BRAND_TOKEN_ID;
   const createLibraryId = String(req.body?.libraryId || DEFAULT_LIBRARY_ID);
   const lib = await listLibrary(undefined, createLibraryId);
   const talent = lib.find((i) => i.kind === "talent");

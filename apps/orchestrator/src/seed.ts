@@ -3,12 +3,15 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { PATHS, REPO_ROOT } from "./config.js";
+import {
+  DEFAULT_BRAND_TOKEN_ID,
+  DEFAULT_BRAND_TOKENS,
+} from "./defaultTokens.js";
 import { ensureDataDirs, saveCampaign } from "./store.js";
 import {
   resolveOutputSizes,
   type Campaign,
   type Copy,
-  type DesignTokens,
   type LibraryItem,
   META_RECOMMENDED_SIZE_IDS,
 } from "@attatta/shared";
@@ -57,28 +60,9 @@ async function main() {
   await ensureDataDirs();
   await mkdir(path.join(PATHS.library, "gen"), { recursive: true });
 
-  const tokens: DesignTokens = {
-    id: "brand_default_v3",
-    label: "Brand Default v3",
-    colors: {
-      background: "#1c1917",
-      foreground: "#fafaf9",
-      accent: "#ea580c",
-      muted: "#44403c",
-    },
-    fonts: {
-      display: "Georgia, serif",
-      body: "system-ui, sans-serif",
-    },
-    endCardLayout: {
-      ctaStyle: "solid",
-      logoPosition: "bottom",
-    },
-    socialChrome: false,
-  };
   await writeFile(
-    path.join(PATHS.tokens, "brand_default_v3.json"),
-    JSON.stringify(tokens, null, 2),
+    path.join(PATHS.tokens, `${DEFAULT_BRAND_TOKEN_ID}.json`),
+    JSON.stringify(DEFAULT_BRAND_TOKENS, null, 2),
   );
 
   const talentFile = "libraries/default/talent/ted_front_offer_03.mp4";
@@ -349,7 +333,7 @@ async function main() {
         themeId: null,
         propIds: ["prop_hat_red"],
         copy,
-        designTokenPackId: "brand_default_v3",
+        designTokenPackId: DEFAULT_BRAND_TOKEN_ID,
         needsGen: false,
         previewOk: false,
         outputPath: null,
@@ -391,7 +375,7 @@ async function main() {
       mustSay: ["free this week"],
       mustNot: ["guaranteed results"],
     },
-    designTokenPackId: "brand_default_v3",
+    designTokenPackId: DEFAULT_BRAND_TOKEN_ID,
     rail: {
       hero: {
         talentTakeId: "ted_front_offer_03",
