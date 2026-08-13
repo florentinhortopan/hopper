@@ -36,3 +36,6 @@ data/libraries/**/gen/
 # Keep seed JSON under data/
 !data/**/*.json
 *.tsbuildinfo
+
+# Vercel local link
+.vercel/

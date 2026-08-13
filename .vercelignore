@@ -1,0 +1,22 @@
+# Keep Vercel uploads lean (CLI deploy from repo root)
+node_modules
+.pnpm-store
+.next
+.out
+dist
+data/campaigns
+data/packages
+data/imports
+data/library
+data/libraries
+*.mp4
+*.mov
+*.webm
+Screen Recording*
+assets-for-others
+.cursor
+.git
+**/.DS_Store
+apps/orchestrator
+comfy
+docs

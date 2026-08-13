@@ -100,3 +100,14 @@ pnpm install && pnpm seed && pnpm dev
 ```
 
 UI + Remotion assemble work; Comfy variant gen stays stub/`auto` until `COMFY_API_KEY` is set.
+
+## Deploy (Vercel web)
+
+Project **Root Directory** must be `apps/web`. Always deploy from the **monorepo root** (so workspace packages upload):
+
+```bash
+cd /path/to/ATTATTA
+vercel deploy --prod
+```
+
+Do **not** run `vercel` from `apps/web` alone — install hangs on `workspace:*` because `packages/*` never get uploaded.

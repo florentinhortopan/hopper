@@ -1,0 +1,27 @@
+node_modules
+**/node_modules
+.pnpm-store
+.next
+**/.next
+.out
+dist
+**/dist
+.git
+.cursor
+.vercel
+apps/web
+docs
+assets-for-others
+*.mp4
+*.mov
+*.webm
+data/campaigns
+data/packages
+data/imports
+data/libraries/**/gen
+.env
+.env.*
+!.env.example
+Screen Recording*
+shot-1.mp4
+Step-workflow.mp4

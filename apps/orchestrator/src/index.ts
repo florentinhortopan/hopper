@@ -1524,7 +1524,7 @@ app.get("/files", async (req, res) => {
 });
 
 await ensureDataDirs();
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   void reclaimStaleGenerating().then((n) => {
     if (n) console.log(`Reclaimed ${n} stale generating plate(s) → failed`);
   });
