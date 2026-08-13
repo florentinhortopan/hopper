@@ -7,7 +7,7 @@ import {
   selectComposition,
 } from "@remotion/renderer";
 import type { RemotionProps } from "@attatta/shared";
-import { PATHS, PUBLIC_BASE, REPO_ROOT } from "./config.js";
+import { PATHS, PORT, REPO_ROOT } from "./config.js";
 import { h264SafeScaledRender } from "./h264Scale.js";
 
 let bundleLocation: string | null = null;
@@ -26,29 +26,32 @@ async function getBundle() {
   bundleLocation = await bundle({
     entryPoint: entry,
     // Still attach data/ for any relative staticFile usage; library plates
-    // are served live via PUBLIC_BASE (see toPublicMediaSrc) so new uploads
+    // are served live via loopback /files (see toPublicMediaSrc) so new uploads
     // are not trapped in a stale webpack publicDir snapshot.
     publicDir: PATHS.data,
+    // Avoid flaky webpack pack_ rename ENOENT on Railway ephemeral disks.
+    enableCaching: false,
     webpackOverride: (config) => config,
   });
   return bundleLocation;
 }
 
 /**
- * Remotion downloads media from a URL. Prefer the orchestrator /files endpoint
- * so plates uploaded after the first bundle still resolve (webpack publicDir
- * is snapshotted once and would 404 new library files on :3004).
+ * Remotion loads media over HTTP (no raw filesystem / file:// paths).
+ * Serve plates via the orchestrator /files endpoint on loopback so assemble
+ * does not depend on PUBLIC_BASE (a host without https:// becomes a relative
+ * URL under Remotion's webpack server and 404s).
  */
 export function toPublicMediaSrc(absoluteOrRelative: string): string {
   if (!absoluteOrRelative) return "";
-  if (absoluteOrRelative.startsWith("http")) return absoluteOrRelative;
+  if (/^https?:\/\//i.test(absoluteOrRelative)) return absoluteOrRelative;
   const abs = path.isAbsolute(absoluteOrRelative)
     ? absoluteOrRelative
     : path.join(PATHS.data, absoluteOrRelative);
   const underData =
     abs === PATHS.data || abs.startsWith(`${PATHS.data}${path.sep}`);
   if (underData) {
-    return `${PUBLIC_BASE}/files?path=${encodeURIComponent(abs)}`;
+    return `http://127.0.0.1:${PORT}/files?path=${encodeURIComponent(abs)}`;
   }
   return absoluteOrRelative;
 }

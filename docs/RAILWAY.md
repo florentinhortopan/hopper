@@ -33,18 +33,26 @@ Service → **Variables** → add at least:
 | `COMFY_MODE` | `auto` |
 | `COMFY_MODEL_PROFILE` | `sd15` |
 | `COMFY_WORKFLOWS_DIR` | `./comfy/workflows` |
-| `PUBLIC_BASE` | `https://YOUR-SERVICE.up.railway.app` (set after step 5) |
+| `PUBLIC_BASE` | `https://YOUR-SERVICE.up.railway.app` (set after step 5) — **must include `https://`** |
 
 Optional: `ATTATTA_LLM_API_KEY`, Dropbox/Frame.io tokens (same as local `.env`).
 
 Railway injects `PORT` automatically — don’t hardcode it.
 
+### `PUBLIC_BASE` gotchas
+
+- **Must be an absolute origin with scheme**, e.g. `https://attattaorchestrator-production.up.railway.app`
+- **Do not** paste the bare hostname (`attattaorchestrator-production.up.railway.app`) — without `https://` it is treated as a relative path and Remotion/webpack will request `http://localhost:3000/<host>/files?...` and fail.
+- No trailing slash.
+- Boot normalizes a host-only value by prepending `https://` and logs a warning, but set it correctly so health/`/health`’s `publicBase` matches your real public URL.
+- Remotion assemble media under `/app/data` is loaded via **loopback** (`http://127.0.0.1:$PORT/files?...`), so assemble does not require a correct public URL — still set `PUBLIC_BASE` for logs and any client-facing absolute links.
+
 ## 5. Public HTTPS URL
 
 1. Service → **Settings** → **Networking** → **Generate Domain**
-2. Copy the URL, e.g. `https://hopper-production-xxxx.up.railway.app`
+2. Copy the URL **including `https://`**, e.g. `https://hopper-production-xxxx.up.railway.app`
 3. Set `PUBLIC_BASE` to that exact URL (no trailing slash)
-4. Redeploy once so logs / file URLs use it
+4. Redeploy once so logs / health report the normalized base
 
 Health check hits `GET /libraries` — should return `200` when up.
 
