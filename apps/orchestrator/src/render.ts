@@ -12,6 +12,28 @@ import { h264SafeScaledRender } from "./h264Scale.js";
 
 let bundleLocation: string | null = null;
 
+/**
+ * Remotion + Chromium is memory-heavy. Parallel assembles on Railway OOM-kill the
+ * process, wiping the in-memory job map and leaving Review with null previewPath.
+ * Serialize renders process-wide (Comfy can still run alongside).
+ */
+let remotionTail: Promise<unknown> = Promise.resolve();
+
+async function withRemotionLock<T>(fn: () => Promise<T>): Promise<T> {
+  const prev = remotionTail;
+  let release!: () => void;
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
+  remotionTail = prev.then(() => gate);
+  await prev.catch(() => undefined);
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
 /** Drop cached webpack bundle (call after template changes in long-lived processes). */
 export function invalidateRemotionBundle() {
   bundleLocation = null;
@@ -65,72 +87,74 @@ export async function renderAd(opts: {
   /** AbortSignal → Remotion cancelSignal */
   signal?: AbortSignal;
 }) {
-  const serveUrl = await getBundle();
-  // Prefer real library / Comfy plates under data/ (publicDir). Empty src → labeled fallback.
-  // H264 needs even W/H after Remotion scale (4:5 1080×1350 @ 0.5 → 675 odd).
-  const safe = h264SafeScaledRender(
-    opts.props.width,
-    opts.props.height,
-    opts.scale ?? 1,
-  );
-  const inputProps: RemotionProps = {
-    ...opts.props,
-    width: safe.width,
-    height: safe.height,
-    talentVideoSrc: toPublicMediaSrc(opts.props.talentVideoSrc),
-    handsVideoSrc: toPublicMediaSrc(opts.props.handsVideoSrc),
-  };
+  return withRemotionLock(async () => {
+    const serveUrl = await getBundle();
+    // Prefer real library / Comfy plates under data/ (publicDir). Empty src → labeled fallback.
+    // H264 needs even W/H after Remotion scale (4:5 1080×1350 @ 0.5 → 675 odd).
+    const safe = h264SafeScaledRender(
+      opts.props.width,
+      opts.props.height,
+      opts.scale ?? 1,
+    );
+    const inputProps: RemotionProps = {
+      ...opts.props,
+      width: safe.width,
+      height: safe.height,
+      talentVideoSrc: toPublicMediaSrc(opts.props.talentVideoSrc),
+      handsVideoSrc: toPublicMediaSrc(opts.props.handsVideoSrc),
+    };
 
-  const composition = await selectComposition({
-    serveUrl,
-    id: "paid-social-9x16-v1",
-    inputProps,
-  });
-
-  const { cancelSignal, cancel } = makeCancelSignal();
-  const onAbort = () => cancel();
-  if (opts.signal?.aborted) cancel();
-  else opts.signal?.addEventListener("abort", onAbort, { once: true });
-
-  let lastEmit = 0;
-  try {
-    await renderMedia({
-      composition,
+    const composition = await selectComposition({
       serveUrl,
-      codec: "h264",
-      outputLocation: opts.outputPath,
+      id: "paid-social-9x16-v1",
       inputProps,
-      scale: safe.scale,
-      overwrite: true,
-      cancelSignal,
-      // Library plates download over HTTP; leave headroom for first fetch
-      timeoutInMilliseconds: 120_000,
-      onProgress: ({ progress, renderedFrames, encodedFrames, stitchStage }) => {
-        if (!opts.onProgress) return;
-        const now = Date.now();
-        // Throttle UI writes — Remotion fires per frame
-        if (progress < 1 && now - lastEmit < 400) return;
-        lastEmit = now;
-        const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100);
-        opts.onProgress(
-          Math.min(1, Math.max(0, progress)),
-          `Remotion ${stitchStage} · ${pct}% (${renderedFrames}r/${encodedFrames}e)`,
-        );
-      },
     });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (opts.signal?.aborted || /cancel/i.test(msg)) {
-      const e = new Error("Remotion render cancelled");
-      e.name = "JobCancelledError";
-      throw e;
-    }
-    throw err;
-  } finally {
-    opts.signal?.removeEventListener("abort", onAbort);
-  }
 
-  return opts.outputPath;
+    const { cancelSignal, cancel } = makeCancelSignal();
+    const onAbort = () => cancel();
+    if (opts.signal?.aborted) cancel();
+    else opts.signal?.addEventListener("abort", onAbort, { once: true });
+
+    let lastEmit = 0;
+    try {
+      await renderMedia({
+        composition,
+        serveUrl,
+        codec: "h264",
+        outputLocation: opts.outputPath,
+        inputProps,
+        scale: safe.scale,
+        overwrite: true,
+        cancelSignal,
+        // Library plates download over HTTP; leave headroom for first fetch
+        timeoutInMilliseconds: 120_000,
+        onProgress: ({ progress, renderedFrames, encodedFrames, stitchStage }) => {
+          if (!opts.onProgress) return;
+          const now = Date.now();
+          // Throttle UI writes — Remotion fires per frame
+          if (progress < 1 && now - lastEmit < 400) return;
+          lastEmit = now;
+          const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100);
+          opts.onProgress(
+            Math.min(1, Math.max(0, progress)),
+            `Remotion ${stitchStage} · ${pct}% (${renderedFrames}r/${encodedFrames}e)`,
+          );
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (opts.signal?.aborted || /cancel/i.test(msg)) {
+        const e = new Error("Remotion render cancelled");
+        e.name = "JobCancelledError";
+        throw e;
+      }
+      throw err;
+    } finally {
+      opts.signal?.removeEventListener("abort", onAbort);
+    }
+
+    return opts.outputPath;
+  });
 }
 
 export function remotionEntryPath() {

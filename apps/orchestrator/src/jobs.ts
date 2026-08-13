@@ -41,6 +41,7 @@ import {
   libraryAbsolutePath,
   listLibrary,
   saveCampaign,
+  updateCampaign,
   upsertJob,
 } from "./store.js";
 
@@ -614,45 +615,46 @@ export async function enqueueCellSizeJob(
       });
 
       if (updateCellPaths) {
-        campaign = await getCampaign(campaignId);
-        ensureSizeAssets(campaign, cellId);
-        patchResolvedCell(campaign, cellId, (c) => {
-          if (copyPlate?.copy) {
-            c.copy = copyPlate.copy;
-          }
-          const assetIdx = c.sizeAssets.findIndex((a) => a.sizeId === size.id);
-          if (assetIdx >= 0) {
-            if (stage === "preview") {
-              c.sizeAssets[assetIdx] = {
-                ...c.sizeAssets[assetIdx],
-                previewPath: outputPath,
-                status: "preview_ok",
-                error: null,
-              };
-            } else {
-              c.sizeAssets[assetIdx] = {
-                ...c.sizeAssets[assetIdx],
-                outputPath,
-                status: "ready",
-                error: null,
-              };
+        // Re-read under campaign lock so parallel size jobs don't clobber paths
+        await updateCampaign(campaignId, (camp) => {
+          ensureSizeAssets(camp, cellId);
+          patchResolvedCell(camp, cellId, (c) => {
+            if (copyPlate?.copy) {
+              c.copy = copyPlate.copy;
             }
-          }
-          const primary = c.sizeAssets[0];
-          if (stage === "preview") {
-            c.previewPath = primary?.previewPath ?? outputPath;
-            c.previewOk = c.sizeAssets.every(
-              (a) => a.status === "preview_ok" || a.status === "ready",
-            );
-            c.status = c.previewOk ? "preview_ok" : "previewing";
-          } else {
-            c.outputPath = primary?.outputPath ?? outputPath;
-            c.status = c.sizeAssets.every((a) => a.status === "ready")
-              ? "ready"
-              : "rendering";
-          }
+            const assetIdx = c.sizeAssets.findIndex((a) => a.sizeId === size.id);
+            if (assetIdx >= 0) {
+              if (stage === "preview") {
+                c.sizeAssets[assetIdx] = {
+                  ...c.sizeAssets[assetIdx],
+                  previewPath: outputPath,
+                  status: "preview_ok",
+                  error: null,
+                };
+              } else {
+                c.sizeAssets[assetIdx] = {
+                  ...c.sizeAssets[assetIdx],
+                  outputPath,
+                  status: "ready",
+                  error: null,
+                };
+              }
+            }
+            const primary = c.sizeAssets[0];
+            if (stage === "preview") {
+              c.previewPath = primary?.previewPath ?? outputPath;
+              c.previewOk = c.sizeAssets.every(
+                (a) => a.status === "preview_ok" || a.status === "ready",
+              );
+              c.status = c.previewOk ? "preview_ok" : "previewing";
+            } else {
+              c.outputPath = primary?.outputPath ?? outputPath;
+              c.status = c.sizeAssets.every((a) => a.status === "ready")
+                ? "ready"
+                : "rendering";
+            }
+          });
         });
-        await saveCampaign(campaign);
       }
 
       touchJob(job, {

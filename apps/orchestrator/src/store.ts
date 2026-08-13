@@ -177,7 +177,7 @@ export async function deleteCampaign(id: string): Promise<void> {
   });
 }
 
-export async function getCampaign(id: string): Promise<Campaign> {
+async function readCampaignFromDisk(id: string): Promise<Campaign> {
   const file = path.join(campaignDir(id), "campaign.json");
   let raw: string;
   try {
@@ -192,9 +192,8 @@ export async function getCampaign(id: string): Promise<Campaign> {
     if (err instanceof CampaignStoreError) throw err;
     throw new CampaignStoreError(`Campaign JSON corrupt: ${id}`, "corrupt", id, err);
   }
-  let campaign: Campaign;
   try {
-    campaign = CampaignSchema.parse(data);
+    return CampaignSchema.parse(data);
   } catch (err) {
     throw new CampaignStoreError(
       `Campaign schema invalid: ${id}`,
@@ -203,6 +202,26 @@ export async function getCampaign(id: string): Promise<Campaign> {
       err,
     );
   }
+}
+
+async function writeCampaignUnlocked(campaign: Campaign): Promise<Campaign> {
+  const dir = campaignDir(campaign.id);
+  await ensureDir(dir);
+  await ensureDir(path.join(dir, "outputs"));
+  await ensureDir(path.join(dir, "previews"));
+  const next = { ...campaign, updatedAt: new Date().toISOString() };
+  CampaignSchema.parse(next);
+  const file = path.join(dir, "campaign.json");
+  // Unique tmp per write — concurrent same-pid saves previously shared one tmp and concatenated JSON
+  const tmp = `${file}.${process.pid}.${nanoid(8)}.tmp`;
+  const payload = `${JSON.stringify(next, null, 2)}\n`;
+  await writeFile(tmp, payload, "utf8");
+  await rename(tmp, file);
+  return next;
+}
+
+export async function getCampaign(id: string): Promise<Campaign> {
+  let campaign = await readCampaignFromDisk(id);
   if (repairCampaignMediaPaths(campaign)) {
     try {
       campaign = await saveCampaign(campaign);
@@ -218,20 +237,22 @@ export async function getCampaign(id: string): Promise<Campaign> {
 }
 
 export async function saveCampaign(campaign: Campaign): Promise<Campaign> {
-  return withCampaignLock(campaign.id, async () => {
-    const dir = campaignDir(campaign.id);
-    await ensureDir(dir);
-    await ensureDir(path.join(dir, "outputs"));
-    await ensureDir(path.join(dir, "previews"));
-    const next = { ...campaign, updatedAt: new Date().toISOString() };
-    CampaignSchema.parse(next);
-    const file = path.join(dir, "campaign.json");
-    // Unique tmp per write — concurrent same-pid saves previously shared one tmp and concatenated JSON
-    const tmp = `${file}.${process.pid}.${nanoid(8)}.tmp`;
-    const payload = `${JSON.stringify(next, null, 2)}\n`;
-    await writeFile(tmp, payload, "utf8");
-    await rename(tmp, file);
-    return next;
+  return withCampaignLock(campaign.id, () => writeCampaignUnlocked(campaign));
+}
+
+/**
+ * Atomic read→mutate→write under the campaign lock.
+ * Use for job completions so parallel size/copy assembles cannot clobber each other.
+ */
+export async function updateCampaign(
+  id: string,
+  mutate: (campaign: Campaign) => void,
+): Promise<Campaign> {
+  return withCampaignLock(id, async () => {
+    const campaign = await readCampaignFromDisk(id);
+    repairCampaignMediaPaths(campaign);
+    mutate(campaign);
+    return writeCampaignUnlocked(campaign);
   });
 }
 
