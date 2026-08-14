@@ -27,8 +27,8 @@ Matrix “generate variants” / Review “Assemble”
 - **Comfy** = plates only (`genPath`). Recipe is never sent to Comfy.
 - **Remotion** = single hi-res assemble using campaign **assembly recipe** (Settings)
   for scene list + duration on every size.
-- **Variant review** = per-row **scene slots** (talent / hands / this variant / end card)
-  mapped onto recipe scenes before Assemble.
+- **Variant review** = one **scene tag** per variant (which recipe beat the Comfy plate fills).
+  Other beats use talent / hands / end card defaults on Assemble.
 
   → Remotion: `sceneMedia[]` from row slots + library / genPath
     · attire/background knob still writes cell genPath (plate)

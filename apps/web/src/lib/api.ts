@@ -78,6 +78,8 @@ export const api = {
       /** null / "" clears override (auto prompt resumes). */
       promptOverride?: string | null;
       negativeOverride?: string | null;
+      sceneTag?: string | null;
+      /** @deprecated use sceneTag */
       sceneSlots?: import("@attatta/shared").SceneSlot[];
     },
   ) =>

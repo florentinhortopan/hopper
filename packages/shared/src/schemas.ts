@@ -167,10 +167,14 @@ export const MatrixCellSchema = z.object({
   /** Explicit per-size generated / rendered assets */
   sizeAssets: z.array(CellSizeAssetSchema).default([]),
   /**
-   * Per-row map: recipe sceneId → which plate plays in Remotion.
-   * Empty → filled by ensureSceneSlots from recipe roles at assemble / Variant review.
+   * Which recipe scene this row's Comfy plate fills in Remotion.
+   * Other beats use talent / hands / endcard defaults.
    */
-  sceneSlots: z.array(SceneSlotSchema).default([]),
+  sceneTag: z.string().nullable().default(null),
+  /**
+   * @deprecated Migrated into sceneTag — kept so old campaign JSON still parses.
+   */
+  sceneSlots: z.array(SceneSlotSchema).optional().default([]),
   status: z
     .enum(["draft", "previewing", "preview_ok", "rendering", "ready", "failed"])
     .default("draft"),
@@ -354,27 +358,70 @@ export function defaultSceneSlotSource(
   return "talent";
 }
 
+/** Default scene id for a new variant tag (punchline preferred). */
+export function defaultSceneTag(
+  recipe: AssemblyRecipe | null | undefined,
+): string {
+  const r = normalizeAssemblyRecipe(recipe);
+  const punch = r.scenes.find(
+    (s) => s.role === "punchline" || s.id === "punchline",
+  );
+  if (punch) return punch.id;
+  const nonEnd = r.scenes.find(
+    (s) => s.role !== "endcard" && s.id !== "endcard",
+  );
+  return nonEnd?.id || r.scenes[0]?.id || "setup";
+}
+
 /**
- * Align cell.sceneSlots to the campaign recipe. Keeps operator overrides for
- * known sceneIds; fills missing scenes from role defaults.
+ * Resolve a concrete sceneTag for a cell. Migrates legacy sceneSlots where a
+ * slot source was `gen`.
  */
+export function ensureSceneTag(
+  cell: {
+    sceneTag?: string | null;
+    sceneSlots?: SceneSlot[] | null;
+  },
+  recipe: AssemblyRecipe | null | undefined,
+): string {
+  const r = normalizeAssemblyRecipe(recipe);
+  const ids = new Set(r.scenes.map((s) => s.id));
+  const tagged = cell.sceneTag?.trim();
+  if (tagged && ids.has(tagged)) return tagged;
+
+  const fromSlots = (cell.sceneSlots ?? []).find((s) => s.source === "gen");
+  if (fromSlots && ids.has(fromSlots.sceneId)) return fromSlots.sceneId;
+
+  return defaultSceneTag(r);
+}
+
+/** @deprecated Prefer ensureSceneTag — kept for brief BC during migrate. */
 export function ensureSceneSlots(
-  cell: { sceneSlots?: SceneSlot[] | null; handsId?: string | null },
+  cell: { sceneSlots?: SceneSlot[] | null; handsId?: string | null; sceneTag?: string | null },
   recipe: AssemblyRecipe | null | undefined,
 ): SceneSlot[] {
   const r = normalizeAssemblyRecipe(recipe);
   const hasHands = Boolean(cell.handsId?.trim());
-  const byId = new Map((cell.sceneSlots ?? []).map((s) => [s.sceneId, s]));
+  const tag = ensureSceneTag(cell, r);
   return r.scenes.map((scene) => {
-    const existing = byId.get(scene.id);
-    if (existing && SceneSlotSourceSchema.safeParse(existing.source).success) {
-      return { sceneId: scene.id, source: existing.source };
+    if (scene.id === tag) {
+      return { sceneId: scene.id, source: "gen" as const };
     }
     return {
       sceneId: scene.id,
       source: defaultSceneSlotSource(scene, hasHands),
     };
   });
+}
+
+export function formatSceneTagSummary(
+  sceneTag: string | null | undefined,
+  recipe: AssemblyRecipe | null | undefined,
+): string {
+  const r = normalizeAssemblyRecipe(recipe);
+  const id = sceneTag || defaultSceneTag(r);
+  const scene = r.scenes.find((s) => s.id === id);
+  return `tag ${scene?.label || id}`;
 }
 
 export function formatSceneSlotsSummary(slots: SceneSlot[]): string {

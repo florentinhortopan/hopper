@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import {
   DEFAULT_OUTPUT_SIZE_IDS,
   cellHasGen,
-  ensureSceneSlots,
+  ensureSceneTag,
   formatAssemblyRecipeSummary,
   isPlateReady,
   listPreviewCells,
@@ -18,8 +18,6 @@ import {
   type MatrixCell,
   type OutputSize,
   type ReviewEntry,
-  type SceneSlot,
-  type SceneSlotSource,
 } from "@attatta/shared";
 import type { PlateDensity } from "@/components/PlateCard";
 import { StepNav } from "@/components/StepNav";
@@ -230,13 +228,13 @@ export default function PreviewPage() {
     }
   }
 
-  async function saveSceneSlots(next: SceneSlot[]) {
+  async function saveSceneTag(sceneTag: string) {
     if (!activeEntry || !campaign) return;
     setBusy("review");
     setError(null);
     try {
       const updated = await api.patchCell(id, activeEntry.ref, {
-        sceneSlots: next,
+        sceneTag,
       });
       setCampaign(updated);
     } catch (e) {
@@ -249,14 +247,10 @@ export default function PreviewPage() {
   const recipe = campaign
     ? normalizeAssemblyRecipe(campaign.assemblyRecipe)
     : null;
-  const activeSlots =
-    activeCell && recipe
-      ? ensureSceneSlots(activeCell, recipe)
-      : [];
-  const genMissingForSlots =
-    activeSlots.some((s) => s.source === "gen") &&
-    activeCell &&
-    !cellHasGen(activeCell);
+  const activeSceneTag =
+    activeCell && recipe ? ensureSceneTag(activeCell, recipe) : null;
+  const genMissingForTag =
+    Boolean(activeSceneTag) && activeCell && !cellHasGen(activeCell);
 
   if (!campaign) {
     return (
@@ -475,7 +469,7 @@ export default function PreviewPage() {
             <div className="rounded-xl border border-warm-line bg-white/80 p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h3 className="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-600">
-                  Scene slots
+                  Scene tag
                 </h3>
                 <a
                   href={`/campaigns/${id}/settings`}
@@ -485,45 +479,31 @@ export default function PreviewPage() {
                 </a>
               </div>
               <p className="mt-1 text-xs text-ink-600">
-                Map each Settings recipe scene to talent, hands, this row&apos;s
-                variant, or end card. Remotion stitches these on Assemble.
+                This variant&apos;s plate plays only in the tagged beat. Remotion
+                fills the rest of the recipe from talent / hands / end card.
               </p>
-              <ul className="mt-3 space-y-2">
-                {activeSlots.map((slot) => {
-                  const scene = recipe?.scenes.find((s) => s.id === slot.sceneId);
-                  return (
-                    <li
-                      key={slot.sceneId}
-                      className="flex flex-wrap items-center gap-2"
-                    >
-                      <span className="min-w-[7rem] text-sm text-ink-900">
-                        {scene?.label || slot.sceneId}
-                      </span>
-                      <select
-                        className="rounded-md border border-ink-200 bg-white px-2 py-1.5 text-sm"
-                        disabled={busy !== null}
-                        value={slot.source}
-                        onChange={(e) => {
-                          const source = e.target.value as SceneSlotSource;
-                          const next = activeSlots.map((s) =>
-                            s.sceneId === slot.sceneId ? { ...s, source } : s,
-                          );
-                          void saveSceneSlots(next);
-                        }}
-                      >
-                        <option value="talent">Talent</option>
-                        <option value="hands">Hands</option>
-                        <option value="gen">This variant (gen)</option>
-                        <option value="endcard">End card</option>
-                      </select>
-                    </li>
-                  );
-                })}
-              </ul>
-              {genMissingForSlots ? (
+              <label className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-ink-700">This variant fills</span>
+                <select
+                  className="rounded-md border border-ink-200 bg-white px-2 py-1.5 text-sm"
+                  disabled={busy !== null || !recipe}
+                  value={activeSceneTag || ""}
+                  onChange={(e) => void saveSceneTag(e.target.value)}
+                >
+                  {(recipe?.scenes || []).map((scene) => (
+                    <option key={scene.id} value={scene.id}>
+                      {scene.label}
+                      {scene.role === "endcard"
+                        ? " (graphic — usually skip gen)"
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {genMissingForTag ? (
                 <p className="mt-2 text-xs text-amber-800">
-                  A slot uses This variant but no Comfy plate is ready — generate
-                  on Matrix first.
+                  Tagged for a beat but no Comfy plate is ready — generate on
+                  Matrix first.
                 </p>
               ) : null}
             </div>

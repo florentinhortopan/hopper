@@ -27,7 +27,7 @@ import {
   ReviewEntrySchema,
   SceneSlotSchema,
   DesignTokensSchema,
-  ensureSceneSlots,
+  ensureSceneTag,
   importTokensFromText,
   normalizeAssemblyRecipe,
   resolveMatrixCell,
@@ -1050,6 +1050,7 @@ app.patch("/campaigns/:id/cells/:cellId", async (req, res) => {
         promptOverride: z.string().nullable().optional(),
         negativeOverride: z.string().nullable().optional(),
         sceneSlots: z.array(SceneSlotSchema).optional(),
+        sceneTag: z.string().nullable().optional(),
       })
       .parse(req.body);
     const resolved = resolveMatrixCell(campaign, req.params.cellId);
@@ -1069,11 +1070,18 @@ app.patch("/campaigns/:id/cells/:cellId", async (req, res) => {
       const t = (body.negativeOverride ?? "").trim();
       cell.negativeOverride = t ? t : null;
     }
-    if (body.sceneSlots !== undefined) {
-      cell.sceneSlots = ensureSceneSlots(
-        { ...cell, sceneSlots: body.sceneSlots },
-        campaign.assemblyRecipe,
-      );
+    if (body.sceneTag !== undefined) {
+      cell.sceneTag = body.sceneTag?.trim() || null;
+      if (cell.sceneTag) {
+        cell.sceneTag = ensureSceneTag(
+          { ...cell, sceneTag: cell.sceneTag },
+          campaign.assemblyRecipe,
+        );
+      }
+    } else if (body.sceneSlots !== undefined) {
+      // Legacy: migrate gen slot → sceneTag
+      cell.sceneSlots = body.sceneSlots;
+      cell.sceneTag = ensureSceneTag(cell, campaign.assemblyRecipe);
     }
     res.json(await saveCampaign(campaign));
   } catch (err) {
@@ -1199,10 +1207,11 @@ app.post("/campaigns/:id/matrix/build-sparse", async (req, res) => {
               status: "pending" as const,
               error: null,
             })),
-            sceneSlots: ensureSceneSlots(
-              { handsId: handsId || "", sceneSlots: [] },
+            sceneTag: ensureSceneTag(
+              { sceneTag: null, sceneSlots: [] },
               campaign.assemblyRecipe,
             ),
+            sceneSlots: [],
             status: "draft" as const,
             error: null,
           };
@@ -1216,7 +1225,7 @@ app.post("/campaigns/:id/matrix/build-sparse", async (req, res) => {
             draft.genOmitIds = [...(live.genOmitIds ?? [])];
             draft.promptOverride = live.promptOverride ?? null;
             draft.negativeOverride = live.negativeOverride ?? null;
-            draft.sceneSlots = ensureSceneSlots(live, campaign.assemblyRecipe);
+            draft.sceneTag = ensureSceneTag(live, campaign.assemblyRecipe);
             draft.sizeAssets = sizes.map((s) => {
               // Never inherit genPath from a different aspect
               const old = live.sizeAssets?.find((a) => a.sizeId === s.id);

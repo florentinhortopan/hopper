@@ -353,11 +353,8 @@ async function main() {
           status: "pending" as const,
           error: null,
         })),
-        sceneSlots: [
-          { sceneId: "setup", source: "talent" as const },
-          { sceneId: "punchline", source: "hands" as const },
-          { sceneId: "endcard", source: "endcard" as const },
-        ],
+        sceneSlots: [],
+        sceneTag: "punchline",
         status: "draft" as const,
         error: null,
       });

@@ -223,7 +223,7 @@ export default function SettingsPage() {
         <h2 className="font-display text-lg">Assembly recipe</h2>
         <p className="mt-1 max-w-2xl text-xs text-ink-700">
           Scene list drives Remotion beats for every size on Review → Assemble.
-          On Variant review, map each scene to talent / hands / this variant / end card.
+          On Variant review, tag each variant with the single recipe beat its plate fills.
           Comfy only generates plates — this recipe is not sent to Comfy.
           Copy can suggest a total duration; applying it pre-fills the target (you can still edit).
         </p>

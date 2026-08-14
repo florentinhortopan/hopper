@@ -6,9 +6,9 @@ import {
   assemblyRecipeTotalSeconds,
   assemblySceneFrames,
   cellNeedsVariantGen,
-  ensureSceneSlots,
+  ensureSceneTag,
   estimateQueueJobSeconds,
-  formatSceneSlotsSummary,
+  formatSceneTagSummary,
   genDimsForSize,
   isPlateReady,
   normalizeAssemblyRecipe,
@@ -35,7 +35,7 @@ import {
   setJobComfyPromptId,
 } from "./jobControl.js";
 import { lookupPlateCache, putPlateCache } from "./plateCache.js";
-import { buildPromptPack, pickVariantKnob } from "./promptPack.js";
+import { buildPromptPack } from "./promptPack.js";
 import { filterLibraryForCampaign } from "./policy.js";
 import { renderAd } from "./render.js";
 import { resolveDataMediaPath } from "./mediaPaths.js";
@@ -243,50 +243,46 @@ async function buildProps(
     : null;
 
   const tokens = await getTokens(cell.designTokenPackId);
-  const knob = pickVariantKnob(cell, campaign);
   const asset =
     cell.sizeAssets?.find((a) => a.sizeId === size.id) ||
     cell.sizeAssets?.find((a) => a.genPath);
   const genPath = asset?.genPath?.trim() ? resolveMediaPath(asset.genPath) : null;
 
-  let talentVideoSrc = libraryAbsolutePath(talent);
-  // No hands plate → punchline reuses talent (or BG/attire gen still)
-  let handsVideoSrc = hands ? libraryAbsolutePath(hands) : talentVideoSrc;
-  if (genPath) {
-    if (knob === "attire" || knob === "background") {
-      talentVideoSrc = genPath;
-      if (!hands) handsVideoSrc = genPath;
-    } else {
-      // hands | prop → punchline / product plate
-      handsVideoSrc = genPath;
-    }
-  }
+  // Library plates for default beats — gen only enters via sceneTag → sceneMedia
+  const talentVideoSrc = libraryAbsolutePath(talent);
+  const handsVideoSrc = hands ? libraryAbsolutePath(hands) : talentVideoSrc;
 
   const assemblyRecipe = normalizeAssemblyRecipe(campaign.assemblyRecipe);
-  const slots = ensureSceneSlots(cell, assemblyRecipe);
+  const sceneTag = ensureSceneTag(cell, assemblyRecipe);
   const sceneFrames = assemblySceneFrames(assemblyRecipe, 30);
   const totalSec = assemblyRecipeTotalSeconds(assemblyRecipe);
 
   const mediaKind = (src: string): "video" | "still" =>
     /\.(png|jpe?g|webp|gif)$/i.test(src) ? "still" : "video";
 
-  const sceneMedia: SceneMediaItem[] = slots.map((slot) => {
-    if (slot.source === "endcard") {
-      return { sceneId: slot.sceneId, src: "", kind: "endcard" };
+  const sceneMedia: SceneMediaItem[] = assemblyRecipe.scenes.map((scene) => {
+    const isEnd = scene.role === "endcard" || scene.id === "endcard";
+    const isPunch = scene.role === "punchline" || scene.id === "punchline";
+    if (isEnd) {
+      return { sceneId: scene.id, src: "", kind: "endcard" as const };
     }
-    let src = "";
-    if (slot.source === "talent") src = talentVideoSrc;
-    else if (slot.source === "hands") src = handsVideoSrc;
-    else if (slot.source === "gen") src = genPath || "";
+    if (scene.id === sceneTag && genPath) {
+      return {
+        sceneId: scene.id,
+        src: genPath,
+        kind: mediaKind(genPath),
+      };
+    }
+    const src = isPunch ? handsVideoSrc : talentVideoSrc;
     return {
-      sceneId: slot.sceneId,
+      sceneId: scene.id,
       src,
-      kind: src ? mediaKind(src) : "video",
+      kind: mediaKind(src),
     };
   });
 
   console.log(
-    `[assemble] recipe ${campaign.id} · ${sceneFrames.length} scenes · ${totalSec}s · ${formatSceneSlotsSummary(slots)} · ${sceneFrames
+    `[assemble] recipe ${campaign.id} · ${sceneFrames.length} scenes · ${totalSec}s · ${formatSceneTagSummary(sceneTag, assemblyRecipe)} · ${sceneFrames
       .map((s) => `${s.label}=${s.frames}f`)
       .join(", ")}`,
   );
@@ -643,8 +639,8 @@ export async function enqueueCellSizeJob(
       const recipeShort = (() => {
         const r = normalizeAssemblyRecipe(campaign.assemblyRecipe);
         const { cell: c } = requireResolvedCell(campaign, cellId);
-        const slots = ensureSceneSlots(c, r);
-        return `${r.scenes.length} scenes · ${assemblyRecipeTotalSeconds(r)}s · ${formatSceneSlotsSummary(slots)}`;
+        const tag = ensureSceneTag(c, r);
+        return `${r.scenes.length} scenes · ${assemblyRecipeTotalSeconds(r)}s · ${formatSceneTagSummary(tag, r)}`;
       })();
       touchJob(job, {
         message: copyPlate
