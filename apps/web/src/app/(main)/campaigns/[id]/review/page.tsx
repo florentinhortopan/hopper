@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import {
   DEFAULT_OUTPUT_SIZE_IDS,
   cellHasGen,
+  formatAssemblyRecipeSummary,
   listPreviewCells,
   type PreviewListEntry,
   resolveOutputSizes,
@@ -68,6 +69,7 @@ export default function ReviewPage() {
     null;
   const variantReady = cell ? cellHasGen(cell) : false;
   const canAssemble = variantReady;
+  const recipeSummary = formatAssemblyRecipeSummary(campaign?.assemblyRecipe);
 
   async function decide(d: "approved" | "rejected" | "pending") {
     if (!activeEntry) return;
@@ -181,6 +183,12 @@ export default function ReviewPage() {
         {withMedia.length} with media · {readyVariants} variants ready · {liveEntries.length} live ·{" "}
         {archiveEntries.length} archive.
       </p>
+      <p className="mt-2 text-sm text-ink-700">
+        Assemble recipe: {recipeSummary}.{" "}
+        <a href={`/campaigns/${id}/settings`} className="underline">
+          Edit in Settings
+        </a>
+      </p>
 
       {error ? (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -188,7 +196,7 @@ export default function ReviewPage() {
         </div>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
           type="button"
           disabled={busy || readyVariants === 0}
@@ -197,6 +205,7 @@ export default function ReviewPage() {
         >
           {busy ? "Queueing…" : `Assemble ready variants (${readyVariants})`}
         </button>
+        <span className="text-xs text-ink-600">{recipeSummary}</span>
         <a
           href={`/campaigns/${id}/variants`}
           className="rounded-md border border-ink-200 bg-white px-4 py-2 text-sm text-ink-900 no-underline"

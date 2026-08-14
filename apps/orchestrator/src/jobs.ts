@@ -3,10 +3,13 @@ import path from "node:path";
 import {
   DEFAULT_LIBRARY_ID,
   DEFAULT_OUTPUT_SIZE_IDS,
+  assemblyRecipeTotalSeconds,
+  assemblySceneFrames,
   cellNeedsVariantGen,
   estimateQueueJobSeconds,
   genDimsForSize,
   isPlateReady,
+  normalizeAssemblyRecipe,
   outputPathCellKey,
   resolveMatrixCell,
   resolveOutputSizes,
@@ -256,6 +259,15 @@ async function buildProps(
     }
   }
 
+  const assemblyRecipe = normalizeAssemblyRecipe(campaign.assemblyRecipe);
+  const sceneFrames = assemblySceneFrames(assemblyRecipe, 30);
+  const totalSec = assemblyRecipeTotalSeconds(assemblyRecipe);
+  console.log(
+    `[assemble] recipe ${campaign.id} · ${sceneFrames.length} scenes · ${totalSec}s · ${sceneFrames
+      .map((s) => `${s.label}=${s.frames}f`)
+      .join(", ")}`,
+  );
+
   return {
     talentVideoSrc,
     handsVideoSrc,
@@ -266,7 +278,7 @@ async function buildProps(
     height: size.height,
     sizeId: size.id,
     aspect: size.aspect,
-    assemblyRecipe: campaign.assemblyRecipe,
+    assemblyRecipe,
   };
 }
 
@@ -604,10 +616,14 @@ export async function enqueueCellSizeJob(
 
       assertJobNotCancelled(job.id);
       const remotionStage = assembleStage(stage);
+      const recipeShort = (() => {
+        const r = normalizeAssemblyRecipe(campaign.assemblyRecipe);
+        return `${r.scenes.length} scenes · ${assemblyRecipeTotalSeconds(r)}s`;
+      })();
       touchJob(job, {
         message: copyPlate
-          ? `Remotion assemble · ${copyPlate.label}`
-          : `Remotion assemble ${size.width}×${size.height}`,
+          ? `Remotion assemble · ${copyPlate.label} · ${recipeShort}`
+          : `Remotion assemble ${size.width}×${size.height} · ${recipeShort}`,
         progress: skipComfy ? 0.15 : 0.55,
       });
       const props = await buildProps(campaign, cellId, size, copyPlate?.copy);

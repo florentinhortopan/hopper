@@ -25,6 +25,7 @@ import {
   OUTPUT_SIZE_CATALOG,
   OutputSizeSchema,
   ReviewEntrySchema,
+  normalizeAssemblyRecipe,
   resolveOutputSizes,
   estimatePlateGenSeconds,
   richerMatrixCell,
@@ -831,7 +832,7 @@ app.patch("/campaigns/:id", async (req, res) => {
       campaign.libraryId = body.libraryId;
     }
     if (body.assemblyRecipe !== undefined) {
-      campaign.assemblyRecipe = body.assemblyRecipe;
+      campaign.assemblyRecipe = normalizeAssemblyRecipe(body.assemblyRecipe);
     }
     res.json(await saveCampaign(campaign));
   } catch (err) {

@@ -249,6 +249,12 @@ export const AssemblyRecipeSchema = z.object({
 });
 export type AssemblyRecipe = z.infer<typeof AssemblyRecipeSchema>;
 
+export const DEFAULT_ASSEMBLY_RECIPE: AssemblyRecipe = {
+  scenes: DEFAULT_ASSEMBLY_SCENES,
+  targetDurationSeconds: null,
+  copySuggestedSeconds: null,
+};
+
 /** Soft speaking-rate estimate (~2.5 words/sec) from active copy — informs recipe, does not constrain. */
 export function suggestAssemblySecondsFromCopy(copy: {
   setup?: string;
@@ -260,6 +266,24 @@ export function suggestAssemblySecondsFromCopy(copy: {
   if (!words) return 10;
   const secs = Math.round(words / 2.5);
   return Math.min(30, Math.max(6, secs));
+}
+
+/** Always return a concrete recipe for Remotion (never undefined). */
+export function normalizeAssemblyRecipe(
+  recipe: AssemblyRecipe | null | undefined,
+): AssemblyRecipe {
+  const parsed = AssemblyRecipeSchema.safeParse(recipe ?? {});
+  if (!parsed.success) {
+    return { ...DEFAULT_ASSEMBLY_RECIPE, scenes: [...DEFAULT_ASSEMBLY_SCENES] };
+  }
+  const scenes = parsed.data.scenes.length
+    ? parsed.data.scenes
+    : [...DEFAULT_ASSEMBLY_SCENES];
+  return {
+    scenes,
+    targetDurationSeconds: parsed.data.targetDurationSeconds ?? null,
+    copySuggestedSeconds: parsed.data.copySuggestedSeconds ?? null,
+  };
 }
 
 export function assemblyRecipeTotalSeconds(recipe: AssemblyRecipe): number {
@@ -285,6 +309,16 @@ export function assemblySceneFrames(
   }));
 }
 
+/** Operator-facing one-liner: "Setup 3s · Punchline 4s · End card 3s (10s)" */
+export function formatAssemblyRecipeSummary(
+  recipe: AssemblyRecipe | null | undefined,
+): string {
+  const r = normalizeAssemblyRecipe(recipe);
+  const total = assemblyRecipeTotalSeconds(r);
+  const parts = r.scenes.map((s) => `${s.label} ${s.durationSeconds}s`);
+  return `${parts.join(" · ")} (${total}s)`;
+}
+
 export const CampaignSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -307,11 +341,7 @@ export const CampaignSchema = z.object({
   /** Which library pack this campaign reads ingredients from */
   libraryId: z.string().default("default"),
   /** Remotion assemble structure (applies to all sizes) */
-  assemblyRecipe: AssemblyRecipeSchema.default({
-    scenes: DEFAULT_ASSEMBLY_SCENES,
-    targetDurationSeconds: null,
-    copySuggestedSeconds: null,
-  }),
+  assemblyRecipe: AssemblyRecipeSchema.default(DEFAULT_ASSEMBLY_RECIPE),
   archived: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -371,7 +401,7 @@ export const RemotionPropsSchema = z.object({
   height: z.number().int().default(1920),
   sizeId: z.string().default("v_9x16_1080"),
   aspect: z.string().default("9:16"),
-  /** Optional assemble recipe; composition falls back to default 3/4/3s beats. */
+  /** Assemble recipe from campaign Settings — Remotion scene beats (not Comfy). */
   assemblyRecipe: AssemblyRecipeSchema.optional(),
 });
 export type RemotionProps = z.infer<typeof RemotionPropsSchema>;

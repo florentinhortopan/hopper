@@ -5,7 +5,7 @@ import {
   TOTAL_FRAMES,
   totalFramesFromRecipe,
 } from "./PaidSocial9x16";
-import type { RemotionProps } from "@attatta/shared";
+import { DEFAULT_ASSEMBLY_RECIPE, type RemotionProps } from "@attatta/shared";
 
 export const defaultProps: RemotionProps = {
   talentVideoSrc: "",
@@ -40,6 +40,7 @@ export const defaultProps: RemotionProps = {
   height: 1920,
   sizeId: "v_9x16_1080",
   aspect: "9:16",
+  assemblyRecipe: DEFAULT_ASSEMBLY_RECIPE,
 };
 
 export const RemotionRoot: React.FC = () => {

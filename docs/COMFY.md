@@ -22,11 +22,14 @@ Matrix “Generate variants”
 
 Matrix “generate variants” / Review “Assemble”
 
-(There is a single hi-res Remotion assemble — no half-res preview pass.)
+- **Comfy** = plates only (`genPath`). Recipe is never sent to Comfy.
+- **Remotion** = single hi-res assemble using campaign **assembly recipe** (Settings)
+  for scene list + duration on every size.
 
   → Remotion: library talent + hands, overridden by cell genPath
     · attire/background knob → talentVideoSrc = genPath
     · hands/prop knob → handsVideoSrc = genPath
+    · `assemblyRecipe` → scene beats / total duration
 ```
 
 ## Video router (matrix)

@@ -10,7 +10,8 @@ import {
 } from "remotion";
 import {
   assemblySceneFrames,
-  DEFAULT_ASSEMBLY_SCENES,
+  DEFAULT_ASSEMBLY_RECIPE,
+  normalizeAssemblyRecipe,
   type AssemblyRecipe,
   type RemotionProps,
 } from "@attatta/shared";
@@ -34,16 +35,8 @@ export const PUNCH_FRAMES = 4 * FPS;
 export const END_FRAMES = 3 * FPS;
 export const TOTAL_FRAMES = SETUP_FRAMES + PUNCH_FRAMES + END_FRAMES;
 
-function defaultRecipe(): AssemblyRecipe {
-  return {
-    scenes: DEFAULT_ASSEMBLY_SCENES,
-    targetDurationSeconds: null,
-    copySuggestedSeconds: null,
-  };
-}
-
 export function totalFramesFromRecipe(recipe?: AssemblyRecipe | null, fps = FPS): number {
-  const frames = assemblySceneFrames(recipe ?? defaultRecipe(), fps);
+  const frames = assemblySceneFrames(normalizeAssemblyRecipe(recipe), fps);
   return Math.max(1, frames.reduce((n, s) => n + s.frames, 0));
 }
 
@@ -57,7 +50,10 @@ export const PaidSocial9x16: React.FC<RemotionProps> = ({
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const scenes = assemblySceneFrames(assemblyRecipe ?? defaultRecipe(), fps);
+  const scenes = assemblySceneFrames(
+    normalizeAssemblyRecipe(assemblyRecipe ?? DEFAULT_ASSEMBLY_RECIPE),
+    fps,
+  );
 
   let cursor = 0;
   const sequenced = scenes.map((s) => {

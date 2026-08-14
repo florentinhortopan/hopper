@@ -169,7 +169,7 @@ export default function SettingsPage() {
       <h1 className="font-display text-3xl">Campaign settings</h1>
       <p className="mt-2 max-w-2xl text-sm text-ink-700">
         Confirm Meta delivery sizes and the Remotion assemble recipe before matrix / queue.
-        One recipe applies to all sizes.
+        One recipe applies to all sizes; Review → Assemble uses it for scene timing.
       </p>
 
       {error ? (
@@ -222,8 +222,9 @@ export default function SettingsPage() {
       <div className="mt-6 rounded-xl border border-ink-200 bg-white/90 p-4">
         <h2 className="font-display text-lg">Assembly recipe</h2>
         <p className="mt-1 max-w-2xl text-xs text-ink-700">
-          Scene list drives Remotion beats for every size. Copy can suggest a total duration —
-          applying it pre-fills the target (you can still edit).
+          Scene list drives Remotion beats for every size on Review → Assemble.
+          Comfy only generates plates — this recipe is not sent to Comfy.
+          Copy can suggest a total duration; applying it pre-fills the target (you can still edit).
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="text-xs text-ink-700">
