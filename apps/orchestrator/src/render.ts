@@ -53,7 +53,17 @@ async function getBundle() {
     publicDir: PATHS.data,
     // Avoid flaky webpack pack_ rename ENOENT on Railway ephemeral disks.
     enableCaching: false,
-    webpackOverride: (config) => config,
+    // Workspace @attatta/shared uses NodeNext ".js" imports that map to ".ts"
+    // sources. Remotion's webpack otherwise fails: Can't resolve './ingredientKinds.js'.
+    webpackOverride: (config) => {
+      config.resolve = config.resolve ?? {};
+      config.resolve.extensionAlias = {
+        ...(config.resolve.extensionAlias ?? {}),
+        ".js": [".ts", ".tsx", ".js", ".jsx"],
+        ".mjs": [".mts", ".mjs"],
+      };
+      return config;
+    },
   });
   return bundleLocation;
 }
