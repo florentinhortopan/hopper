@@ -24,6 +24,7 @@ export const DEFAULT_BRAND_TOKENS: DesignTokens = {
     logoPosition: "bottom",
   },
   socialChrome: false,
+  comfyStyleHints: [],
 };
 
 async function exists(file: string): Promise<boolean> {

@@ -5,6 +5,8 @@ ATTATTA’s generative path has two layers:
 1. **Library plates** — upload or `POST /library/:id/generate` with `outputMode: "image" | "video"` (default **video**). Video uses the same Bria / MiniMax router as matrix when talent video is present; image is SD still. **One master @ primary campaign size** — do not fan out Comfy across every delivery size (Remotion scales).
 2. **Matrix variants** — each matrix cell is a combo; `Generate variants` runs **video** Comfy jobs into `sizeAssets.genPath`, then Remotion assembles. **BG-only rails** need talent + background (hands/motion optional).
 
+**Design tokens** (Tokens step) dress Remotion end cards. Variant Comfy prompts also get a soft `Brand look:` clause from the campaign pack (`comfyStyleHints`, or auto-derived from colors/fonts). Import packs as ATTATTA JSON or CSS variables — not live Figma.
+
 ## Operator pipeline
 
 ```text

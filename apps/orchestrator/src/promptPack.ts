@@ -5,6 +5,7 @@ import {
   DEFAULT_OUTPUT_SIZE_IDS,
   PromptPackSchema,
   cellForGeneration,
+  formatBrandLookClause,
   genDimsForSize,
   getIngredientKind,
   isPlateReady,
@@ -369,7 +370,21 @@ export async function buildPromptPack(
   const negativeOverride = cell.negativeOverride?.trim() || "";
   const promptOverridden = Boolean(promptOverride);
   const negativeOverridden = Boolean(negativeOverride);
-  const positive = promptOverridden ? promptOverride : autoPositive;
+
+  let brandLook = "";
+  try {
+    const tokens = await getTokens(
+      cell.designTokenPackId || campaign.designTokenPackId,
+    );
+    brandLook = formatBrandLookClause(tokens);
+  } catch {
+    /* missing pack — skip brand clause */
+  }
+
+  const withBrand = (base: string) =>
+    brandLook ? `${base.replace(/\.\s*$/, "")}. ${brandLook}` : base;
+
+  const positive = withBrand(promptOverridden ? promptOverride : autoPositive);
   const negative = negativeOverridden ? negativeOverride : autoNegative;
   const { promptTextUsed, negativeTextUsed } =
     pipelinePromptUsage(videoPipeline);

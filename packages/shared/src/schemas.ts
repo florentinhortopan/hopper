@@ -41,6 +41,8 @@ export const DesignTokensSchema = z.object({
     logoPosition: z.enum(["top", "bottom"]).default("bottom"),
   }),
   socialChrome: z.boolean().default(false),
+  /** Operator phrases for Comfy; empty → deriveComfyStyleHints from colors/fonts. */
+  comfyStyleHints: z.array(z.string()).default([]),
 });
 export type DesignTokens = z.infer<typeof DesignTokensSchema>;
 

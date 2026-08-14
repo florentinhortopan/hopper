@@ -484,6 +484,26 @@ export const api = {
     return res.json() as Promise<LibraryItem>;
   },
   tokens: () => req<DesignTokens[]>("/tokens"),
+  createToken: (pack: DesignTokens, overwrite = false) =>
+    req<DesignTokens>("/tokens", {
+      method: "POST",
+      body: JSON.stringify({ ...pack, overwrite }),
+    }),
+  saveToken: (pack: DesignTokens) =>
+    req<DesignTokens>(`/tokens/${encodeURIComponent(pack.id)}`, {
+      method: "PUT",
+      body: JSON.stringify(pack),
+    }),
+  importTokens: (body: {
+    format: "json" | "css";
+    text: string;
+    id?: string;
+    label?: string;
+  }) =>
+    req<DesignTokens>("/tokens/import", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   fileUrl: (absolutePath: string) =>
     `${API}/files?path=${encodeURIComponent(absolutePath)}`,
   /** `rev` busts browser cache after upload / re-generate (same path, new bytes). */

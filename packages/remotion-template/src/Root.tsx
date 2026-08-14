@@ -35,6 +35,7 @@ export const defaultProps: RemotionProps = {
       logoPosition: "bottom",
     },
     socialChrome: false,
+    comfyStyleHints: [],
   },
   width: 1080,
   height: 1920,

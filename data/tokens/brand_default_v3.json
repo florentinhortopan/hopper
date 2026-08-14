@@ -15,5 +15,6 @@
     "ctaStyle": "solid",
     "logoPosition": "bottom"
   },
-  "socialChrome": false
+  "socialChrome": false,
+  "comfyStyleHints": []
 }

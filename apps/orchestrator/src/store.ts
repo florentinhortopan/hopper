@@ -9,6 +9,7 @@ import {
   LIBRARY_KINDS,
   LibraryItemSchema,
   ReviewEntrySchema,
+  sanitizeTokenPackId,
   type Campaign,
   type DesignTokens,
   type Job,
@@ -285,6 +286,19 @@ export async function getTokens(id: string): Promise<DesignTokens> {
     }
     throw err;
   }
+}
+
+export async function saveTokens(pack: DesignTokens): Promise<DesignTokens> {
+  await ensureDataDirs();
+  await ensureDefaultBrandTokens();
+  const parsed = DesignTokensSchema.parse(pack);
+  const id = sanitizeTokenPackId(parsed.id);
+  const next = { ...parsed, id };
+  const file = path.join(PATHS.tokens, `${id}.json`);
+  const tmp = `${file}.${process.pid}.tmp`;
+  await writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  await rename(tmp, file);
+  return next;
 }
 
 export async function listTokenPacks(): Promise<DesignTokens[]> {

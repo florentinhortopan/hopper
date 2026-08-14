@@ -36,7 +36,8 @@ Open [http://localhost:3000](http://localhost:3000).
 2. Open a campaign → **Ingredients** — activate plates (2+ of a kind fans that axis; copy plates fan messaging).  
 3. **Brief → Tokens → Matrix** — Build from activations; Preview model prompt; generate Comfy variants.
 4. **Settings** assembly recipe (scene list + duration) → **Variant review** (map each scene slot per row) → **Review** → Assemble (Remotion stitches slots) → Keep → **Package**.
-5. **Package** → download Celtra zip (`matrix.json` + mp4s).
+5. **Tokens** — edit / import brand packs (JSON or CSS vars); Remotion uses colors/fonts; Comfy gets soft `Brand look:` hints.
+6. **Package** → download Celtra zip (`matrix.json` + mp4s).
 
 ## Monorepo
 

@@ -26,10 +26,13 @@ import {
   OutputSizeSchema,
   ReviewEntrySchema,
   SceneSlotSchema,
+  DesignTokensSchema,
   ensureSceneSlots,
+  importTokensFromText,
   normalizeAssemblyRecipe,
   resolveMatrixCell,
   resolveOutputSizes,
+  sanitizeTokenPackId,
   estimatePlateGenSeconds,
   richerMatrixCell,
   toLiveMatrixCell,
@@ -114,6 +117,7 @@ import {
   listTokenPacks,
   saveCampaign,
   saveReviews,
+  saveTokens,
   upsertJob,
 } from "./store.js";
 
@@ -710,6 +714,53 @@ app.get("/library/media/:itemId", async (req, res) => {
 
 app.get("/tokens", async (_req, res) => {
   res.json(await listTokenPacks());
+});
+
+app.post("/tokens/import", async (req, res) => {
+  try {
+    const body = z
+      .object({
+        format: z.enum(["json", "css"]),
+        text: z.string().min(1),
+        id: z.string().optional(),
+        label: z.string().optional(),
+      })
+      .parse(req.body);
+    const pack = importTokensFromText(body.format, body.text, {
+      id: body.id,
+      label: body.label,
+    });
+    res.json(pack);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.post("/tokens", async (req, res) => {
+  try {
+    const overwrite = Boolean(req.body?.overwrite);
+    const { overwrite: _ow, ...rest } = req.body ?? {};
+    const pack = DesignTokensSchema.parse(rest);
+    const id = sanitizeTokenPackId(pack.id);
+    const existing = await listTokenPacks();
+    if (!overwrite && existing.some((p) => p.id === id)) {
+      res.status(409).json({ error: `Token pack already exists: ${id}` });
+      return;
+    }
+    res.status(overwrite ? 200 : 201).json(await saveTokens({ ...pack, id }));
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.put("/tokens/:id", async (req, res) => {
+  try {
+    const id = sanitizeTokenPackId(req.params.id);
+    const pack = DesignTokensSchema.parse({ ...req.body, id });
+    res.json(await saveTokens(pack));
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 app.get("/campaigns", async (req, res) => {
