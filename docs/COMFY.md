@@ -28,6 +28,7 @@ Matrix “generate variants” / Review “Assemble”
 - **Remotion** = single hi-res assemble using campaign **assembly recipe** (Settings)
   for scene list + duration on every size.
 - **Variant review** = one **scene tag** per variant (which recipe beat the Comfy plate fills).
+  Tags can also be set on **Matrix** (per row or batch); Variant review can override.
   Other beats use talent / hands / end card defaults on Assemble.
 
   → Remotion: `sceneMedia[]` from row slots + library / genPath

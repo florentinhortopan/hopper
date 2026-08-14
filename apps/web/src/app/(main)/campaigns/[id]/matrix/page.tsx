@@ -8,8 +8,10 @@ import {
   cellHasGen,
   cellHasVariantMedia,
   cellNeedsVariantGen,
+  ensureSceneTag,
   estimateQueueJobSeconds,
   formatDurationShort,
+  normalizeAssemblyRecipe,
   remainingEstimateSeconds,
   type Campaign,
   type Job,
@@ -230,9 +232,10 @@ export default function MatrixPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<
-    "preview" | "render" | "variants" | "rebuild" | "sizes" | null
+    "preview" | "render" | "variants" | "rebuild" | "sizes" | "tag" | null
   >(null);
   const [error, setError] = useState<string | null>(null);
+  const [batchSceneTag, setBatchSceneTag] = useState<string>("");
   const [lastQueued, setLastQueued] = useState<number | null>(null);
   const [packPreview, setPackPreview] = useState<Awaited<
     ReturnType<typeof api.promptPack>
@@ -372,6 +375,19 @@ export default function MatrixPage() {
       ? campaign.outputSizes
       : resolveOutputSizes([...DEFAULT_OUTPUT_SIZE_IDS]);
   }, [campaign]);
+
+  const recipe = useMemo(
+    () => (campaign ? normalizeAssemblyRecipe(campaign.assemblyRecipe) : null),
+    [campaign],
+  );
+
+  useEffect(() => {
+    if (!recipe?.scenes.length) return;
+    setBatchSceneTag((prev) => {
+      if (prev && recipe.scenes.some((s) => s.id === prev)) return prev;
+      return ensureSceneTag({ sceneTag: null }, recipe);
+    });
+  }, [recipe]);
 
   /** Columns = axes that appear on live cells (activations), even when not fanning. */
   const activeAxes = useMemo(() => {
@@ -567,6 +583,36 @@ export default function MatrixPage() {
         genOmitIds: [...omit],
       });
       setCampaign(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function setRowSceneTag(cellId: string, sceneTag: string) {
+    setBusy("tag");
+    setError(null);
+    try {
+      const next = await api.patchCell(id, cellId, { sceneTag });
+      setCampaign(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function batchTagSelected() {
+    if (!batchSceneTag || !selectedIds.length) return;
+    setBusy("tag");
+    setError(null);
+    try {
+      let next: Campaign | null = null;
+      for (const cellId of selectedIds) {
+        next = await api.patchCell(id, cellId, { sceneTag: batchSceneTag });
+      }
+      if (next) setCampaign(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -909,6 +955,35 @@ export default function MatrixPage() {
                 ? `Fill missing sizes (${missingSizeSlots})`
                 : "Fill missing sizes"}
         </button>
+        {selectedIds.length ? (
+          <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2 py-1">
+            <span className="text-[11px] uppercase tracking-wide text-ink-600">
+              Tag selected
+            </span>
+            <select
+              className="rounded border border-ink-200 px-1.5 py-1 text-xs"
+              value={batchSceneTag}
+              disabled={busy !== null || !recipe?.scenes.length}
+              onChange={(e) => setBatchSceneTag(e.target.value)}
+            >
+              {(recipe?.scenes ?? []).map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={
+                busy !== null || !selectedIds.length || !batchSceneTag
+              }
+              className="rounded bg-ink-900 px-2 py-1 text-xs text-white disabled:opacity-40"
+              onClick={() => void batchTagSelected()}
+            >
+              {busy === "tag" ? "Tagging…" : `Apply (${selectedIds.length})`}
+            </button>
+          </div>
+        ) : null}
         <a
           href={
             selectedIds.length
@@ -939,7 +1014,7 @@ export default function MatrixPage() {
           </button>
         ) : (
           <span className="text-xs text-ink-600">
-            Select rows → generate variants · review · assemble on Review
+            Select rows → tag scenes · generate · review · assemble
           </span>
         )}
       </div>
@@ -1087,6 +1162,9 @@ export default function MatrixPage() {
                 dir={sortDir}
                 onClick={() => toggleSort("cell")}
               />
+              <th className="px-2 py-2 text-left text-[11px] font-medium uppercase tracking-[0.12em] text-ink-600">
+                Scene
+              </th>
               {activeAxes.map((axis) => (
                 <th key={axis} className="min-w-[9rem] px-2 py-2 align-top">
                   <button
@@ -1176,6 +1254,25 @@ export default function MatrixPage() {
                         </span>
                       </div>
                     ) : null}
+                  </td>
+                  <td className="px-2 py-2">
+                    <select
+                      className="max-w-[8.5rem] rounded border border-ink-200 bg-white px-1.5 py-1 text-xs"
+                      disabled={busy !== null || !recipe}
+                      value={
+                        recipe ? ensureSceneTag(c, recipe) : c.sceneTag || ""
+                      }
+                      aria-label={`Scene tag for ${c.cellId}`}
+                      onChange={(e) =>
+                        void setRowSceneTag(c.cellId, e.target.value)
+                      }
+                    >
+                      {(recipe?.scenes ?? []).map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   {activeAxes.map((axis) => {
                     const ids = cellAxisIds(c, axis);
