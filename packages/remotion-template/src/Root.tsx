@@ -41,6 +41,7 @@ export const defaultProps: RemotionProps = {
   sizeId: "v_9x16_1080",
   aspect: "9:16",
   assemblyRecipe: DEFAULT_ASSEMBLY_RECIPE,
+  sceneMedia: [],
 };
 
 export const RemotionRoot: React.FC = () => {

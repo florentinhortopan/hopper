@@ -6,7 +6,9 @@ import {
   assemblyRecipeTotalSeconds,
   assemblySceneFrames,
   cellNeedsVariantGen,
+  ensureSceneSlots,
   estimateQueueJobSeconds,
+  formatSceneSlotsSummary,
   genDimsForSize,
   isPlateReady,
   normalizeAssemblyRecipe,
@@ -21,6 +23,7 @@ import {
   type OutputSize,
   type RemotionProps,
   type RetiredMatrixCell,
+  type SceneMediaItem,
 } from "@attatta/shared";
 import { PATHS } from "./config.js";
 import { runComfyJob } from "./comfyAdapter.js";
@@ -260,10 +263,30 @@ async function buildProps(
   }
 
   const assemblyRecipe = normalizeAssemblyRecipe(campaign.assemblyRecipe);
+  const slots = ensureSceneSlots(cell, assemblyRecipe);
   const sceneFrames = assemblySceneFrames(assemblyRecipe, 30);
   const totalSec = assemblyRecipeTotalSeconds(assemblyRecipe);
+
+  const mediaKind = (src: string): "video" | "still" =>
+    /\.(png|jpe?g|webp|gif)$/i.test(src) ? "still" : "video";
+
+  const sceneMedia: SceneMediaItem[] = slots.map((slot) => {
+    if (slot.source === "endcard") {
+      return { sceneId: slot.sceneId, src: "", kind: "endcard" };
+    }
+    let src = "";
+    if (slot.source === "talent") src = talentVideoSrc;
+    else if (slot.source === "hands") src = handsVideoSrc;
+    else if (slot.source === "gen") src = genPath || "";
+    return {
+      sceneId: slot.sceneId,
+      src,
+      kind: src ? mediaKind(src) : "video",
+    };
+  });
+
   console.log(
-    `[assemble] recipe ${campaign.id} · ${sceneFrames.length} scenes · ${totalSec}s · ${sceneFrames
+    `[assemble] recipe ${campaign.id} · ${sceneFrames.length} scenes · ${totalSec}s · ${formatSceneSlotsSummary(slots)} · ${sceneFrames
       .map((s) => `${s.label}=${s.frames}f`)
       .join(", ")}`,
   );
@@ -279,6 +302,7 @@ async function buildProps(
     sizeId: size.id,
     aspect: size.aspect,
     assemblyRecipe,
+    sceneMedia,
   };
 }
 
@@ -618,7 +642,9 @@ export async function enqueueCellSizeJob(
       const remotionStage = assembleStage(stage);
       const recipeShort = (() => {
         const r = normalizeAssemblyRecipe(campaign.assemblyRecipe);
-        return `${r.scenes.length} scenes · ${assemblyRecipeTotalSeconds(r)}s`;
+        const { cell: c } = requireResolvedCell(campaign, cellId);
+        const slots = ensureSceneSlots(c, r);
+        return `${r.scenes.length} scenes · ${assemblyRecipeTotalSeconds(r)}s · ${formatSceneSlotsSummary(slots)}`;
       })();
       touchJob(job, {
         message: copyPlate

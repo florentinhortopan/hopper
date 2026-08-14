@@ -120,6 +120,23 @@ export const IngredientRailSchema = z.object({
 });
 export type IngredientRail = z.infer<typeof IngredientRailSchema>;
 
+/** Which plate fills a recipe scene for this matrix row. */
+export const SceneSlotSourceSchema = z.enum(["talent", "hands", "gen", "endcard"]);
+export type SceneSlotSource = z.infer<typeof SceneSlotSourceSchema>;
+
+export const SceneSlotSchema = z.object({
+  sceneId: z.string(),
+  source: SceneSlotSourceSchema,
+});
+export type SceneSlot = z.infer<typeof SceneSlotSchema>;
+
+export const SceneMediaItemSchema = z.object({
+  sceneId: z.string(),
+  src: z.string(),
+  kind: z.enum(["video", "still", "endcard"]),
+});
+export type SceneMediaItem = z.infer<typeof SceneMediaItemSchema>;
+
 export const MatrixCellSchema = z.object({
   cellId: z.string(),
   talentTakeId: z.string(),
@@ -147,6 +164,11 @@ export const MatrixCellSchema = z.object({
   previewPath: z.string().nullable().default(null),
   /** Explicit per-size generated / rendered assets */
   sizeAssets: z.array(CellSizeAssetSchema).default([]),
+  /**
+   * Per-row map: recipe sceneId → which plate plays in Remotion.
+   * Empty → filled by ensureSceneSlots from recipe roles at assemble / Variant review.
+   */
+  sceneSlots: z.array(SceneSlotSchema).default([]),
   status: z
     .enum(["draft", "previewing", "preview_ok", "rendering", "ready", "failed"])
     .default("draft"),
@@ -319,6 +341,45 @@ export function formatAssemblyRecipeSummary(
   return `${parts.join(" · ")} (${total}s)`;
 }
 
+export function defaultSceneSlotSource(
+  scene: AssemblyScene,
+  hasHands: boolean,
+): SceneSlotSource {
+  if (scene.role === "endcard" || scene.id === "endcard") return "endcard";
+  if (scene.role === "punchline" || scene.id === "punchline") {
+    return hasHands ? "hands" : "gen";
+  }
+  return "talent";
+}
+
+/**
+ * Align cell.sceneSlots to the campaign recipe. Keeps operator overrides for
+ * known sceneIds; fills missing scenes from role defaults.
+ */
+export function ensureSceneSlots(
+  cell: { sceneSlots?: SceneSlot[] | null; handsId?: string | null },
+  recipe: AssemblyRecipe | null | undefined,
+): SceneSlot[] {
+  const r = normalizeAssemblyRecipe(recipe);
+  const hasHands = Boolean(cell.handsId?.trim());
+  const byId = new Map((cell.sceneSlots ?? []).map((s) => [s.sceneId, s]));
+  return r.scenes.map((scene) => {
+    const existing = byId.get(scene.id);
+    if (existing && SceneSlotSourceSchema.safeParse(existing.source).success) {
+      return { sceneId: scene.id, source: existing.source };
+    }
+    return {
+      sceneId: scene.id,
+      source: defaultSceneSlotSource(scene, hasHands),
+    };
+  });
+}
+
+export function formatSceneSlotsSummary(slots: SceneSlot[]): string {
+  if (!slots.length) return "default slots";
+  return `slots ${slots.map((s) => s.source).join("/")}`;
+}
+
 export const CampaignSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -403,6 +464,8 @@ export const RemotionPropsSchema = z.object({
   aspect: z.string().default("9:16"),
   /** Assemble recipe from campaign Settings — Remotion scene beats (not Comfy). */
   assemblyRecipe: AssemblyRecipeSchema.optional(),
+  /** Resolved media per recipe scene (from cell.sceneSlots). */
+  sceneMedia: z.array(SceneMediaItemSchema).optional(),
 });
 export type RemotionProps = z.infer<typeof RemotionPropsSchema>;
 

@@ -14,6 +14,7 @@ import {
   normalizeAssemblyRecipe,
   type AssemblyRecipe,
   type RemotionProps,
+  type SceneMediaItem,
 } from "@attatta/shared";
 
 function isStill(src: string) {
@@ -40,6 +41,44 @@ export function totalFramesFromRecipe(recipe?: AssemblyRecipe | null, fps = FPS)
   return Math.max(1, frames.reduce((n, s) => n + s.frames, 0));
 }
 
+function resolveSceneMedia(
+  sceneId: string,
+  role: string | undefined,
+  sceneMedia: SceneMediaItem[] | undefined,
+  talentVideoSrc: string,
+  handsVideoSrc: string,
+): { src: string; kind: "video" | "still" | "endcard"; label: string } {
+  const hit = sceneMedia?.find((m) => m.sceneId === sceneId);
+  if (hit) {
+    return {
+      src: hit.src,
+      kind: hit.kind,
+      label:
+        hit.kind === "endcard"
+          ? "End card"
+          : hit.src
+            ? `Scene · ${sceneId}`
+            : `Missing media · ${sceneId}`,
+    };
+  }
+  // Legacy fallback when sceneMedia not provided
+  const isEnd = role === "endcard" || sceneId === "endcard";
+  const isPunch = role === "punchline" || sceneId === "punchline";
+  if (isEnd) return { src: "", kind: "endcard", label: "End card" };
+  if (isPunch) {
+    return {
+      src: handsVideoSrc,
+      kind: isStill(handsVideoSrc) ? "still" : "video",
+      label: "Hands / Punchline",
+    };
+  }
+  return {
+    src: talentVideoSrc,
+    kind: isStill(talentVideoSrc) ? "still" : "video",
+    label: "Talent / Setup",
+  };
+}
+
 export const PaidSocial9x16: React.FC<RemotionProps> = ({
   talentVideoSrc,
   handsVideoSrc,
@@ -47,6 +86,7 @@ export const PaidSocial9x16: React.FC<RemotionProps> = ({
   copy,
   designTokens,
   assemblyRecipe,
+  sceneMedia,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -72,10 +112,16 @@ export const PaidSocial9x16: React.FC<RemotionProps> = ({
     >
       {sequenced.map((s) => {
         const role = s.role;
-        const isSetup = role === "setup" || (!role && s.id === "setup");
+        const media = resolveSceneMedia(
+          s.id,
+          role,
+          sceneMedia,
+          talentVideoSrc,
+          handsVideoSrc,
+        );
+        const isEnd = media.kind === "endcard";
         const isPunch = role === "punchline" || s.id === "punchline";
-        const isEnd = role === "endcard" || s.id === "endcard";
-        const src = isPunch ? handsVideoSrc : talentVideoSrc;
+        const isSetup = role === "setup" || (!role && s.id === "setup");
         const caption = isEnd
           ? null
           : isPunch
@@ -144,8 +190,8 @@ export const PaidSocial9x16: React.FC<RemotionProps> = ({
             ) : (
               <AbsoluteFill>
                 <PlateVideo
-                  src={src}
-                  label={isPunch ? "Hands / Punchline" : "Talent / Setup"}
+                  src={media.src}
+                  label={media.label}
                   color={isPunch ? "#292524" : "#1c1917"}
                 />
                 {caption ? <CaptionBar text={caption} tokens={designTokens} /> : null}

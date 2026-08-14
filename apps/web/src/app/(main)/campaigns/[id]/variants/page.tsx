@@ -5,8 +5,11 @@ import { useParams, useSearchParams } from "next/navigation";
 import {
   DEFAULT_OUTPUT_SIZE_IDS,
   cellHasGen,
+  ensureSceneSlots,
+  formatAssemblyRecipeSummary,
   isPlateReady,
   listPreviewCells,
+  normalizeAssemblyRecipe,
   type PreviewListEntry,
   resolveOutputSizes,
   type Campaign,
@@ -15,6 +18,8 @@ import {
   type MatrixCell,
   type OutputSize,
   type ReviewEntry,
+  type SceneSlot,
+  type SceneSlotSource,
 } from "@attatta/shared";
 import type { PlateDensity } from "@/components/PlateCard";
 import { StepNav } from "@/components/StepNav";
@@ -224,6 +229,34 @@ export default function PreviewPage() {
       setBusy(null);
     }
   }
+
+  async function saveSceneSlots(next: SceneSlot[]) {
+    if (!activeEntry || !campaign) return;
+    setBusy("review");
+    setError(null);
+    try {
+      const updated = await api.patchCell(id, activeEntry.ref, {
+        sceneSlots: next,
+      });
+      setCampaign(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const recipe = campaign
+    ? normalizeAssemblyRecipe(campaign.assemblyRecipe)
+    : null;
+  const activeSlots =
+    activeCell && recipe
+      ? ensureSceneSlots(activeCell, recipe)
+      : [];
+  const genMissingForSlots =
+    activeSlots.some((s) => s.source === "gen") &&
+    activeCell &&
+    !cellHasGen(activeCell);
 
   if (!campaign) {
     return (
@@ -438,6 +471,62 @@ export default function PreviewPage() {
               tokens={tokens}
               campaign={campaign}
             />
+
+            <div className="rounded-xl border border-warm-line bg-white/80 p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-600">
+                  Scene slots
+                </h3>
+                <a
+                  href={`/campaigns/${id}/settings`}
+                  className="text-[11px] text-ink-600 underline"
+                >
+                  Recipe: {formatAssemblyRecipeSummary(campaign.assemblyRecipe)}
+                </a>
+              </div>
+              <p className="mt-1 text-xs text-ink-600">
+                Map each Settings recipe scene to talent, hands, this row&apos;s
+                variant, or end card. Remotion stitches these on Assemble.
+              </p>
+              <ul className="mt-3 space-y-2">
+                {activeSlots.map((slot) => {
+                  const scene = recipe?.scenes.find((s) => s.id === slot.sceneId);
+                  return (
+                    <li
+                      key={slot.sceneId}
+                      className="flex flex-wrap items-center gap-2"
+                    >
+                      <span className="min-w-[7rem] text-sm text-ink-900">
+                        {scene?.label || slot.sceneId}
+                      </span>
+                      <select
+                        className="rounded-md border border-ink-200 bg-white px-2 py-1.5 text-sm"
+                        disabled={busy !== null}
+                        value={slot.source}
+                        onChange={(e) => {
+                          const source = e.target.value as SceneSlotSource;
+                          const next = activeSlots.map((s) =>
+                            s.sceneId === slot.sceneId ? { ...s, source } : s,
+                          );
+                          void saveSceneSlots(next);
+                        }}
+                      >
+                        <option value="talent">Talent</option>
+                        <option value="hands">Hands</option>
+                        <option value="gen">This variant (gen)</option>
+                        <option value="endcard">End card</option>
+                      </select>
+                    </li>
+                  );
+                })}
+              </ul>
+              {genMissingForSlots ? (
+                <p className="mt-2 text-xs text-amber-800">
+                  A slot uses This variant but no Comfy plate is ready — generate
+                  on Matrix first.
+                </p>
+              ) : null}
+            </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <button

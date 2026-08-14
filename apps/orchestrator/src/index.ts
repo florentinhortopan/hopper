@@ -25,7 +25,10 @@ import {
   OUTPUT_SIZE_CATALOG,
   OutputSizeSchema,
   ReviewEntrySchema,
+  SceneSlotSchema,
+  ensureSceneSlots,
   normalizeAssemblyRecipe,
+  resolveMatrixCell,
   resolveOutputSizes,
   estimatePlateGenSeconds,
   richerMatrixCell,
@@ -995,13 +998,15 @@ app.patch("/campaigns/:id/cells/:cellId", async (req, res) => {
         /** null / empty clears override (auto prompt resumes). */
         promptOverride: z.string().nullable().optional(),
         negativeOverride: z.string().nullable().optional(),
+        sceneSlots: z.array(SceneSlotSchema).optional(),
       })
       .parse(req.body);
-    const cell = campaign.matrix.cells.find((c) => c.cellId === req.params.cellId);
-    if (!cell) {
+    const resolved = resolveMatrixCell(campaign, req.params.cellId);
+    if (!resolved) {
       res.status(404).json({ error: "Cell not found" });
       return;
     }
+    const cell = resolved.cell;
     if (body.genOmitIds !== undefined) {
       cell.genOmitIds = [...new Set(body.genOmitIds.filter(Boolean))];
     }
@@ -1012,6 +1017,12 @@ app.patch("/campaigns/:id/cells/:cellId", async (req, res) => {
     if (body.negativeOverride !== undefined) {
       const t = (body.negativeOverride ?? "").trim();
       cell.negativeOverride = t ? t : null;
+    }
+    if (body.sceneSlots !== undefined) {
+      cell.sceneSlots = ensureSceneSlots(
+        { ...cell, sceneSlots: body.sceneSlots },
+        campaign.assemblyRecipe,
+      );
     }
     res.json(await saveCampaign(campaign));
   } catch (err) {
@@ -1137,6 +1148,10 @@ app.post("/campaigns/:id/matrix/build-sparse", async (req, res) => {
               status: "pending" as const,
               error: null,
             })),
+            sceneSlots: ensureSceneSlots(
+              { handsId: handsId || "", sceneSlots: [] },
+              campaign.assemblyRecipe,
+            ),
             status: "draft" as const,
             error: null,
           };
@@ -1150,6 +1165,7 @@ app.post("/campaigns/:id/matrix/build-sparse", async (req, res) => {
             draft.genOmitIds = [...(live.genOmitIds ?? [])];
             draft.promptOverride = live.promptOverride ?? null;
             draft.negativeOverride = live.negativeOverride ?? null;
+            draft.sceneSlots = ensureSceneSlots(live, campaign.assemblyRecipe);
             draft.sizeAssets = sizes.map((s) => {
               // Never inherit genPath from a different aspect
               const old = live.sizeAssets?.find((a) => a.sizeId === s.id);

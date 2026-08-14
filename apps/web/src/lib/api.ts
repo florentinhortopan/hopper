@@ -69,7 +69,7 @@ export const api = {
     req<Campaign>(`/campaigns/${id}/rail`, { method: "PUT", body: JSON.stringify(rail) }),
   putMatrix: (id: string, matrix: Matrix) =>
     req<Campaign>(`/campaigns/${id}/matrix`, { method: "PUT", body: JSON.stringify(matrix) }),
-  /** Per-row Comfy plate includes/omits + prompt overrides. */
+  /** Per-row Comfy plate includes/omits + prompt overrides + scene slots. */
   patchCell: (
     id: string,
     cellId: string,
@@ -78,6 +78,7 @@ export const api = {
       /** null / "" clears override (auto prompt resumes). */
       promptOverride?: string | null;
       negativeOverride?: string | null;
+      sceneSlots?: import("@attatta/shared").SceneSlot[];
     },
   ) =>
     req<Campaign>(`/campaigns/${id}/cells/${encodeURIComponent(cellId)}`, {
