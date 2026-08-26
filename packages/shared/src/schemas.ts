@@ -277,6 +277,47 @@ export const AssemblyRecipeSchema = z.object({
 });
 export type AssemblyRecipe = z.infer<typeof AssemblyRecipeSchema>;
 
+/** Campaign-level Comfy enrichment (not a node editor). */
+export const ComfyTemplateStepSchema = z.object({
+  id: z.string(),
+  label: z.string().default(""),
+  /**
+   * Semantic patch key from workflow maps (e.g. prompt, duration, productRef)
+   * or "guidelines" (merged into positive only).
+   */
+  patchKey: z.string().default("prompt"),
+  prompt: z.string().default(""),
+  /** Optional library ingredient id whose path is written to patchKey */
+  ingredientId: z.string().nullable().default(null),
+});
+export type ComfyTemplateStep = z.infer<typeof ComfyTemplateStepSchema>;
+
+export const ComfyTemplateSchema = z.object({
+  /** Informational preferred workflow; live routing still uses pipeline pickers. */
+  baseWorkflowId: z.string().nullable().default(null),
+  campaignGuidelines: z.string().default(""),
+  steps: z.array(ComfyTemplateStepSchema).default([]),
+});
+export type ComfyTemplate = z.infer<typeof ComfyTemplateSchema>;
+
+export const DEFAULT_COMFY_TEMPLATE: ComfyTemplate = {
+  baseWorkflowId: null,
+  campaignGuidelines: "",
+  steps: [],
+};
+
+export function normalizeComfyTemplate(
+  t: ComfyTemplate | null | undefined,
+): ComfyTemplate {
+  const parsed = ComfyTemplateSchema.safeParse(t ?? {});
+  if (!parsed.success) return { ...DEFAULT_COMFY_TEMPLATE, steps: [] };
+  return {
+    baseWorkflowId: parsed.data.baseWorkflowId ?? null,
+    campaignGuidelines: parsed.data.campaignGuidelines ?? "",
+    steps: parsed.data.steps ?? [],
+  };
+}
+
 export const DEFAULT_ASSEMBLY_RECIPE: AssemblyRecipe = {
   scenes: DEFAULT_ASSEMBLY_SCENES,
   targetDurationSeconds: null,
@@ -452,6 +493,15 @@ export const CampaignSchema = z.object({
   libraryId: z.string().default("default"),
   /** Remotion assemble structure (applies to all sizes) */
   assemblyRecipe: AssemblyRecipeSchema.default(DEFAULT_ASSEMBLY_RECIPE),
+  /**
+   * Celtra content-matrix profile for Package export
+   * (e.g. guarantee_tranche3_social_video_v1).
+   */
+  celtraTemplateProfileId: z
+    .string()
+    .default("guarantee_tranche3_social_video_v1"),
+  /** Campaign Comfy guidelines + between-node step prompts / binds */
+  comfyTemplate: ComfyTemplateSchema.default(DEFAULT_COMFY_TEMPLATE),
   archived: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -579,11 +629,15 @@ export const PromptPackSchema = z.object({
 });
 export type PromptPack = z.infer<typeof PromptPackSchema>;
 
+/**
+ * @deprecated Internal debug lineage only. Celtra ingest uses profile-driven
+ * wide rows from `@attatta/shared` celtraProfiles (Social Video XLSX).
+ */
 export const CeltraMatrixRowSchema = z.object({
   variantId: z.string(),
   campaignId: z.string(),
   videoPath: z.string(),
-  aspect: z.literal("9:16"),
+  aspect: z.string().default("9:16"),
   primaryText: z.string(),
   headline: z.string(),
   cta: z.string(),
@@ -597,6 +651,9 @@ export const CeltraMatrixRowSchema = z.object({
   designTokenPackId: z.string(),
   approvalStatus: z.literal("approved"),
   reviewNotes: z.string().default(""),
+  /** Celtra frame this plate fills when known */
+  celtraFrameId: z.enum(["F1", "F2", "F3"]).nullable().default(null),
+  platePath: z.string().default(""),
 });
 export type CeltraMatrixRow = z.infer<typeof CeltraMatrixRowSchema>;
 

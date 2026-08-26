@@ -16,6 +16,9 @@ import {
   type MatrixCell,
   type OutputSize,
   type PromptPack,
+  normalizeAssemblyRecipe,
+  normalizeComfyTemplate,
+  assemblyRecipeTotalSeconds,
 } from "@attatta/shared";
 import { REPO_ROOT } from "./config.js";
 import { isIngredientActive, railReferencedIds } from "./policy.js";
@@ -344,6 +347,24 @@ export async function buildPromptPack(
     );
   }
 
+  const comfyTemplate = normalizeComfyTemplate(campaign.comfyTemplate);
+  if (comfyTemplate.campaignGuidelines.trim()) {
+    parts.unshift(
+      `campaign guidelines: ${comfyTemplate.campaignGuidelines.trim()}`,
+    );
+  }
+  for (const step of comfyTemplate.steps) {
+    if (
+      step.prompt.trim() &&
+      (step.patchKey === "prompt" ||
+        step.patchKey === "guidelines" ||
+        !step.patchKey.trim())
+    ) {
+      const label = step.label.trim() || "step";
+      parts.push(`${label}: ${step.prompt.trim()}`);
+    }
+  }
+
   const autoPositive = parts.filter(Boolean).join(". ").replace(/\.\./g, ".");
 
   const negBits = [
@@ -435,6 +456,7 @@ export async function buildPromptPack(
     propIds: cell.propIds,
     motionToken: cell.motionToken,
     copy: cell.copy,
+    comfyTemplate,
     brief: {
       prompt: brief.prompt,
       offer: brief.offer,
@@ -487,6 +509,44 @@ export async function buildPromptPack(
     resolution: "768P",
     duration: 5,
   };
+
+  const recipe = normalizeAssemblyRecipe(campaign.assemblyRecipe);
+  const taggedScene =
+    recipe.scenes.find((s) => s.id === cell.sceneTag) ||
+    recipe.scenes.find((s) => s.role === "punchline") ||
+    recipe.scenes[0];
+  if (taggedScene?.durationSeconds && taggedScene.durationSeconds > 0) {
+    patches.duration = Math.max(
+      1,
+      Math.min(10, Math.round(taggedScene.durationSeconds)),
+    );
+  } else {
+    const total = assemblyRecipeTotalSeconds(recipe);
+    if (total > 0 && recipe.scenes.length) {
+      patches.duration = Math.max(
+        1,
+        Math.min(10, Math.round(total / recipe.scenes.length)),
+      );
+    }
+  }
+
+  const libById = new Map(lib.map((i) => [i.id, i]));
+  for (const step of comfyTemplate.steps) {
+    const key = step.patchKey?.trim();
+    if (!key || key === "prompt" || key === "guidelines") continue;
+    if (step.ingredientId) {
+      const item = libById.get(step.ingredientId);
+      if (item?.path?.trim()) {
+        patches[key] = item.path;
+      }
+    } else if (step.prompt.trim()) {
+      const prev = patches[key];
+      patches[key] =
+        typeof prev === "string" && prev.trim()
+          ? `${prev}. ${step.prompt.trim()}`
+          : step.prompt.trim();
+    }
+  }
 
   if (talent?.locks) {
     patches.contractFlags = {

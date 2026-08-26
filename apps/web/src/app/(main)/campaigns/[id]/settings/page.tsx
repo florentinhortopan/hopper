@@ -4,11 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   DEFAULT_ASSEMBLY_SCENES,
+  DEFAULT_COMFY_TEMPLATE,
   META_RECOMMENDED_SIZE_IDS,
   assemblyRecipeTotalSeconds,
   suggestAssemblySecondsFromCopy,
   type AssemblyRecipe,
   type AssemblyScene,
+  type ComfyTemplate,
+  type ComfyTemplateStep,
   type OutputSize,
 } from "@attatta/shared";
 import { StepNav } from "@/components/StepNav";
@@ -16,6 +19,10 @@ import { api } from "@/lib/api";
 
 function newSceneId() {
   return `scene_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function newStepId() {
+  return `step_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export default function SettingsPage() {
@@ -32,6 +39,9 @@ export default function SettingsPage() {
     scenes: DEFAULT_ASSEMBLY_SCENES,
     targetDurationSeconds: null,
     copySuggestedSeconds: null,
+  });
+  const [comfyTemplate, setComfyTemplate] = useState<ComfyTemplate>({
+    ...DEFAULT_COMFY_TEMPLATE,
   });
   const [copyForSuggest, setCopyForSuggest] = useState<{
     setup?: string;
@@ -62,6 +72,12 @@ export default function SettingsPage() {
       scenes: r.scenes?.length ? r.scenes : DEFAULT_ASSEMBLY_SCENES,
       targetDurationSeconds: r.targetDurationSeconds ?? null,
       copySuggestedSeconds: r.copySuggestedSeconds ?? null,
+    });
+    const ct = campaign.comfyTemplate ?? DEFAULT_COMFY_TEMPLATE;
+    setComfyTemplate({
+      baseWorkflowId: ct.baseWorkflowId ?? null,
+      campaignGuidelines: ct.campaignGuidelines ?? "",
+      steps: ct.steps ?? [],
     });
     const cellCopy = campaign.matrix?.cells?.[0]?.copy;
     setCopyForSuggest({
@@ -150,6 +166,7 @@ export default function SettingsPage() {
         modelProfileId,
         libraryId,
         assemblyRecipe: recipe,
+        comfyTemplate,
       });
       await refresh();
       setError(null);
@@ -329,6 +346,134 @@ export default function SettingsPage() {
           onClick={() => addScene()}
         >
           Add scene
+        </button>
+      </div>
+
+      <div className="mt-6 rounded-xl border border-ink-200 bg-white/90 p-4">
+        <h2 className="font-display text-lg">Comfy workflow template</h2>
+        <p className="mt-1 max-w-2xl text-xs text-ink-700">
+          Campaign guidelines and step prompts merge into Comfy positives / patches on
+          generate. Not a node editor — bind semantic patch keys (prompt, duration,
+          productRef, …) and optional library ingredient ids.
+        </p>
+        <label className="mt-3 block text-xs text-ink-700">
+          Campaign guidelines
+          <textarea
+            className="mt-1 w-full rounded-md border border-ink-200 px-3 py-2 text-sm"
+            rows={3}
+            value={comfyTemplate.campaignGuidelines}
+            onChange={(e) =>
+              setComfyTemplate((prev) => ({
+                ...prev,
+                campaignGuidelines: e.target.value,
+              }))
+            }
+            placeholder="Brand look, hand placement rules, AT&amp;T do-nots…"
+          />
+        </label>
+        <ul className="mt-4 space-y-2">
+          {comfyTemplate.steps.map((step, idx) => (
+            <li
+              key={step.id}
+              className="flex flex-wrap items-start gap-2 rounded-lg border border-ink-100 bg-ink-50/50 px-3 py-2"
+            >
+              <input
+                className="min-w-[6rem] flex-1 rounded border border-ink-200 px-2 py-1 text-sm"
+                placeholder="Label"
+                value={step.label}
+                onChange={(e) => {
+                  const label = e.target.value;
+                  setComfyTemplate((prev) => ({
+                    ...prev,
+                    steps: prev.steps.map((s, i) =>
+                      i === idx ? { ...s, label } : s,
+                    ),
+                  }));
+                }}
+              />
+              <select
+                className="rounded border border-ink-200 px-2 py-1 text-xs"
+                value={step.patchKey}
+                onChange={(e) => {
+                  const patchKey = e.target.value;
+                  setComfyTemplate((prev) => ({
+                    ...prev,
+                    steps: prev.steps.map((s, i) =>
+                      i === idx ? { ...s, patchKey } : s,
+                    ),
+                  }));
+                }}
+              >
+                <option value="prompt">prompt (merge into positive)</option>
+                <option value="guidelines">guidelines</option>
+                <option value="duration">duration</option>
+                <option value="productRef">productRef</option>
+                <option value="wardrobeRef">wardrobeRef</option>
+                <option value="backgroundRef">backgroundRef</option>
+                <option value="talentRef">talentRef</option>
+              </select>
+              <input
+                className="w-36 rounded border border-ink-200 px-2 py-1 font-mono text-xs"
+                placeholder="ingredient id"
+                value={step.ingredientId ?? ""}
+                onChange={(e) => {
+                  const ingredientId = e.target.value.trim() || null;
+                  setComfyTemplate((prev) => ({
+                    ...prev,
+                    steps: prev.steps.map((s, i) =>
+                      i === idx ? { ...s, ingredientId } : s,
+                    ),
+                  }));
+                }}
+              />
+              <textarea
+                className="w-full rounded border border-ink-200 px-2 py-1 text-xs"
+                rows={2}
+                placeholder="Step prompt / patch value"
+                value={step.prompt}
+                onChange={(e) => {
+                  const prompt = e.target.value;
+                  setComfyTemplate((prev) => ({
+                    ...prev,
+                    steps: prev.steps.map((s, i) =>
+                      i === idx ? { ...s, prompt } : s,
+                    ),
+                  }));
+                }}
+              />
+              <button
+                type="button"
+                className="text-xs text-red-700 underline"
+                onClick={() =>
+                  setComfyTemplate((prev) => ({
+                    ...prev,
+                    steps: prev.steps.filter((_, i) => i !== idx),
+                  }))
+                }
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          className="mt-3 rounded-md border border-ink-200 bg-white px-3 py-2 text-xs"
+          onClick={() => {
+            const step: ComfyTemplateStep = {
+              id: newStepId(),
+              label: "Hands step",
+              patchKey: "prompt",
+              prompt: "",
+              ingredientId: null,
+            };
+            setComfyTemplate((prev) => ({
+              ...prev,
+              steps: [...prev.steps, step],
+            }));
+          }}
+        >
+          Add step
         </button>
       </div>
 

@@ -54,6 +54,8 @@ export const api = {
       modelProfileId?: string;
       libraryId?: string;
       assemblyRecipe?: import("@attatta/shared").AssemblyRecipe;
+      celtraTemplateProfileId?: string;
+      comfyTemplate?: import("@attatta/shared").ComfyTemplate;
     },
   ) => req<Campaign>(`/campaigns/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteCampaign: (id: string) =>

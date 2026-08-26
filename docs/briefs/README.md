@@ -14,12 +14,13 @@ Drop campaign briefs, brand notes, and research here. This folder feeds [PRD.md]
 
 ## What to add next
 
-- Sample Celtra content matrix (headers + 2–3 example rows)
+- ~~Sample Celtra content matrix (headers + 2–3 example rows)~~ → keep under local `celtra-matrix/` (gitignored; do not commit). Profile frozen as `guarantee_tranche3_social_video_v1`.
 - Talent contract excerpt (face/voice rules)
 - Brand design tokens / end-card examples
 - Shoot notes for Ted (lighting, angles)
 - Phone prop + social chrome preferences
 - Example winner/loser ads (rights noted)
+- Optional: MOV/video-column content matrix (hands path) for a second Celtra profile
 
 ## Naming
 

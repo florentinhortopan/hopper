@@ -479,8 +479,9 @@ export default function PreviewPage() {
                 </a>
               </div>
               <p className="mt-1 text-xs text-ink-600">
-                This variant&apos;s plate plays only in the tagged beat. Remotion
-                fills the rest of the recipe from talent / hands / end card.
+                This variant&apos;s plate fills one Celtra frame (setup→F1,
+                punchline→F2, endcard→F3) and optionally one Remotion beat.
+                Package writes that plate into the matching content-matrix column.
               </p>
               <label className="mt-3 flex flex-wrap items-center gap-2 text-sm">
                 <span className="text-ink-700">This variant fills</span>
@@ -490,14 +491,25 @@ export default function PreviewPage() {
                   value={activeSceneTag || ""}
                   onChange={(e) => void saveSceneTag(e.target.value)}
                 >
-                  {(recipe?.scenes || []).map((scene) => (
-                    <option key={scene.id} value={scene.id}>
-                      {scene.label}
-                      {scene.role === "endcard"
-                        ? " (graphic — usually skip gen)"
-                        : ""}
-                    </option>
-                  ))}
+                  {(recipe?.scenes || []).map((scene) => {
+                    const celtra =
+                      scene.id === "setup" || scene.role === "setup"
+                        ? "F1"
+                        : scene.id === "punchline" || scene.role === "punchline"
+                          ? "F2"
+                          : scene.id === "endcard" || scene.role === "endcard"
+                            ? "F3"
+                            : null;
+                    return (
+                      <option key={scene.id} value={scene.id}>
+                        {scene.label}
+                        {celtra ? ` → Celtra ${celtra}` : ""}
+                        {scene.role === "endcard"
+                          ? " (graphic — usually skip gen)"
+                          : ""}
+                      </option>
+                    );
+                  })}
                 </select>
               </label>
               {genMissingForTag ? (

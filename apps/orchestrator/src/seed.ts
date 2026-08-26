@@ -386,6 +386,12 @@ async function main() {
       targetDurationSeconds: 10,
       copySuggestedSeconds: null,
     },
+    celtraTemplateProfileId: "guarantee_tranche3_social_video_v1",
+    comfyTemplate: {
+      baseWorkflowId: null,
+      campaignGuidelines: "",
+      steps: [],
+    },
     designTokenPackId: DEFAULT_BRAND_TOKEN_ID,
     rail: {
       hero: {

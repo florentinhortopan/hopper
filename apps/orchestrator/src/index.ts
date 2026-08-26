@@ -13,6 +13,7 @@ import {
   CampaignIngredientSetSchema,
   CampaignSchema,
   AssemblyRecipeSchema,
+  ComfyTemplateSchema,
   CopySchema,
   INGREDIENT_KINDS,
   IngredientRailSchema,
@@ -30,6 +31,7 @@ import {
   ensureSceneTag,
   importTokensFromText,
   normalizeAssemblyRecipe,
+  normalizeComfyTemplate,
   resolveMatrixCell,
   resolveOutputSizes,
   sanitizeTokenPackId,
@@ -873,6 +875,8 @@ app.patch("/campaigns/:id", async (req, res) => {
         modelProfileId: z.string().optional(),
         libraryId: z.string().optional(),
         assemblyRecipe: AssemblyRecipeSchema.optional(),
+        celtraTemplateProfileId: z.string().optional(),
+        comfyTemplate: ComfyTemplateSchema.optional(),
       })
       .parse(req.body);
     if (body.name !== undefined) campaign.name = body.name;
@@ -887,6 +891,12 @@ app.patch("/campaigns/:id", async (req, res) => {
     }
     if (body.assemblyRecipe !== undefined) {
       campaign.assemblyRecipe = normalizeAssemblyRecipe(body.assemblyRecipe);
+    }
+    if (body.celtraTemplateProfileId !== undefined) {
+      campaign.celtraTemplateProfileId = body.celtraTemplateProfileId;
+    }
+    if (body.comfyTemplate !== undefined) {
+      campaign.comfyTemplate = normalizeComfyTemplate(body.comfyTemplate);
     }
     res.json(await saveCampaign(campaign));
   } catch (err) {
