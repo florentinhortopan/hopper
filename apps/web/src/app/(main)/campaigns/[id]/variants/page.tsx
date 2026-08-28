@@ -25,7 +25,7 @@ import { PreviewPlayer } from "@/components/PreviewPlayer";
 import { ViewModeToggle } from "@/components/ViewModeToggle";
 import { api } from "@/lib/api";
 
-type Busy = "review" | null;
+type Busy = "review" | "package" | null;
 
 const VIEW_KEY = "attatta.variantReview.view";
 
@@ -111,6 +111,9 @@ export default function PreviewPage() {
   const [reviews, setReviews] = useState<ReviewEntry[]>([]);
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pkg, setPkg] = useState<{ zipPath: string; downloadUrl: string } | null>(
+    null,
+  );
   const [activeRef, setActiveRef] = useState<string | null>(null);
   const [activeSizeId, setActiveSizeId] = useState<string>("");
   const [view, setView] = useState<PlateDensity>("small");
@@ -228,6 +231,19 @@ export default function PreviewPage() {
     }
   }
 
+  async function packageKept() {
+    setBusy("package");
+    setError(null);
+    setPkg(null);
+    try {
+      setPkg(await api.package(id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function saveSceneTag(sceneTag: string) {
     if (!activeEntry || !campaign) return;
     setBusy("review");
@@ -265,13 +281,11 @@ export default function PreviewPage() {
   const totalAssets = visibleEntries.length * sizes.length;
 
   let variantsReady = 0;
-  let masters = 0;
   let failed = 0;
   for (const entry of visibleEntries) {
     for (const s of sizes) {
       const p = assetPhase(entry.cell, s.id);
       if (p.hasVariant) variantsReady += 1;
-      if (p.hasMaster) masters += 1;
       if (p.failed) failed += 1;
     }
   }
@@ -291,6 +305,14 @@ export default function PreviewPage() {
   const filtered =
     Boolean(filterIds?.size) || Boolean(archiveFilter?.size);
 
+  const keptCount = reviews.filter((r) => r.decision === "approved").length;
+  const allEntries = listPreviewCells(campaign);
+  const keptWithPlate = reviews.filter((r) => {
+    if (r.decision !== "approved") return false;
+    const entry = allEntries.find((e) => e.ref === r.cellId);
+    return entry ? cellHasGen(entry.cell) : false;
+  }).length;
+
   return (
     <div>
       <StepNav campaignId={id} current="variants" />
@@ -301,11 +323,11 @@ export default function PreviewPage() {
             Variant review
           </h1>
           <p className="mt-1 max-w-xl text-sm text-ink-700">
-            Inspect Comfy variant plates before assemble. Masters are built on{" "}
+            Keep generated plates, then package for Celtra. Remotion assemble on{" "}
             <a href={`/campaigns/${id}/review`} className="underline">
               Review
-            </a>
-            .
+            </a>{" "}
+            is optional preview only.
           </p>
         </div>
 
@@ -317,9 +339,9 @@ export default function PreviewPage() {
             </span>
           </li>
           <li className="rounded-full border border-warm-line bg-warm-paper px-3 py-1.5 text-ink-600">
-            Masters
+            Kept
             <span className="ml-1.5 font-mono normal-case tracking-normal opacity-80">
-              {masters}
+              {keptWithPlate}/{keptCount || 0}
             </span>
           </li>
           {failed ? (
@@ -348,6 +370,35 @@ export default function PreviewPage() {
       ) : null}
 
       <div className="mt-6 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={busy !== null || keptWithPlate < 1}
+          onClick={() => void packageKept()}
+          className="rounded-lg bg-ember-500 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-ember-600 disabled:opacity-40"
+          title={
+            keptWithPlate < 1
+              ? "Keep at least one variant with a generated plate"
+              : "Zip kept plates into a Celtra content matrix (no Remotion needed)"
+          }
+        >
+          {busy === "package"
+            ? "Packaging…"
+            : `Celtra package${keptWithPlate ? ` (${keptWithPlate})` : ""}`}
+        </button>
+        {pkg ? (
+          <a
+            className="rounded-lg bg-ink-900 px-4 py-2.5 text-sm font-medium text-warm-paper no-underline"
+            href={`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8787"}${pkg.downloadUrl}`}
+          >
+            Download zip
+          </a>
+        ) : null}
+        <a
+          href={`/campaigns/${id}/package`}
+          className="rounded-lg border border-warm-line bg-warm-paper px-4 py-2.5 text-sm font-medium text-ink-900 no-underline shadow-surface"
+        >
+          Package page
+        </a>
         <a
           href={`/campaigns/${id}/matrix`}
           className="rounded-lg border border-warm-line bg-warm-paper px-4 py-2.5 text-sm font-medium text-ink-900 no-underline shadow-surface"
@@ -356,15 +407,10 @@ export default function PreviewPage() {
         </a>
         <a
           href={`/campaigns/${id}/review`}
-          className="rounded-lg bg-ember-500 px-4 py-2.5 text-sm font-medium text-white no-underline transition-colors hover:bg-ember-600"
+          className="rounded-lg border border-warm-line bg-warm-paper px-4 py-2.5 text-sm font-medium text-ink-700 no-underline shadow-surface"
+          title="Optional Remotion timeline preview"
         >
-          Go to Review to assemble
-        </a>
-        <a
-          href={`/campaigns/${id}/ingredients`}
-          className="rounded-lg border border-warm-line bg-warm-paper px-4 py-2.5 text-sm font-medium text-ink-900 no-underline shadow-surface"
-        >
-          Ingredient plates
+          Assemble (optional)
         </a>
         <div className="ml-auto flex flex-wrap gap-3 text-sm text-ink-700">
           {filtered ? (
@@ -375,8 +421,8 @@ export default function PreviewPage() {
           <a href={`/campaigns/${id}/matrix`} className="underline">
             Matrix
           </a>
-          <a href={`/campaigns/${id}/review`} className="underline">
-            Review
+          <a href={`/campaigns/${id}/package`} className="underline">
+            Package
           </a>
         </div>
       </div>
@@ -556,10 +602,10 @@ export default function PreviewPage() {
                 </button>
               ) : null}
               <a
-                href={`/campaigns/${id}/review`}
+                href={`/campaigns/${id}/package`}
                 className="ml-auto text-xs font-medium uppercase tracking-[0.12em] text-ink-700 no-underline hover:text-ember-500"
               >
-                Review board →
+                Package kept →
               </a>
             </div>
           </div>

@@ -959,7 +959,10 @@ export function MagicCampaignModal({
                     </p>
                     <p className="mt-0.5 text-xs opacity-80">
                       {platesReady}/{cells.length || "—"} plates · {doneJobs}{" "}
-                      done · {failedJobs} failed · Approved {approved}
+                      done · {failedJobs} failed · Kept {approved}
+                      {approved > 0
+                        ? " — package anytime (no Remotion)"
+                        : " — Keep plates, then Celtra package"}
                     </p>
                   </div>
                   {running ? (
@@ -1256,11 +1259,14 @@ export function MagicCampaignModal({
               </button>
               <button
                 type="button"
-                className="rounded-md border border-ink-300 px-4 py-2 text-sm disabled:opacity-40"
+                className="rounded-md bg-ember-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
                 disabled={busy !== null || approved < 1}
                 onClick={() => void onPackage()}
+                title="Zip kept plates for Celtra — Remotion assemble not required"
               >
-                {busy === "package" ? "Packaging…" : "Celtra package"}
+                {busy === "package"
+                  ? "Packaging…"
+                  : `Celtra package${approved ? ` (${approved})` : ""}`}
               </button>
             </>
           ) : null}

@@ -33,7 +33,17 @@ function pickPlateAbsPath(cell: MatrixCell): string | null {
   for (const a of assets) {
     if (a.genPath?.trim()) {
       const abs = resolveDataMediaPath(a.genPath);
-      if (existsSync(abs)) return abs;
+      if (existsSync(abs)) {
+        // Prefer original still for Celtra image columns when wrap left a sibling PNG/JPG
+        const ext = path.extname(abs).toLowerCase();
+        if (ext === ".mp4" || ext === ".webm" || ext === ".mov") {
+          for (const stillExt of [".png", ".jpg", ".jpeg", ".webp"]) {
+            const sibling = abs.slice(0, -ext.length) + stillExt;
+            if (existsSync(sibling)) return sibling;
+          }
+        }
+        return abs;
+      }
     }
   }
   for (const a of assets) {

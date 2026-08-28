@@ -63,8 +63,8 @@ export default function PackagePage() {
       <StepNav campaignId={id} current="package" />
       <h1 className="font-display text-3xl">Celtra package</h1>
       <p className="mt-1 text-sm text-ink-700">
-        Emits the busy Social Video content matrix (XLSX + CSV) and frame plates —
-        Remotion masters optional.
+        Emits the Social Video content matrix (XLSX + CSV) and kept frame plates.
+        Uses generated plates directly — Remotion assemble is not required.
       </p>
 
       <div className="mt-6 rounded-xl border border-ink-200 bg-white p-5">

@@ -13,7 +13,7 @@ const STEPS = [
   ["matrix", "Matrix / variants"],
   ["variants", "Variant review"],
   ["queue", "Queue"],
-  ["review", "Review"],
+  ["review", "Assemble"],
   ["package", "Package"],
 ] as const;
 

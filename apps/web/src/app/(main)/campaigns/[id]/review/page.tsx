@@ -179,9 +179,13 @@ export default function ReviewPage() {
       <StepNav campaignId={id} current="review" />
       <h1 className="font-display text-4xl tracking-tight text-ink-900">Review board</h1>
       <p className="mt-1 text-sm text-ink-700">
-        Keep / Kill assembled masters. Assemble hi-res cuts here when variants are ready.{" "}
-        {withMedia.length} with media · {readyVariants} variants ready · {liveEntries.length} live ·{" "}
-        {archiveEntries.length} archive.
+        Optional Remotion assemble for local timeline preview. Celtra packaging uses kept
+        variant plates from{" "}
+        <a href={`/campaigns/${id}/variants`} className="underline">
+          Variant review
+        </a>{" "}
+        — no assemble required. {withMedia.length} assembled · {readyVariants} variants
+        ready · {liveEntries.length} live · {archiveEntries.length} archive.
       </p>
       <p className="mt-2 text-sm text-ink-700">
         Assemble recipe: {recipeSummary}.{" "}
@@ -197,13 +201,19 @@ export default function ReviewPage() {
       ) : null}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
+        <a
+          href={`/campaigns/${id}/package`}
+          className="rounded-md bg-ember-500 px-4 py-2 text-sm font-medium text-white no-underline"
+        >
+          Celtra package
+        </a>
         <button
           type="button"
           disabled={busy || readyVariants === 0}
-          className="rounded-md bg-ember-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+          className="rounded-md border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-900 disabled:opacity-40"
           onClick={() => void assemble("allReady")}
         >
-          {busy ? "Queueing…" : `Assemble ready variants (${readyVariants})`}
+          {busy ? "Queueing…" : `Assemble ready (${readyVariants})`}
         </button>
         <span className="text-xs text-ink-600">{recipeSummary}</span>
         <a
@@ -322,8 +332,8 @@ export default function ReviewPage() {
               Ingredient plates
             </a>
           </div>
-          <a href={`/campaigns/${id}/package`} className="mt-6 inline-block text-sm">
-            Package approved →
+          <a href={`/campaigns/${id}/package`} className="mt-6 inline-block text-sm underline">
+            Package kept for Celtra →
           </a>
         </div>
       </div>
