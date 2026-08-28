@@ -1066,23 +1066,36 @@ app.get("/campaigns/:id/ingredients", async (req, res) => {
   try {
     const campaign = await getCampaign(req.params.id);
     const libraryId = campaign.libraryId || DEFAULT_LIBRARY_ID;
-    const includeArchived =
-      req.query.includeArchived === "1" || req.query.includeArchived === "true";
-    const lib = await listLibrary(undefined, libraryId, { includeArchived });
+    const includeHidden =
+      req.query.includeArchived === "1" ||
+      req.query.includeArchived === "true" ||
+      req.query.includeHidden === "1" ||
+      req.query.includeHidden === "true";
+    const lib = await listLibrary(undefined, libraryId, {
+      includeArchived: includeHidden,
+    });
     const talentId =
       campaign.ingredientSet?.contractTalentId || campaign.rail.hero.talentTakeId;
     const talent = lib.find((i) => i.id === talentId);
     const active = new Set(campaign.ingredientSet?.activeIds ?? []);
+    const hidden = new Set(campaign.ingredientSet?.hiddenIds ?? []);
     const legacyAll = active.size === 0;
+    const items = lib
+      .filter((item) => includeHidden || !hidden.has(item.id))
+      .map((item) => {
+        const isHidden = hidden.has(item.id);
+        return {
+          ...item,
+          hidden: isHidden,
+          active: !isHidden && (legacyAll || active.has(item.id)),
+        };
+      });
     res.json({
       ingredientSet: campaign.ingredientSet,
       libraryId,
       contract: resolveTalentContract(talent),
       contractTalentId: talentId,
-      items: lib.map((item) => ({
-        ...item,
-        active: legacyAll || active.has(item.id),
-      })),
+      items,
     });
   } catch {
     res.status(404).json({ error: "Campaign not found" });
@@ -1092,7 +1105,13 @@ app.get("/campaigns/:id/ingredients", async (req, res) => {
 app.put("/campaigns/:id/ingredients", async (req, res) => {
   try {
     const campaign = await getCampaign(req.params.id);
-    campaign.ingredientSet = CampaignIngredientSetSchema.parse(req.body);
+    const parsed = CampaignIngredientSetSchema.parse(req.body);
+    const hidden = new Set(parsed.hiddenIds ?? []);
+    campaign.ingredientSet = {
+      ...parsed,
+      activeIds: (parsed.activeIds ?? []).filter((id) => !hidden.has(id)),
+      hiddenIds: [...hidden],
+    };
     const lib = await listLibrary(undefined, campaign.libraryId || DEFAULT_LIBRARY_ID);
     // Rail is derived from activations (Rail step dissolved)
     campaign.rail = deriveRailFromActivations(campaign, lib, campaign.rail);

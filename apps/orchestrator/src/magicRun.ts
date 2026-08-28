@@ -612,10 +612,16 @@ export async function prepareMagicCampaign(
       `Activations scoped to package (${act.activeIds.length} plate(s)) — not the full library`,
     );
   }
+  const priorHidden = campaign.ingredientSet?.hiddenIds ?? [];
+  const hiddenSet = new Set(priorHidden);
   campaign.ingredientSet = {
-    activeIds: act.activeIds,
+    activeIds: act.activeIds.filter((id) => !hiddenSet.has(id)),
+    hiddenIds: priorHidden,
     requireReadyMedia: false,
-    contractTalentId: act.contractTalentId,
+    contractTalentId:
+      act.contractTalentId && !hiddenSet.has(act.contractTalentId)
+        ? act.contractTalentId
+        : null,
   };
   campaign.rail = deriveRailFromActivations(campaign, lib, campaign.rail);
   campaign = buildMagicSparse(campaign, lib);

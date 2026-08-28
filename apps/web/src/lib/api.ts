@@ -508,7 +508,7 @@ export const api = {
       ingredientSet: CampaignIngredientSet;
       contract: TalentContract;
       contractTalentId: string;
-      items: (LibraryItem & { active: boolean })[];
+      items: (LibraryItem & { active: boolean; hidden?: boolean })[];
     }>(`/campaigns/${id}/ingredients${q}`);
   },
   putCampaignIngredients: (id: string, body: CampaignIngredientSet) =>

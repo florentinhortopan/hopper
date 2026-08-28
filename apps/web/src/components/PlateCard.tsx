@@ -55,8 +55,12 @@ type Props = {
   /** Default still/video for this card (page-level preference) */
   defaultOutputMode?: PlateOutputMode;
   onDelete?: () => void;
-  /** Soft-hide / restore plate (Library + Ingredients) */
+  /** Soft-hide / restore plate (Library pack-level, or campaign-scoped via labels) */
   onArchive?: () => void;
+  /** Override archived visual/state (e.g. campaign-hidden plates) */
+  isArchived?: boolean;
+  /** Button copy: library Archive vs campaign Remove */
+  archiveAction?: "archive" | "remove";
   onUploadFile?: (file: File) => void;
   onSaveHints?: (next: PlateMetaDraft) => void | Promise<void>;
   onDraftHints?: (next: PlateMetaDraft) => void;
@@ -290,6 +294,7 @@ function Actions({
   onDelete,
   onArchive,
   archived,
+  archiveAction = "archive",
   compact,
   etaHint,
   metaOnly,
@@ -305,6 +310,7 @@ function Actions({
   onDelete?: () => void;
   onArchive?: () => void;
   archived?: boolean;
+  archiveAction?: "archive" | "remove";
   compact?: boolean;
   etaHint?: string;
   /** talent / motion / copy — no Comfy generate */
@@ -407,9 +413,13 @@ function Actions({
           type="button"
           disabled={busy || generating}
           title={
-            archived
-              ? "Restore this plate to active lists"
-              : "Hide this plate from default lists (recoverable)"
+            archiveAction === "remove"
+              ? archived
+                ? "Restore this plate to this campaign"
+                : "Remove from this campaign only (stays in library)"
+              : archived
+                ? "Restore this plate to active lists"
+                : "Hide this plate from default lists (recoverable)"
           }
           className={`border border-warm-line bg-white text-ink-700 hover:border-ink-300 disabled:opacity-40 ${btn}`}
           onClick={(e) => {
@@ -417,13 +427,21 @@ function Actions({
             onArchive();
           }}
         >
-          {archived
-            ? compact
-              ? "Unarch"
-              : "Unarchive"
-            : compact
-              ? "Arch"
-              : "Archive"}
+          {archiveAction === "remove"
+            ? archived
+              ? compact
+                ? "Restore"
+                : "Restore"
+              : compact
+                ? "Remove"
+                : "Remove"
+            : archived
+              ? compact
+                ? "Unarch"
+                : "Unarchive"
+              : compact
+                ? "Arch"
+                : "Archive"}
         </button>
       ) : null}
       {onDelete ? (
@@ -565,6 +583,8 @@ export function PlateCard({
   defaultOutputMode = "video",
   onDelete,
   onArchive,
+  isArchived,
+  archiveAction = "archive",
   onUploadFile,
   onSaveHints,
   onDraftHints,
@@ -573,6 +593,7 @@ export function PlateCard({
   selected,
   onSelect,
 }: Props) {
+  const showAsArchived = isArchived ?? Boolean(item.archived);
   const status = plateStatusLabel(item);
   const ready = isPlateReady(item);
   /** Progressive disclosure — collapsed in every density by default */
@@ -737,7 +758,11 @@ export function PlateCard({
         density === "small" ? "text-[9px]" : "text-[10px]"
       } ${plateStatusTone(status)}`}
     >
-      {item.archived ? "archived" : status}
+      {showAsArchived
+        ? archiveAction === "remove"
+          ? "removed"
+          : "archived"
+        : status}
     </span>
   );
 
@@ -779,7 +804,8 @@ export function PlateCard({
         onGenerate={onGenerate}
         onDelete={onDelete}
         onArchive={onArchive}
-        archived={Boolean(item.archived)}
+        archived={showAsArchived}
+        archiveAction={archiveAction}
         compact={density !== "big"}
         etaHint={etaHint}
         metaOnly={metaOnly}
@@ -899,7 +925,7 @@ export function PlateCard({
 
   return (
     <article
-      className={`min-w-0 ${shell} ${blocked || item.archived ? "opacity-50" : ""} ${
+      className={`min-w-0 ${shell} ${blocked || showAsArchived ? "opacity-50" : ""} ${
         selected ? "ring-1 ring-ember-500/40" : ""
       }`}
     >

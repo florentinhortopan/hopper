@@ -27,6 +27,11 @@ export const DEFAULT_TALENT_CONTRACT: TalentContract = TalentContractSchema.pars
 export const CampaignIngredientSetSchema = z.object({
   /** Ingredient IDs activated for this campaign (empty = legacy: all library visible) */
   activeIds: z.array(z.string()).default([]),
+  /**
+   * Soft-removed from this campaign’s Ingredients list only.
+   * Plate stays in the library pack and other campaigns.
+   */
+  hiddenIds: z.array(z.string()).default([]),
   /** If true, rail/matrix/assemble only accept ingredients with ready media plates */
   requireReadyMedia: z.boolean().default(true),
   /** Talent take that owns contract evaluation for this batch */

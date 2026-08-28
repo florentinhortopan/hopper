@@ -24,8 +24,10 @@ export function resolveTalentContract(talent: LibraryItem | undefined): TalentCo
   return DEFAULT_TALENT_CONTRACT;
 }
 
-/** Empty activeIds = legacy “all library”; otherwise only activated IDs. */
+/** Empty activeIds = legacy “all library”; hiddenIds always exclude. */
 export function isIngredientActive(campaign: Campaign, ingredientId: string): boolean {
+  const hidden = campaign.ingredientSet?.hiddenIds ?? [];
+  if (hidden.includes(ingredientId)) return false;
   const ids = campaign.ingredientSet?.activeIds ?? [];
   if (ids.length === 0) return true;
   return ids.includes(ingredientId);
@@ -35,10 +37,12 @@ export function filterLibraryForCampaign(
   campaign: Campaign,
   lib: LibraryItem[],
 ): LibraryItem[] {
+  const hidden = new Set(campaign.ingredientSet?.hiddenIds ?? []);
+  const visible = hidden.size ? lib.filter((i) => !hidden.has(i.id)) : lib;
   const ids = campaign.ingredientSet?.activeIds ?? [];
-  if (ids.length === 0) return lib;
+  if (ids.length === 0) return visible;
   const set = new Set(ids);
-  return lib.filter((i) => set.has(i.id));
+  return visible.filter((i) => set.has(i.id));
 }
 
 /** Collect every ingredient id referenced by a rail (hero + allowlists). */
@@ -72,7 +76,9 @@ export function activateRailIngredients(
   const prev = campaign.ingredientSet?.activeIds ?? [];
   const next = new Set(prev);
   for (const id of railReferencedIds(rail)) {
-    if (known.has(id)) next.add(id);
+    if (!known.has(id)) continue;
+    if ((campaign.ingredientSet?.hiddenIds ?? []).includes(id)) continue;
+    next.add(id);
   }
   if (!campaign.ingredientSet) {
     campaign.ingredientSet = {

@@ -484,6 +484,7 @@ export const CampaignSchema = z.object({
   /** Per-campaign activation of global library ingredients */
   ingredientSet: CampaignIngredientSetSchema.default({
     activeIds: [],
+    hiddenIds: [],
     requireReadyMedia: true,
     contractTalentId: null,
   }),

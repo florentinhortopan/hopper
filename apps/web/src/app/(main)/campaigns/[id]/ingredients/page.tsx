@@ -21,7 +21,7 @@ import { StepNav } from "@/components/StepNav";
 import { ViewModeToggle } from "@/components/ViewModeToggle";
 import { api } from "@/lib/api";
 
-type Row = LibraryItem & { active: boolean };
+type Row = LibraryItem & { active: boolean; hidden?: boolean };
 
 const KINDS: LibraryKind[] = [
   "talent",
@@ -188,28 +188,36 @@ export default function CampaignIngredientsPage() {
     void refresh(showArchived);
   }, [id, showArchived]);
 
-  async function remove(itemId: string) {
-    if (
-      !confirm(
-        "Permanently delete this plate from the library pack? This cannot be undone.",
+  async function softRemove(item: Row) {
+    if (!set) return;
+    const hidden = new Set(set.hiddenIds ?? []);
+    const restoring = hidden.has(item.id) || Boolean(item.hidden);
+    if (!restoring) {
+      if (
+        !confirm(
+          "Remove this plate from this campaign only? It stays in the library and other campaigns.",
+        )
       )
-    )
-      return;
-    setBusyId(itemId);
-    try {
-      await api.deleteLibraryItem(itemId);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusyId(null);
+        return;
+      hidden.add(item.id);
+    } else {
+      hidden.delete(item.id);
     }
-  }
-
-  async function archive(item: Row) {
+    const nextHidden = [...hidden];
+    const activeIds = rows
+      .filter((r) => r.active && r.id !== item.id)
+      .map((r) => r.id)
+      .filter((id) => !hidden.has(id));
+    // When restoring, leave activation off until the operator opts in again
     setBusyId(item.id);
     try {
-      await api.patchLibraryItem(item.id, { archived: !item.archived });
+      const camp = await api.putCampaignIngredients(id, {
+        ...set,
+        activeIds,
+        hiddenIds: nextHidden,
+        requireReadyMedia: set.requireReadyMedia,
+      });
+      if (camp.ingredientSet) setSet(camp.ingredientSet);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -320,10 +328,13 @@ export default function CampaignIngredientsPage() {
     if (!set) return;
     setSaving(true);
     try {
-      const activeIds = rows.filter((r) => r.active).map((r) => r.id);
+      const activeIds = rows
+        .filter((r) => r.active && !r.hidden)
+        .map((r) => r.id);
       const camp = await api.putCampaignIngredients(id, {
         ...set,
         activeIds,
+        hiddenIds: set.hiddenIds ?? [],
         requireReadyMedia: set.requireReadyMedia,
       });
       if (camp.ingredientSet) setSet(camp.ingredientSet);
@@ -362,11 +373,16 @@ export default function CampaignIngredientsPage() {
       );
       const item = await api.createLibraryItem(form);
       const nextActive = [
-        ...new Set([...rows.filter((r) => r.active).map((r) => r.id), item.id]),
+        ...new Set([
+          ...rows.filter((r) => r.active && !r.hidden).map((r) => r.id),
+          item.id,
+        ]),
       ];
+      const nextHidden = (set.hiddenIds ?? []).filter((hid) => hid !== item.id);
       const camp = await api.putCampaignIngredients(id, {
         ...set,
         activeIds: nextActive,
+        hiddenIds: nextHidden,
         requireReadyMedia: set.requireReadyMedia,
       });
       if (camp.ingredientSet) setSet(camp.ingredientSet);
@@ -822,7 +838,7 @@ export default function CampaignIngredientsPage() {
               checked={showArchived}
               onChange={(e) => setShowArchived(e.target.checked)}
             />
-            Show archived
+            Show removed
           </label>
         </div>
       </div>
@@ -861,8 +877,9 @@ export default function CampaignIngredientsPage() {
                 onDraftHints={(next) => draftHints(item.id, next)}
                 onSaveHints={(next) => saveHints(item.id, next)}
                 onChangeKind={(nextKind) => void changeKind(item.id, nextKind)}
-                onArchive={() => void archive(item)}
-                onDelete={() => void remove(item.id)}
+                isArchived={Boolean(item.hidden)}
+                archiveAction="remove"
+                onArchive={() => void softRemove(item)}
                 mediaRev={mediaRev[item.id]}
               />
             </div>
