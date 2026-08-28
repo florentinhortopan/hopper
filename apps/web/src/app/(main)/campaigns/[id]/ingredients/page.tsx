@@ -19,6 +19,7 @@ import {
 } from "@/components/PlateCard";
 import { StepNav } from "@/components/StepNav";
 import { ViewModeToggle } from "@/components/ViewModeToggle";
+import { DesignerPublishBanner } from "@/components/DesignerPublishBanner";
 import { api } from "@/lib/api";
 
 type Row = LibraryItem & { active: boolean; hidden?: boolean };
@@ -578,6 +579,13 @@ export default function CampaignIngredientsPage() {
   return (
     <div>
       <StepNav campaignId={id} current="ingredients" />
+
+      <DesignerPublishBanner
+        className="mb-4"
+        campaignId={id}
+        libraryId={campaign?.libraryId}
+        onPublish={() => void refresh()}
+      />
 
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>

@@ -13,6 +13,7 @@ import type {
 } from "@attatta/shared";
 import { api } from "@/lib/api";
 import { useImportEta } from "@/lib/useImportEta";
+import { DesignerPublishBanner } from "@/components/DesignerPublishBanner";
 import { JobProgressRow } from "@/components/JobProgressRow";
 import { VariantMediaPreview } from "@/components/VariantMediaPreview";
 
@@ -630,6 +631,14 @@ export function MagicCampaignModal({
             <pre className="mb-4 whitespace-pre-wrap rounded-lg bg-red-50 p-3 text-xs text-red-800">
               {error}
             </pre>
+          ) : null}
+
+          {campaign ? (
+            <DesignerPublishBanner
+              className="mb-4"
+              campaignId={campaign.id}
+              libraryId={campaign.libraryId}
+            />
           ) : null}
 
           {busy === "boot" ? (

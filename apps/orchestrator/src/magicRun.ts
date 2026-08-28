@@ -110,6 +110,7 @@ export async function createMagicCampaign(opts: {
     matrix: { cells: [], cap: 20, retired: [] },
     ingredientSet: {
       activeIds: [],
+      hiddenIds: [],
       requireReadyMedia: false,
       contractTalentId: talent?.id ?? null,
     },

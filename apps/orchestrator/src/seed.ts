@@ -424,6 +424,7 @@ async function main() {
         ...copyPlates.map((c) => c.id),
         // draft blazer exists in library but deactivated for this campaign
       ],
+      hiddenIds: [],
       requireReadyMedia: false,
       contractTalentId: "ted_front_offer_03",
     },

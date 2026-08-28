@@ -30,3 +30,41 @@ comfy/
 2. Adapter loads `workflows/<workflowId>/<profileId>.api.json` + `.map.json`, falling back to `COMFY_MODEL_FALLBACK_PROFILE`.  
 
 Operators never pick UNET files. They pick (or inherit) a **profile label**. Creative techs author one API graph per profile they want to support.
+
+## Designer publish → ATTATTA Library
+
+Designers fine-tune in ComfyUI, then push the finished plate into ATTATTA so marketers see it on **Ingredients** (Advanced) and **Magic**.
+
+### Orchestrator
+
+- `POST /webhooks/comfy-publish` — multipart `file` + `kind`, `label`, optional `libraryId`, `campaignId`, `replacesId`, `activate`, `tags`, `promptHint`
+- Auth header `X-Attatta-Publish-Key` when `ATTATTA_COMFY_PUBLISH_KEY` is set (open if unset, for local)
+- `GET /webhooks/comfy-publish/recent` — poll for UI banners
+
+With `campaignId` + `activate=true` (default), the plate is added to that campaign’s activations (both Advanced and Magic).
+
+### ComfyUI custom node
+
+```text
+comfy/custom_nodes/attatta_publish/
+```
+
+Install (symlink into your ComfyUI `custom_nodes/`), restart Comfy:
+
+```bash
+ln -s "$(pwd)/comfy/custom_nodes/attatta_publish" \
+  /path/to/ComfyUI/custom_nodes/attatta_publish
+```
+
+Add **ATTATTA Publish Ingredient** as the last node. Connect IMAGE (or set `file_path` to a saved mp4). Set:
+
+| Field | Example |
+|-------|---------|
+| `attatta_base_url` | `http://127.0.0.1:8787` (or Railway public API) |
+| `publish_key` | same as `ATTATTA_COMFY_PUBLISH_KEY` |
+| `kind` | `background` / `hands` / … |
+| `campaign_id` | campaign uuid (optional — auto-activate) |
+| `replaces_id` | existing ingredient id to overwrite media |
+
+Env shortcuts inside Comfy: `ATTATTA_BASE_URL`, `ATTATTA_COMFY_PUBLISH_KEY`.
+

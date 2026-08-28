@@ -19,6 +19,18 @@ import type {
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8787";
 
+export type ComfyPublishEvent = {
+  id: string;
+  at: string;
+  item: LibraryItem;
+  libraryId: string;
+  campaignId: string | null;
+  activated: boolean;
+  replacedId: string | null;
+  label: string;
+  kind: LibraryKind;
+};
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: HeadersInit = {
     ...(init?.headers || {}),
@@ -432,6 +444,22 @@ export const api = {
     ),
   createLibraryItem: (form: FormData) =>
     req<LibraryItem>("/library", { method: "POST", body: form }),
+  recentComfyPublishes: (opts?: {
+    since?: string;
+    libraryId?: string;
+    campaignId?: string;
+    limit?: number;
+  }) => {
+    const q = new URLSearchParams();
+    if (opts?.since) q.set("since", opts.since);
+    if (opts?.libraryId) q.set("libraryId", opts.libraryId);
+    if (opts?.campaignId) q.set("campaignId", opts.campaignId);
+    if (opts?.limit) q.set("limit", String(opts.limit));
+    const qs = q.toString();
+    return req<ComfyPublishEvent[]>(
+      qs ? `/webhooks/comfy-publish/recent?${qs}` : "/webhooks/comfy-publish/recent",
+    );
+  },
   patchLibraryItem: (
     id: string,
     body: {

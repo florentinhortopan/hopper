@@ -83,6 +83,7 @@ export function activateRailIngredients(
   if (!campaign.ingredientSet) {
     campaign.ingredientSet = {
       activeIds: [...next],
+      hiddenIds: [],
       requireReadyMedia: true,
       contractTalentId: rail.hero.talentTakeId || null,
     };

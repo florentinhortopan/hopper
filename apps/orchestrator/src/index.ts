@@ -111,6 +111,11 @@ import {
 } from "./importConnectors.js";
 import { getLlmStatus } from "./llmClient.js";
 import {
+  assertComfyPublishAuth,
+  listRecentComfyPublishes,
+  publishComfyIngredient,
+} from "./comfyPublish.js";
+import {
   deriveRailFromActivations,
   evaluateCampaignPolicy,
   pruneRailToActive,
@@ -678,6 +683,69 @@ app.post("/library/:id/media", upload.single("file"), async (req, res) => {
   }
 });
 
+/**
+ * Designer handoff from ComfyUI (custom Publish node or webhook).
+ * Multipart: file + kind, label, libraryId?, campaignId?, replacesId?, activate?, tags?, promptHint?
+ * Auth: X-Attatta-Publish-Key when ATTATTA_COMFY_PUBLISH_KEY is set.
+ */
+app.post("/webhooks/comfy-publish", upload.single("file"), async (req, res) => {
+  try {
+    assertComfyPublishAuth(
+      req.header("x-attatta-publish-key") ||
+        (typeof req.body?.publishKey === "string" ? req.body.publishKey : null),
+    );
+    if (!req.file) {
+      res.status(400).json({ error: "file required" });
+      return;
+    }
+    const tags = String(req.body?.tags || "")
+      .split(",")
+      .map((t: string) => t.trim())
+      .filter(Boolean);
+    const activateRaw = req.body?.activate;
+    const activate =
+      activateRaw === undefined ||
+      activateRaw === "" ||
+      activateRaw === "1" ||
+      activateRaw === "true" ||
+      activateRaw === true;
+    const event = await publishComfyIngredient({
+      kind: String(req.body?.kind || ""),
+      label: String(req.body?.label || "").trim(),
+      libraryId: req.body?.libraryId ? String(req.body.libraryId) : null,
+      campaignId: req.body?.campaignId ? String(req.body.campaignId) : null,
+      replacesId: req.body?.replacesId ? String(req.body.replacesId) : null,
+      activate,
+      tags,
+      promptHint: req.body?.promptHint ? String(req.body.promptHint) : undefined,
+      filename: req.file.originalname || "comfy-publish.bin",
+      buffer: req.file.buffer,
+    });
+    res.status(201).json(event);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const status = /Invalid or missing X-Attatta-Publish-Key/i.test(msg)
+      ? 401
+      : 400;
+    res.status(status).json({ error: msg });
+  }
+});
+
+app.get("/webhooks/comfy-publish/recent", async (req, res) => {
+  try {
+    res.json(
+      listRecentComfyPublishes({
+        since: req.query.since ? String(req.query.since) : null,
+        libraryId: req.query.libraryId ? String(req.query.libraryId) : null,
+        campaignId: req.query.campaignId ? String(req.query.campaignId) : null,
+        limit: req.query.limit ? Number(req.query.limit) : 20,
+      }),
+    );
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 app.patch("/library/:id", async (req, res) => {
   try {
     const patch = LibraryItemPatchSchema.parse(req.body);
@@ -841,6 +909,7 @@ app.post("/campaigns", async (req, res) => {
     matrix: { cells: [], cap: 20 },
     ingredientSet: {
       activeIds: lib.map((i) => i.id),
+      hiddenIds: [],
       requireReadyMedia: true,
       contractTalentId: talent?.id ?? null,
     },
