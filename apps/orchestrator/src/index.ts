@@ -215,8 +215,14 @@ app.get("/library", async (req, res) => {
     /* non-fatal — still return library */
   }
   const parsed = LibraryKindSchema.safeParse(req.query.kind);
+  const includeArchived =
+    req.query.includeArchived === "1" || req.query.includeArchived === "true";
   res.json(
-    await listLibrary(parsed.success ? parsed.data : undefined, libraryId),
+    await listLibrary(
+      parsed.success ? parsed.data : undefined,
+      libraryId,
+      { includeArchived },
+    ),
   );
 });
 
@@ -1060,7 +1066,9 @@ app.get("/campaigns/:id/ingredients", async (req, res) => {
   try {
     const campaign = await getCampaign(req.params.id);
     const libraryId = campaign.libraryId || DEFAULT_LIBRARY_ID;
-    const lib = await listLibrary(undefined, libraryId);
+    const includeArchived =
+      req.query.includeArchived === "1" || req.query.includeArchived === "true";
+    const lib = await listLibrary(undefined, libraryId, { includeArchived });
     const talentId =
       campaign.ingredientSet?.contractTalentId || campaign.rail.hero.talentTakeId;
     const talent = lib.find((i) => i.id === talentId);

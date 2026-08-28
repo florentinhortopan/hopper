@@ -100,6 +100,8 @@ export const LibraryItemSchema = z.object({
   sourceTalentId: z.string().nullable().default(null),
   /** Structured copy for kind=copy plates */
   copy: CopySchema.nullish(),
+  /** Soft-hide from default library / Ingredients lists (recoverable) */
+  archived: z.boolean().default(false),
 });
 export type LibraryItem = z.infer<typeof LibraryItemSchema>;
 
@@ -522,6 +524,7 @@ export const LibraryItemPatchSchema = z.object({
   sourceTalentId: z.string().nullable().optional(),
   status: IngredientStatusSchema.optional(),
   copy: CopySchema.nullable().optional(),
+  archived: z.boolean().optional(),
 });
 export type LibraryItemPatch = z.infer<typeof LibraryItemPatchSchema>;
 

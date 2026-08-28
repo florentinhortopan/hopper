@@ -87,6 +87,7 @@ export default function LibraryPage() {
   ]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [view, setView] = useState<PlateDensity>("small");
   const [mediaRev, setMediaRev] = useState<Record<string, number>>({});
   const [genById, setGenById] = useState<Record<string, PlateGenProgress & { jobId: string }>>(
@@ -128,11 +129,11 @@ export default function LibraryPage() {
     }
   }
 
-  async function refresh(packId = libraryId) {
+  async function refresh(packId = libraryId, includeArchived = showArchived) {
     try {
       const [k, lib, models, packList] = await Promise.all([
         api.ingredientKinds(),
-        api.library(undefined, packId),
+        api.library(undefined, packId, { includeArchived }),
         api.models().catch(() => null),
         api.listLibraryPacks().catch(() => [] as LibraryPackSummary[]),
       ]);
@@ -159,8 +160,8 @@ export default function LibraryPage() {
   }
 
   useEffect(() => {
-    void refresh(libraryId);
-  }, [libraryId]);
+    void refresh(libraryId, showArchived);
+  }, [libraryId, showArchived]);
 
   const activePack = packs.find((p) => p.id === libraryId) || null;
 
@@ -475,7 +476,12 @@ export default function LibraryPage() {
   }
 
   async function remove(id: string) {
-    if (!confirm("Remove this ingredient plate from the library?")) return;
+    if (
+      !confirm(
+        "Permanently delete this plate from the library? This cannot be undone.",
+      )
+    )
+      return;
     setBusy(true);
     try {
       await api.deleteLibraryItem(id);
@@ -485,6 +491,18 @@ export default function LibraryPage() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function archive(item: LibraryItem) {
+    setBusyId(item.id);
+    try {
+      await api.patchLibraryItem(item.id, { archived: !item.archived });
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -637,11 +655,21 @@ export default function LibraryPage() {
                   <span className="text-ink-400"> · {kind}</span>
                 ) : null}
               </p>
-              <ViewModeToggle
-                value={view}
-                onChange={changeView}
-                size="compact"
-              />
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-1.5 text-[11px] text-ink-700">
+                  <input
+                    type="checkbox"
+                    checked={showArchived}
+                    onChange={(e) => setShowArchived(e.target.checked)}
+                  />
+                  Show archived
+                </label>
+                <ViewModeToggle
+                  value={view}
+                  onChange={changeView}
+                  size="compact"
+                />
+              </div>
             </div>
           </div>
 
@@ -658,6 +686,7 @@ export default function LibraryPage() {
                 genProgress={genById[item.id] ?? null}
                 onGenerate={(mode) => void generate(item.id, mode)}
                 onDelete={() => void remove(item.id)}
+                onArchive={() => void archive(item)}
                 onUploadFile={(f) => void upload(item.id, f)}
                 onDraftHints={(next) => draftHints(item.id, next)}
                 onSaveHints={(next) => saveHints(item.id, next)}

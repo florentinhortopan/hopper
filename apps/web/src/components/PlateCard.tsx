@@ -55,6 +55,8 @@ type Props = {
   /** Default still/video for this card (page-level preference) */
   defaultOutputMode?: PlateOutputMode;
   onDelete?: () => void;
+  /** Soft-hide / restore plate (Library + Ingredients) */
+  onArchive?: () => void;
   onUploadFile?: (file: File) => void;
   onSaveHints?: (next: PlateMetaDraft) => void | Promise<void>;
   onDraftHints?: (next: PlateMetaDraft) => void;
@@ -286,6 +288,8 @@ function Actions({
   onUploadFile,
   onGenerate,
   onDelete,
+  onArchive,
+  archived,
   compact,
   etaHint,
   metaOnly,
@@ -299,6 +303,8 @@ function Actions({
   onUploadFile?: (file: File) => void;
   onGenerate?: (mode: PlateOutputMode) => void;
   onDelete?: () => void;
+  onArchive?: () => void;
+  archived?: boolean;
   compact?: boolean;
   etaHint?: string;
   /** talent / motion / copy — no Comfy generate */
@@ -328,8 +334,8 @@ function Actions({
             disabled={busy || generating}
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) onUploadFile(f);
               e.target.value = "";
+              if (f) onUploadFile(f);
             }}
             onClick={(e) => e.stopPropagation()}
           />
@@ -396,11 +402,35 @@ function Actions({
           {metaOnly ? "Edit fields" : "Upload only"}
         </span>
       ) : null}
+      {onArchive ? (
+        <button
+          type="button"
+          disabled={busy || generating}
+          title={
+            archived
+              ? "Restore this plate to active lists"
+              : "Hide this plate from default lists (recoverable)"
+          }
+          className={`border border-warm-line bg-white text-ink-700 hover:border-ink-300 disabled:opacity-40 ${btn}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onArchive();
+          }}
+        >
+          {archived
+            ? compact
+              ? "Unarch"
+              : "Unarchive"
+            : compact
+              ? "Arch"
+              : "Archive"}
+        </button>
+      ) : null}
       {onDelete ? (
         <button
           type="button"
           disabled={busy || generating}
-          title="Delete this plate from the library"
+          title="Permanently delete this plate from the library"
           className={`border border-warm-line bg-white text-ink-700 hover:border-red-300 hover:text-red-800 disabled:opacity-40 ${btn}`}
           onClick={(e) => {
             e.stopPropagation();
@@ -534,6 +564,7 @@ export function PlateCard({
   genProgress,
   defaultOutputMode = "video",
   onDelete,
+  onArchive,
   onUploadFile,
   onSaveHints,
   onDraftHints,
@@ -706,7 +737,7 @@ export function PlateCard({
         density === "small" ? "text-[9px]" : "text-[10px]"
       } ${plateStatusTone(status)}`}
     >
-      {status}
+      {item.archived ? "archived" : status}
     </span>
   );
 
@@ -747,6 +778,8 @@ export function PlateCard({
         onUploadFile={onUploadFile}
         onGenerate={onGenerate}
         onDelete={onDelete}
+        onArchive={onArchive}
+        archived={Boolean(item.archived)}
         compact={density !== "big"}
         etaHint={etaHint}
         metaOnly={metaOnly}
@@ -866,7 +899,7 @@ export function PlateCard({
 
   return (
     <article
-      className={`min-w-0 ${shell} ${blocked ? "opacity-50" : ""} ${
+      className={`min-w-0 ${shell} ${blocked || item.archived ? "opacity-50" : ""} ${
         selected ? "ring-1 ring-ember-500/40" : ""
       }`}
     >

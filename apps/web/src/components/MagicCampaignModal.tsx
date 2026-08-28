@@ -89,7 +89,7 @@ function advancedHref(campaignId: string, itemId: string): string {
     attire: `/campaigns/${campaignId}/ingredients`,
     prop: `/campaigns/${campaignId}/ingredients`,
     motion: `/campaigns/${campaignId}/ingredients`,
-    copy: `/campaigns/${campaignId}/ingredients`,
+    copy: `/campaigns/${campaignId}/ingredients?kind=copy&from=magic`,
     tokens: `/campaigns/${campaignId}/tokens`,
     connectors: `/campaigns/${campaignId}/settings`,
     variants: `/campaigns/${campaignId}/matrix`,

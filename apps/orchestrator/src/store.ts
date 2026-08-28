@@ -327,12 +327,17 @@ async function readKindInPack(
 export async function listLibrary(
   kind?: LibraryItem["kind"],
   libraryId = DEFAULT_LIBRARY_ID,
+  opts?: { includeArchived?: boolean },
 ) {
-  if (kind) return readKindInPack(kind, libraryId);
-  const lists = await Promise.all(
-    LIBRARY_KINDS.map((k) => readKindInPack(k, libraryId)),
-  );
-  return lists.flat();
+  const items = kind
+    ? await readKindInPack(kind, libraryId)
+    : (
+        await Promise.all(
+          LIBRARY_KINDS.map((k) => readKindInPack(k, libraryId)),
+        )
+      ).flat();
+  if (opts?.includeArchived) return items;
+  return items.filter((i) => !i.archived);
 }
 
 export function libraryAbsolutePath(item: LibraryItem): string {

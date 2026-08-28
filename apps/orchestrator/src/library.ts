@@ -532,11 +532,54 @@ export async function patchLibraryItem(
       next.mediaType = "json";
       if (isPlateReady(next)) next.status = "ready";
     }
+    const wasArchived = Boolean(prev.archived);
+    const nowArchived = Boolean(next.archived);
     items[idx] = next;
     await writeKind(kind, items, libraryId);
+    if (!wasArchived && nowArchived) {
+      await pruneLibraryItemFromCampaigns(id);
+    }
     return next;
   }
   throw new Error(`Ingredient not found: ${id}`);
+}
+
+/** Drop plate from campaign activations / rail so Ingredients don't keep a ghost id. */
+async function pruneLibraryItemFromCampaigns(id: string): Promise<void> {
+  try {
+    const { listCampaigns, listLibrary, saveCampaign } = await import("./store.js");
+    const { pruneRailToActive } = await import("./policy.js");
+    for (const campaign of await listCampaigns({ includeArchived: true })) {
+      const lib = await listLibrary(
+        undefined,
+        campaign.libraryId || DEFAULT_LIBRARY_ID,
+        { includeArchived: true },
+      );
+      let dirty = false;
+      const active = campaign.ingredientSet?.activeIds ?? [];
+      if (active.includes(id)) {
+        campaign.ingredientSet = {
+          ...campaign.ingredientSet!,
+          activeIds: active.filter((x) => x !== id),
+          contractTalentId:
+            campaign.ingredientSet?.contractTalentId === id
+              ? null
+              : campaign.ingredientSet?.contractTalentId ?? null,
+        };
+        dirty = true;
+      }
+      if (campaign.rail) {
+        const pruned = pruneRailToActive(campaign, campaign.rail, lib);
+        if (JSON.stringify(pruned) !== JSON.stringify(campaign.rail)) {
+          campaign.rail = pruned;
+          dirty = true;
+        }
+      }
+      if (dirty) await saveCampaign(campaign);
+    }
+  } catch {
+    /* best-effort campaign cleanup */
+  }
 }
 
 export async function deleteLibraryItem(
@@ -558,40 +601,7 @@ export async function deleteLibraryItem(
         /* file may already be gone */
       }
     }
-    // Drop refs from campaigns so Ingredients / rail don't keep a ghost id
-    try {
-      const { listCampaigns, listLibrary, saveCampaign } = await import("./store.js");
-      const { pruneRailToActive } = await import("./policy.js");
-      for (const campaign of await listCampaigns({ includeArchived: true })) {
-        const lib = await listLibrary(
-          undefined,
-          campaign.libraryId || DEFAULT_LIBRARY_ID,
-        );
-        let dirty = false;
-        const active = campaign.ingredientSet?.activeIds ?? [];
-        if (active.includes(id)) {
-          campaign.ingredientSet = {
-            ...campaign.ingredientSet!,
-            activeIds: active.filter((x) => x !== id),
-            contractTalentId:
-              campaign.ingredientSet?.contractTalentId === id
-                ? null
-                : campaign.ingredientSet?.contractTalentId ?? null,
-          };
-          dirty = true;
-        }
-        if (campaign.rail) {
-          const pruned = pruneRailToActive(campaign, campaign.rail, lib);
-          if (JSON.stringify(pruned) !== JSON.stringify(campaign.rail)) {
-            campaign.rail = pruned;
-            dirty = true;
-          }
-        }
-        if (dirty) await saveCampaign(campaign);
-      }
-    } catch {
-      /* best-effort campaign cleanup */
-    }
+    await pruneLibraryItemFromCampaigns(id);
     return;
   }
   throw new Error(`Ingredient not found: ${id}`);

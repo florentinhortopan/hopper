@@ -313,10 +313,11 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
-  library: (kind?: string, libraryId?: string) => {
+  library: (kind?: string, libraryId?: string, opts?: { includeArchived?: boolean }) => {
     const q = new URLSearchParams();
     if (kind) q.set("kind", kind);
     if (libraryId) q.set("libraryId", libraryId);
+    if (opts?.includeArchived) q.set("includeArchived", "1");
     const qs = q.toString();
     return req<LibraryItem[]>(qs ? `/library?${qs}` : "/library");
   },
@@ -439,6 +440,7 @@ export const api = {
       tags?: string[];
       promptHint?: string;
       negativeHint?: string;
+      archived?: boolean;
       locks?: { face_locked?: boolean; voice_locked?: boolean; performance_locked?: boolean };
     },
   ) => req<LibraryItem>(`/library/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
@@ -500,13 +502,15 @@ export const api = {
     }>(`/campaigns/${id}/asset-plan`),
   promptPack: (campaignId: string, cellId: string) =>
     req<PromptPack>(`/campaigns/${campaignId}/cells/${cellId}/prompt-pack`),
-  campaignIngredients: (id: string) =>
-    req<{
+  campaignIngredients: (id: string, opts?: { includeArchived?: boolean }) => {
+    const q = opts?.includeArchived ? "?includeArchived=1" : "";
+    return req<{
       ingredientSet: CampaignIngredientSet;
       contract: TalentContract;
       contractTalentId: string;
       items: (LibraryItem & { active: boolean })[];
-    }>(`/campaigns/${id}/ingredients`),
+    }>(`/campaigns/${id}/ingredients${q}`);
+  },
   putCampaignIngredients: (id: string, body: CampaignIngredientSet) =>
     req<Campaign>(`/campaigns/${id}/ingredients`, {
       method: "PUT",

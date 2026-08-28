@@ -506,9 +506,12 @@ export async function prepareMagicCampaign(
     );
   }
 
-  // Copy plates — package only when import was used; otherwise draft from brief.
-  // Never treat Magic-drafted library leftovers as package contents.
+  // Copy plates — package, AI (LLM on), or operator-activated on Ingredients.
+  // Do NOT invent heuristic copy ingredients when LLM is unavailable.
   const importSet = hadImport ? new Set(importIngredientIds) : null;
+  const priorActiveCopyIds = (campaign.ingredientSet?.activeIds ?? []).filter(
+    (id) => lib.find((i) => i.id === id)?.kind === "copy",
+  );
   const packageCopy = importSet
     ? lib.filter(
         (i) =>
@@ -522,35 +525,63 @@ export async function prepareMagicCampaign(
     : "missing";
   let copyDetail = packageCopy.length
     ? `${packageCopy.length} copy plate(s) from package`
-    : "";
+    : "Skipped — add & activate copy on Ingredients, then Re-check";
   const draftedCopyIds: string[] = [];
-  if (!packageCopy.length && campaign.brief.prompt?.trim()) {
+  if (!packageCopy.length && campaign.brief.prompt?.trim() && llm.configured) {
     const drafted = await draftCopyFromBrief(campaign.brief);
-    let n = 0;
-    for (const copy of drafted.copies) {
-      const item = await createLibraryIngredient({
-        kind: "copy",
-        label: `Magic copy ${n + 1}`,
-        // Do NOT tag with import: — that would fake "from package" on resume.
-        tags: ["magic", MAGIC_PRESET_ID],
-        copy,
-        promptHint: copy.setup,
-        libraryId: campaign.libraryId,
-        allowNoMedia: true,
-      });
-      draftedCopyIds.push(item.id);
-      n += 1;
+    if (drafted.source === "ai" && drafted.copies.length) {
+      let n = 0;
+      for (const copy of drafted.copies) {
+        const item = await createLibraryIngredient({
+          kind: "copy",
+          label: `Magic copy ${n + 1}`,
+          // Do NOT tag with import: — that would fake "from package" on resume.
+          tags: ["magic", MAGIC_PRESET_ID],
+          copy,
+          promptHint: copy.setup,
+          libraryId: campaign.libraryId,
+          allowNoMedia: true,
+        });
+        draftedCopyIds.push(item.id);
+        n += 1;
+      }
+      copySource = "ai";
+      copyDetail = `${drafted.copies.length} AI-filled from brief — ${drafted.rationale}`;
+      lib = await listLibrary(undefined, campaign.libraryId || DEFAULT_LIBRARY_ID);
+    } else if (priorActiveCopyIds.length) {
+      copySource = "preset";
+      copyDetail = `${priorActiveCopyIds.length} activated on Ingredients`;
+    } else {
+      copySource = "missing";
+      copyDetail =
+        "LLM did not return copy — Edit → add & activate on Ingredients, then Re-check";
+      warnings.push(copyDetail);
     }
-    copySource = drafted.source === "ai" ? "ai" : "preset";
-    copyDetail = `${drafted.copies.length} filled from brief — ${drafted.rationale}`;
-    lib = await listLibrary(undefined, campaign.libraryId || DEFAULT_LIBRARY_ID);
+  } else if (!packageCopy.length && priorActiveCopyIds.length) {
+    copySource = "preset";
+    copyDetail = `${priorActiveCopyIds.length} activated on Ingredients`;
+  } else if (!packageCopy.length && !llm.configured) {
+    copySource = "missing";
+    copyDetail =
+      "LLM unavailable — skipped. Edit → add & activate copy on Ingredients, then Re-check";
+    warnings.push(copyDetail);
   }
 
   // Prompt hints — prefer active/import scope so we don't rewrite the whole library
   const hintTargets = (
     importSet
-      ? lib.filter((i) => importSet.has(i.id) || draftedCopyIds.includes(i.id))
-      : lib.filter((i) => draftedCopyIds.includes(i.id) || i.kind !== "copy")
+      ? lib.filter(
+          (i) =>
+            importSet.has(i.id) ||
+            draftedCopyIds.includes(i.id) ||
+            priorActiveCopyIds.includes(i.id),
+        )
+      : lib.filter(
+          (i) =>
+            draftedCopyIds.includes(i.id) ||
+            priorActiveCopyIds.includes(i.id) ||
+            i.kind !== "copy",
+        )
   ).slice(0, 40);
   const hintResult = await draftPromptHints(
     campaign.brief,
@@ -574,7 +605,7 @@ export async function prepareMagicCampaign(
 
   const act = pickMagicActivations(lib, {
     importIngredientIds: hadImport ? importIngredientIds : undefined,
-    extraIds: draftedCopyIds,
+    extraIds: [...draftedCopyIds, ...priorActiveCopyIds],
   });
   if (act.scopedToImport) {
     warnings.push(

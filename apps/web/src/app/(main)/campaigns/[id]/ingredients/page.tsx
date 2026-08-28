@@ -68,6 +68,16 @@ export default function CampaignIngredientsPage() {
   const [genById, setGenById] = useState<Record<string, PlateGenProgress & { jobId: string }>>(
     {},
   );
+  const [fromMagic, setFromMagic] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [copyDraft, setCopyDraft] = useState({
+    label: "",
+    setup: "",
+    punchline: "",
+    endcard: "",
+    cta: "Learn more",
+  });
+  const [addingCopy, setAddingCopy] = useState(false);
   const genByIdRef = useRef(genById);
   const rowsRef = useRef<Row[]>([]);
 
@@ -77,6 +87,16 @@ export default function CampaignIngredientsPage() {
 
   useEffect(() => {
     setView(readStoredView());
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const kind = params.get("kind");
+    if (kind && (KINDS as string[]).includes(kind)) {
+      setFilter(kind as LibraryKind);
+    }
+    setFromMagic(params.get("from") === "magic");
   }, []);
 
   useEffect(() => {
@@ -101,7 +121,9 @@ export default function CampaignIngredientsPage() {
     const t = window.setInterval(() => {
       void (async () => {
         try {
-          const data = await api.campaignIngredients(id);
+          const data = await api.campaignIngredients(id, {
+            includeArchived: showArchived,
+          });
           setRows(data.items);
           setSet(data.ingredientSet);
         } catch {
@@ -135,7 +157,7 @@ export default function CampaignIngredientsPage() {
       })();
     }, 2500);
     return () => window.clearInterval(t);
-  }, [generatingIds, id]);
+  }, [generatingIds, id, showArchived]);
 
   function changeView(next: PlateDensity) {
     setView(next);
@@ -146,10 +168,10 @@ export default function CampaignIngredientsPage() {
     }
   }
 
-  async function refresh() {
+  async function refresh(includeArchived = showArchived) {
     try {
       const [data, camp] = await Promise.all([
-        api.campaignIngredients(id),
+        api.campaignIngredients(id, { includeArchived }),
         api.getCampaign(id),
       ]);
       setRows(data.items);
@@ -163,8 +185,38 @@ export default function CampaignIngredientsPage() {
   }
 
   useEffect(() => {
-    void refresh();
-  }, [id]);
+    void refresh(showArchived);
+  }, [id, showArchived]);
+
+  async function remove(itemId: string) {
+    if (
+      !confirm(
+        "Permanently delete this plate from the library pack? This cannot be undone.",
+      )
+    )
+      return;
+    setBusyId(itemId);
+    try {
+      await api.deleteLibraryItem(itemId);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function archive(item: Row) {
+    setBusyId(item.id);
+    try {
+      await api.patchLibraryItem(item.id, { archived: !item.archived });
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   // Deep link from Matrix plate thumbs: /ingredients#plate-<id>
   useEffect(() => {
@@ -280,6 +332,57 @@ export default function CampaignIngredientsPage() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function addCopyPlate() {
+    if (!campaign || !set) return;
+    const label = copyDraft.label.trim() || copyDraft.setup.trim() || "Campaign copy";
+    if (!copyDraft.setup.trim() && !copyDraft.punchline.trim()) {
+      setError("Add at least a setup or punchline for the copy plate");
+      return;
+    }
+    setAddingCopy(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.set("libraryId", campaign.libraryId || "default");
+      form.set("kind", "copy");
+      form.set("label", label);
+      form.set("tags", "magic,operator");
+      form.set("promptHint", copyDraft.setup || label);
+      form.set(
+        "copy",
+        JSON.stringify({
+          setup: copyDraft.setup || label,
+          punchline: copyDraft.punchline,
+          endcard: copyDraft.endcard,
+          cta: copyDraft.cta || "Learn more",
+        }),
+      );
+      const item = await api.createLibraryItem(form);
+      const nextActive = [
+        ...new Set([...rows.filter((r) => r.active).map((r) => r.id), item.id]),
+      ];
+      const camp = await api.putCampaignIngredients(id, {
+        ...set,
+        activeIds: nextActive,
+        requireReadyMedia: set.requireReadyMedia,
+      });
+      if (camp.ingredientSet) setSet(camp.ingredientSet);
+      setCopyDraft({
+        label: "",
+        setup: "",
+        punchline: "",
+        endcard: "",
+        cta: "Learn more",
+      });
+      setFilter("copy");
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAddingCopy(false);
     }
   }
 
@@ -493,10 +596,97 @@ export default function CampaignIngredientsPage() {
         </a>
       </header>
 
+      {fromMagic ? (
+        <div className="mt-4 rounded-xl border border-ember-500/30 bg-ember-500/10 px-4 py-3 text-sm text-ember-950">
+          Editing from Magic — add or activate plates here,{" "}
+          <strong>Save activation</strong>, then return via{" "}
+          <a
+            className="font-medium underline"
+            href={`/?magic=${encodeURIComponent(id)}`}
+          >
+            ← Magic flow
+          </a>{" "}
+          and Re-check.
+        </div>
+      ) : null}
+
       {error ? (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {error}
         </div>
+      ) : null}
+
+      {filter === "copy" ? (
+        <section className="mt-6 rounded-2xl border border-warm-line bg-warm-paper p-5 shadow-surface">
+          <h2 className="font-display text-xl text-ink-900">Add copy plate</h2>
+          <p className="mt-1 text-xs text-ink-600">
+            Creates a messaging plate, activates it for this campaign, then Save
+            (already activated). Return to Magic and Re-check to refresh the
+            checklist.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs">
+              Label
+              <input
+                className="mt-1 w-full rounded-md border border-ink-200 px-2 py-1.5"
+                value={copyDraft.label}
+                onChange={(e) =>
+                  setCopyDraft((d) => ({ ...d, label: e.target.value }))
+                }
+                placeholder="Offer A"
+              />
+            </label>
+            <label className="block text-xs">
+              CTA
+              <input
+                className="mt-1 w-full rounded-md border border-ink-200 px-2 py-1.5"
+                value={copyDraft.cta}
+                onChange={(e) =>
+                  setCopyDraft((d) => ({ ...d, cta: e.target.value }))
+                }
+              />
+            </label>
+            <label className="block text-xs sm:col-span-2">
+              Setup
+              <input
+                className="mt-1 w-full rounded-md border border-ink-200 px-2 py-1.5"
+                value={copyDraft.setup}
+                onChange={(e) =>
+                  setCopyDraft((d) => ({ ...d, setup: e.target.value }))
+                }
+                placeholder="Opening line"
+              />
+            </label>
+            <label className="block text-xs sm:col-span-2">
+              Punchline
+              <input
+                className="mt-1 w-full rounded-md border border-ink-200 px-2 py-1.5"
+                value={copyDraft.punchline}
+                onChange={(e) =>
+                  setCopyDraft((d) => ({ ...d, punchline: e.target.value }))
+                }
+              />
+            </label>
+            <label className="block text-xs sm:col-span-2">
+              End card
+              <input
+                className="mt-1 w-full rounded-md border border-ink-200 px-2 py-1.5"
+                value={copyDraft.endcard}
+                onChange={(e) =>
+                  setCopyDraft((d) => ({ ...d, endcard: e.target.value }))
+                }
+              />
+            </label>
+          </div>
+          <button
+            type="button"
+            disabled={addingCopy}
+            onClick={() => void addCopyPlate()}
+            className="mt-4 rounded-lg bg-ink-900 px-4 py-2 text-sm font-medium text-warm-paper disabled:opacity-40"
+          >
+            {addingCopy ? "Adding…" : "Add & activate copy"}
+          </button>
+        </section>
       ) : null}
 
       <section className="mt-6 rounded-2xl border border-warm-line bg-warm-paper p-5 shadow-surface">
@@ -569,7 +759,7 @@ export default function CampaignIngredientsPage() {
       </section>
 
       <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setFilter("all")}
@@ -626,6 +816,14 @@ export default function CampaignIngredientsPage() {
             </button>
           </div>
           <ViewModeToggle value={view} onChange={changeView} />
+          <label className="flex items-center gap-2 text-xs text-ink-700">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+            />
+            Show archived
+          </label>
         </div>
       </div>
       <p className="mt-2 text-[11px] text-ink-500">
@@ -663,6 +861,8 @@ export default function CampaignIngredientsPage() {
                 onDraftHints={(next) => draftHints(item.id, next)}
                 onSaveHints={(next) => saveHints(item.id, next)}
                 onChangeKind={(nextKind) => void changeKind(item.id, nextKind)}
+                onArchive={() => void archive(item)}
+                onDelete={() => void remove(item.id)}
                 mediaRev={mediaRev[item.id]}
               />
             </div>
