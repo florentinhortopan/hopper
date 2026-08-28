@@ -190,10 +190,16 @@ export function MagicCampaignModal({
         });
 
         if (c.matrix.cells.length > 0) {
-          const plan = await api.magicPlan(c.id);
+          const [plan, existingJobs, existingReviews] = await Promise.all([
+            api.magicPlan(c.id),
+            api.jobs(c.id),
+            api.getReviews(c.id),
+          ]);
           if (boot !== bootRef.current) return;
           setPrepare(plan);
           setCampaign(plan.campaign);
+          setJobs(existingJobs);
+          setReviews(existingReviews);
           setLiveChecks(
             plan.gapsFilled.map((item) => ({
               id: item.id,
@@ -204,7 +210,18 @@ export function MagicCampaignModal({
               detail: item.detail,
             })),
           );
-          setPhase("plan");
+
+          const jobsLive = existingJobs.some(
+            (j) => j.status === "queued" || j.status === "running",
+          );
+          const hasAnyJobs = existingJobs.length > 0;
+          const hasPlates = plan.campaign.matrix.cells.some((cell) =>
+            cell.sizeAssets?.some(
+              (a) => a.genPath?.trim() && a.status !== "failed",
+            ),
+          );
+          // Resume generate step when queue is live or generation already ran.
+          setPhase(jobsLive || hasAnyJobs || hasPlates ? "run" : "plan");
         } else {
           setPhase("import");
         }
