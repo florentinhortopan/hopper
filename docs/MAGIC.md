@@ -66,6 +66,6 @@ Raw ComfyUI `api.json` graphs are **not** executed in Magic MVP — prepare fall
 ## UI flow
 
 1. **Import & categorize** — upload zip (same classify as Library). Review kind/label per file.
-2. **Prepare checklist** — progressive checking UI; each row links to Advanced (Brief / Settings / Ingredients / Tokens / Matrix). Return via **← Magic flow**.
-3. **Variant plan** — sparse matrix rows; Generate.
+2. **Prepare checklist** — progressive checking UI; each row links to Advanced (Brief / Settings / Ingredients / Tokens / Matrix). Package activations only (not full library). Missing kinds highlighted as AI/workflow fill. Return via **Magic flow** on StepNav.
+3. **Variant plan** — sparse matrix from **uploaded** activations only; Generate.
 4. **Generate** — Comfy plates → Keep/Kill → Celtra package.

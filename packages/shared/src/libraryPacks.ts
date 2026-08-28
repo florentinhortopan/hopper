@@ -46,6 +46,8 @@ export const ImportRowSchema = z.object({
   status: ImportRowStatusSchema.default("pending"),
   remoteRef: ImportRemoteRefSchema.optional(),
   error: z.string().nullable().default(null),
+  /** Library item id after commit (Magic uses this to scope activations). */
+  committedItemId: z.string().nullable().default(null),
 });
 export type ImportRow = z.infer<typeof ImportRowSchema>;
 

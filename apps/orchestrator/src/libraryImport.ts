@@ -297,6 +297,7 @@ export async function createImportSession(opts: {
           : ("video" as const),
         status: "pending" as const,
         error: null,
+        committedItemId: null,
       }));
       session = await saveImportSession({
         ...((await loadImportSession(id)) ?? session),
@@ -478,23 +479,29 @@ export async function commitImportSession(importId: string) {
   const root = filesDir(importId);
   const accepted = session.rows.filter((r) => r.status === "accepted");
   let n = 0;
+  const nextRows = [...session.rows];
   for (const row of accepted) {
     const abs = path.join(root, row.file);
     const buf = await readFile(abs);
-    await createLibraryIngredient({
+    const item = await createLibraryIngredient({
       kind: row.suggestedKind,
       label: row.label || row.originalName,
-      tags: row.tags,
+      tags: [...(row.tags || []), `import:${importId}`],
       promptHint: row.promptHint || row.label,
       filename: row.originalName,
       buffer: buf,
       libraryId: session.libraryId,
       allowNoMedia: false,
     });
+    const idx = nextRows.findIndex((r) => r.id === row.id);
+    if (idx >= 0) {
+      nextRows[idx] = { ...nextRows[idx]!, committedItemId: item.id };
+    }
     n += 1;
   }
   return saveImportSession({
     ...session,
+    rows: nextRows,
     status: "done",
     progress: 1,
     message: `Committed ${n} plate(s) into library ${session.libraryId}`,

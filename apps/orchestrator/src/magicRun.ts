@@ -164,10 +164,42 @@ export async function ensureMagicCampaign(opts: {
   return { campaign, created: true, promoted: false };
 }
 
-function pickMagicActivations(lib: LibraryItem[]): {
+function pickMagicActivations(
+  lib: LibraryItem[],
+  opts?: {
+    /** When set, only activate plates from this import (+ extras like drafted copy). */
+    importIngredientIds?: string[];
+    /** Extra ids to always include (e.g. copy drafted during prepare). */
+    extraIds?: string[];
+  },
+): {
   activeIds: string[];
   contractTalentId: string | null;
+  scopedToImport: boolean;
 } {
+  const importSet = opts?.importIngredientIds?.length
+    ? new Set(opts.importIngredientIds)
+    : null;
+  const extra = new Set(opts?.extraIds ?? []);
+
+  if (importSet) {
+    const fromImport = lib.filter((i) => importSet.has(i.id));
+    const extras = lib.filter((i) => extra.has(i.id));
+    const scoped = [...fromImport, ...extras];
+    const talent =
+      scoped.find((i) => i.kind === "talent" && isPlateReady(i)) ||
+      scoped.find((i) => i.kind === "talent") ||
+      null;
+    // Activate every imported plate — do NOT pull unrelated library hands/attire.
+    const activeIds = [...new Set(scoped.map((i) => i.id))];
+    return {
+      activeIds,
+      contractTalentId: talent?.id ?? null,
+      scopedToImport: true,
+    };
+  }
+
+  // No import package: keep activations conservative (1 talent + 1 of each kind).
   const talent =
     lib.find((i) => i.kind === "talent" && isPlateReady(i)) ||
     lib.find((i) => i.kind === "talent");
@@ -182,17 +214,36 @@ function pickMagicActivations(lib: LibraryItem[]): {
 
   const activeIds = new Set<string>();
   if (talent) activeIds.add(talent.id);
-  for (const h of hands.slice(0, 4)) activeIds.add(h.id);
-  for (const a of attire.slice(0, 2)) activeIds.add(a.id);
-  for (const b of backgrounds.slice(0, 2)) activeIds.add(b.id);
-  for (const p of props.slice(0, 2)) activeIds.add(p.id);
-  for (const c of copy.slice(0, 3)) activeIds.add(c.id);
-  for (const m of motion.slice(0, 1)) activeIds.add(m.id);
+  if (hands[0]) activeIds.add(hands[0].id);
+  if (attire[0]) activeIds.add(attire[0].id);
+  if (backgrounds[0]) activeIds.add(backgrounds[0].id);
+  if (props[0]) activeIds.add(props[0].id);
+  if (copy[0]) activeIds.add(copy[0].id);
+  if (motion[0]) activeIds.add(motion[0].id);
+  for (const id of extra) activeIds.add(id);
 
   return {
     activeIds: [...activeIds],
     contractTalentId: talent?.id ?? null,
+    scopedToImport: false,
   };
+}
+
+async function resolveImportIngredientIds(
+  importId: string,
+  libraryId: string,
+): Promise<string[]> {
+  const { loadImportSession } = await import("./libraryImport.js");
+  const session = await loadImportSession(importId);
+  if (!session) return [];
+  const fromRows = session.rows
+    .map((r) => r.committedItemId)
+    .filter((id): id is string => Boolean(id));
+  if (fromRows.length) return [...new Set(fromRows)];
+
+  const tag = `import:${importId}`;
+  const lib = await listLibrary(undefined, libraryId);
+  return lib.filter((i) => i.tags?.includes(tag)).map((i) => i.id);
 }
 
 function buildMagicSparse(campaign: Campaign, lib: LibraryItem[]): Campaign {
@@ -401,27 +452,53 @@ export async function prepareMagicCampaign(
     campaign.libraryId || DEFAULT_LIBRARY_ID,
   );
 
-  // Copy plates
-  const existingCopy = lib.filter((i) => i.kind === "copy");
-  let copySource: MagicChecklistItem["source"] = existingCopy.length
+  const importIngredientIds = opts.importId
+    ? await resolveImportIngredientIds(
+        opts.importId,
+        campaign.libraryId || DEFAULT_LIBRARY_ID,
+      )
+    : [];
+  if (opts.importId && !importIngredientIds.length) {
+    warnings.push(
+      "Import committed but no ingredient ids found — activations may fall back to library",
+    );
+  }
+
+  // Copy plates — when Magic imported a package, only use copy from that package
+  // (or draft from brief). Do not activate unrelated library copy plates.
+  const importSet = importIngredientIds.length
+    ? new Set(importIngredientIds)
+    : null;
+  const existingCopy = lib.filter(
+    (i) =>
+      i.kind === "copy" &&
+      (importSet ? importSet.has(i.id) : true),
+  );
+  // Without an import scope, still avoid grabbing every library copy — prefer none then draft.
+  const copyPool = importSet
+    ? existingCopy
+    : existingCopy.filter((i) => i.tags?.includes("magic") || i.tags?.includes(MAGIC_PRESET_ID));
+  let copySource: MagicChecklistItem["source"] = copyPool.length
     ? "imported"
     : "missing";
-  let copyDetail = existingCopy.length
-    ? `${existingCopy.length} copy plate(s)`
+  let copyDetail = copyPool.length
+    ? `${copyPool.length} copy plate(s)${importSet ? " from package" : ""}`
     : "";
-  if (!existingCopy.length && campaign.brief.prompt?.trim()) {
+  const draftedCopyIds: string[] = [];
+  if (!copyPool.length && campaign.brief.prompt?.trim()) {
     const drafted = await draftCopyFromBrief(campaign.brief);
     let n = 0;
     for (const copy of drafted.copies) {
-      await createLibraryIngredient({
+      const item = await createLibraryIngredient({
         kind: "copy",
         label: `Magic copy ${n + 1}`,
-        tags: ["magic", MAGIC_PRESET_ID],
+        tags: ["magic", MAGIC_PRESET_ID, ...(opts.importId ? [`import:${opts.importId}`] : [])],
         copy,
         promptHint: copy.setup,
         libraryId: campaign.libraryId,
         allowNoMedia: true,
       });
+      draftedCopyIds.push(item.id);
       n += 1;
     }
     copySource = drafted.source === "ai" ? "ai" : "preset";
@@ -429,10 +506,15 @@ export async function prepareMagicCampaign(
     lib = await listLibrary(undefined, campaign.libraryId || DEFAULT_LIBRARY_ID);
   }
 
-  // Prompt hints
+  // Prompt hints — prefer active/import scope so we don't rewrite the whole library
+  const hintTargets = (
+    importSet
+      ? lib.filter((i) => importSet.has(i.id) || draftedCopyIds.includes(i.id))
+      : lib.filter((i) => draftedCopyIds.includes(i.id) || i.kind !== "copy")
+  ).slice(0, 40);
   const hintResult = await draftPromptHints(
     campaign.brief,
-    lib.map((i) => ({
+    hintTargets.map((i) => ({
       id: i.id,
       kind: i.kind,
       label: i.label,
@@ -450,7 +532,17 @@ export async function prepareMagicCampaign(
     lib = await listLibrary(undefined, campaign.libraryId || DEFAULT_LIBRARY_ID);
   }
 
-  const act = pickMagicActivations(lib);
+  const act = pickMagicActivations(lib, {
+    importIngredientIds: importIngredientIds.length
+      ? importIngredientIds
+      : undefined,
+    extraIds: draftedCopyIds,
+  });
+  if (act.scopedToImport) {
+    warnings.push(
+      `Activations scoped to package (${act.activeIds.length} plate(s)) — not the full library`,
+    );
+  }
   campaign.ingredientSet = {
     activeIds: act.activeIds,
     requireReadyMedia: false,
@@ -469,6 +561,7 @@ export async function prepareMagicCampaign(
     copyDetail,
     warnings,
     llmConfigured: llm.configured,
+    packageScoped: act.scopedToImport,
   });
 }
 
@@ -507,6 +600,9 @@ export async function magicPlanSnapshot(
         : "No copy yet",
     warnings: [],
     llmConfigured: llm.configured,
+    packageScoped: (campaign.ingredientSet?.activeIds ?? []).some((id) =>
+      lib.find((i) => i.id === id)?.tags?.some((t) => t.startsWith("import:")),
+    ),
   });
 }
 
@@ -519,6 +615,7 @@ function finalizeMagicPrepareResult(args: {
   copyDetail: string;
   warnings: string[];
   llmConfigured: boolean;
+  packageScoped?: boolean;
 }): MagicPrepareResult {
   const {
     campaign,
@@ -529,17 +626,48 @@ function finalizeMagicPrepareResult(args: {
     copyDetail,
     warnings,
     llmConfigured,
+    packageScoped = false,
   } = args;
 
   const actIds = new Set(campaign.ingredientSet?.activeIds ?? []);
+  const activeOf = (kind: LibraryItem["kind"]) =>
+    lib.filter((i) => i.kind === kind && actIds.has(i.id));
+
   const talentId = campaign.ingredientSet?.contractTalentId;
   const talent = talentId
     ? lib.find((i) => i.id === talentId)
-    : lib.find((i) => i.kind === "talent" && actIds.has(i.id));
-  const handsReady = lib.filter(
-    (i) => i.kind === "hands" && (actIds.size === 0 || actIds.has(i.id)),
-  );
+    : activeOf("talent")[0];
+  const handsReady = activeOf("hands").filter((i) => isPlateReady(i));
+  const backgrounds = activeOf("background");
+  const attires = activeOf("attire");
+  const props = activeOf("prop");
+  const motions = activeOf("motion");
   const hasTokens = Boolean(campaign.designTokenPackId);
+  const workflowOk = workflowSource !== "missing";
+
+  const gapKind = (
+    id: string,
+    label: string,
+    items: LibraryItem[],
+    emptyDetail: string,
+  ): MagicChecklistItem => {
+    if (items.length) {
+      return {
+        id,
+        label,
+        ok: true,
+        source: "imported",
+        detail: `${items.length} active · ${items.map((i) => i.label).join(", ")}`,
+      };
+    }
+    return {
+      id,
+      label,
+      ok: workflowOk || llmConfigured,
+      source: workflowOk || llmConfigured ? (llmConfigured ? "ai" : "preset") : "missing",
+      detail: emptyDetail,
+    };
+  };
 
   const gapsFilled: MagicChecklistItem[] = [
     {
@@ -553,8 +681,8 @@ function finalizeMagicPrepareResult(args: {
     },
     {
       id: "workflow",
-      label: "Workflow template",
-      ok: workflowSource !== "missing",
+      label: "Workflow / recipe",
+      ok: workflowOk,
       source: workflowSource,
       detail: workflowDetail || `Source: ${workflowSource}`,
     },
@@ -567,15 +695,40 @@ function finalizeMagicPrepareResult(args: {
         ? `${talent.label}${isPlateReady(talent) ? "" : " (needs media)"}`
         : "Upload a talent talking-head video",
     },
-    {
-      id: "hands",
-      label: "Hands / variant plates",
-      ok: handsReady.length > 0 || llmConfigured,
-      source: handsReady.length ? "imported" : llmConfigured ? "ai" : "missing",
-      detail: handsReady.length
-        ? `${handsReady.length} hands plate(s) active`
-        : "AI can generate from synthesized prompts",
-    },
+    gapKind(
+      "hands",
+      "Hands plates",
+      handsReady,
+      packageScoped
+        ? "Not in package — Comfy uses workflow hands prompt"
+        : "No hands active — AI/workflow prompt fill",
+    ),
+    gapKind(
+      "background",
+      "Background",
+      backgrounds,
+      packageScoped
+        ? "Not in package — hero stays without BG (or AI fill)"
+        : "No background activated",
+    ),
+    gapKind(
+      "attire",
+      "Attire",
+      attires,
+      "Not in package — skipped",
+    ),
+    gapKind(
+      "prop",
+      "Props",
+      props,
+      "Not in package — skipped",
+    ),
+    gapKind(
+      "motion",
+      "Motion",
+      motions,
+      "Not in package — optional",
+    ),
     {
       id: "copy",
       label: "Copy",
@@ -601,9 +754,15 @@ function finalizeMagicPrepareResult(args: {
       id: "variants",
       label: "Variant matrix",
       ok: campaign.matrix.cells.length > 0,
-      source: campaign.matrix.cells.length ? "imported" : "missing",
+      source: packageScoped ? "imported" : campaign.matrix.cells.length ? "preset" : "missing",
       detail: campaign.matrix.cells.length
-        ? `${campaign.matrix.cells.length} sparse cell(s)`
+        ? `${campaign.matrix.cells.length} sparse cell(s) from ${
+            packageScoped ? "package activations" : "library activations"
+          } · knobs: ${
+            campaign.rail.openKnobs.length
+              ? campaign.rail.openKnobs.join(", ")
+              : "none (hero only)"
+          }`
         : "Confirm import to build variants",
     },
   ];
@@ -616,7 +775,12 @@ function finalizeMagicPrepareResult(args: {
     const handsLabel = cell.handsId
       ? libById.get(cell.handsId)?.label || cell.handsId
       : "(no hands)";
-    if (!cell.handsId) fillNotes.push("No hands plate — talent-only / AI prompt");
+    if (!cell.handsId) fillNotes.push("No hands plate — workflow/AI prompt");
+    if (cell.backgroundId) {
+      fillNotes.push(
+        `BG ${libById.get(cell.backgroundId)?.label || cell.backgroundId}`,
+      );
+    }
     if (copySource === "ai" || copySource === "preset") {
       fillNotes.push(`Copy ${copySource}-filled from brief`);
     }
@@ -628,7 +792,11 @@ function finalizeMagicPrepareResult(args: {
 
     return {
       cellId: cell.cellId,
-      label: `${talentLabel} × ${handsLabel}`,
+      label: `${talentLabel} × ${handsLabel}${
+        cell.backgroundId
+          ? ` × ${libById.get(cell.backgroundId)?.label || "bg"}`
+          : ""
+      }`,
       talentTakeId: cell.talentTakeId,
       handsId: cell.handsId,
       attireId: cell.attireId,
