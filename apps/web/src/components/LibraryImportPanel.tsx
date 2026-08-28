@@ -543,6 +543,25 @@ export function LibraryImportPanel({ libraryId, onCommitted, onError }: Props) {
                 </div>
               )}
 
+              {(session.detectedWorkflows?.length ?? 0) > 0 ? (
+                <div className="rounded-xl border border-ink-200 bg-ink-50/60 px-3 py-2 text-xs text-ink-700">
+                  <p className="font-medium text-ink-900">
+                    Workflow sidecars (not ingredients)
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {session.detectedWorkflows!.map((w) => (
+                      <li key={w.file}>
+                        <span className="font-mono">{w.file}</span>
+                        <span className="text-ink-500"> · {w.kind}</span>
+                        {w.detail ? (
+                          <span className="text-ink-500"> — {w.detail}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
               <div className="max-h-[420px] overflow-auto rounded-xl border border-warm-line bg-white">
                 <table className="w-full min-w-[640px] text-left text-xs">
                   <thead className="sticky top-0 bg-warm-paper text-[10px] uppercase tracking-[0.12em] text-ink-600">

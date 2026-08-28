@@ -7,6 +7,7 @@ import {
   isMagicManifestFilename,
   isMagicWorkflowFilename,
   isMagicWorkflowUrlFilename,
+  looksLikeComfyApiGraph,
   magicOutputSizes,
   MAGIC_COMFY_TEMPLATE,
   MAGIC_ASSEMBLY_RECIPE,
@@ -47,20 +48,6 @@ async function walkFiles(root: string): Promise<string[]> {
   }
   await walk(root);
   return out;
-}
-
-function looksLikeComfyApiGraph(obj: unknown): boolean {
-  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
-  const vals = Object.values(obj as Record<string, unknown>);
-  if (!vals.length) return false;
-  const sample = vals.slice(0, 5);
-  return sample.every(
-    (v) =>
-      v &&
-      typeof v === "object" &&
-      !Array.isArray(v) &&
-      "class_type" in (v as object),
-  );
 }
 
 export function parseMagicWorkflowJson(
@@ -192,17 +179,38 @@ export async function detectMagicWorkflowFromImport(
     }
   }
 
-  // 2) *.workflow.json / named workflow files
+  // 2) *.workflow.json / named workflow files / any ATTATTA package JSON
   for (const abs of files) {
-    if (!isMagicWorkflowFilename(rel(abs))) continue;
+    const name = rel(abs);
+    const base = path.basename(name).toLowerCase();
+    if (!base.endsWith(".json")) continue;
+    if (isMagicManifestFilename(name)) continue;
     const raw = await readFile(abs, "utf8");
-    const { pkg, warnings: w } = parseMagicWorkflowJson(raw, rel(abs));
+    let data: unknown;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    if (looksLikeComfyApiGraph(data)) {
+      warnings.push(
+        `${name}: ComfyUI API graph detected — not executed in Magic MVP; using AI/preset template`,
+      );
+      continue;
+    }
+    if (
+      !isMagicWorkflowFilename(name) &&
+      !MagicWorkflowPackageSchema.safeParse(data).success
+    ) {
+      continue;
+    }
+    const { pkg, warnings: w } = parseMagicWorkflowJson(raw, name);
     warnings.push(...w);
     if (pkg) {
       return {
         source: "imported",
         package: pkg,
-        detail: `Loaded ${rel(abs)}`,
+        detail: `Loaded ${name}`,
         warnings,
       };
     }

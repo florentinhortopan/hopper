@@ -12,6 +12,13 @@ import { nanoid } from "nanoid";
 import unzipper from "unzipper";
 import {
   ImportSessionSchema,
+  MagicWorkflowPackageSchema,
+  isImportSidecarFilename,
+  isMagicManifestFilename,
+  isMagicWorkflowFilename,
+  isMagicWorkflowUrlFilename,
+  looksLikeComfyApiGraph,
+  type ImportDetectedWorkflow,
   type ImportRow,
   type ImportSession,
   type ImportSource,
@@ -92,12 +99,132 @@ async function collectMediaFiles(
       const abs = path.join(dir, name);
       const rel = relBase ? `${relBase}/${name}` : name;
       const s = await stat(abs);
-      if (s.isDirectory()) await walk(abs, rel);
-      else if (isMediaFilename(name)) out.push({ abs, rel, name });
+      if (s.isDirectory()) {
+        if (name === "__MACOSX") continue;
+        await walk(abs, rel);
+      } else if (isImportSidecarFilename(name)) {
+        /* workflows / manifests — never ingredient rows */
+        continue;
+      } else if (isMediaFilename(name)) {
+        out.push({ abs, rel, name });
+      } else if (path.extname(name).toLowerCase() === ".json") {
+        // Content-sniff: Comfy / ATTATTA graphs must not become plates
+        try {
+          const raw = JSON.parse(await readFile(abs, "utf8"));
+          if (
+            looksLikeComfyApiGraph(raw) ||
+            MagicWorkflowPackageSchema.safeParse(raw).success
+          ) {
+            continue;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
     }
   }
   await walk(root, baseRel);
   return out;
+}
+
+/** Find workflow / Comfy JSON sidecars in a staged import package. */
+export async function detectImportWorkflowSidecars(
+  root: string,
+): Promise<ImportDetectedWorkflow[]> {
+  const found: ImportDetectedWorkflow[] = [];
+  const seen = new Set<string>();
+
+  async function walk(dir: string, relBase: string) {
+    let names: string[];
+    try {
+      names = await readdir(dir);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      if (name.startsWith(".") || name === "__MACOSX") continue;
+      const abs = path.join(dir, name);
+      const rel = relBase ? `${relBase}/${name}` : name;
+      const s = await stat(abs);
+      if (s.isDirectory()) {
+        await walk(abs, rel);
+        continue;
+      }
+
+      if (isMagicWorkflowUrlFilename(name)) {
+        const text = (await readFile(abs, "utf8")).trim();
+        if (!text || seen.has(rel)) continue;
+        seen.add(rel);
+        found.push({
+          file: rel,
+          kind: "url",
+          detail: `Workflow URL pointer → ${text.slice(0, 120)}`,
+        });
+        continue;
+      }
+
+      if (path.extname(name).toLowerCase() !== ".json") continue;
+      if (seen.has(rel)) continue;
+
+      let data: unknown;
+      try {
+        data = JSON.parse(await readFile(abs, "utf8"));
+      } catch {
+        if (isImportSidecarFilename(name)) {
+          seen.add(rel);
+          found.push({
+            file: rel,
+            kind: "unknown_json",
+            detail: "Invalid JSON sidecar (skipped as ingredient)",
+          });
+        }
+        continue;
+      }
+
+      if (isMagicManifestFilename(name)) {
+        seen.add(rel);
+        found.push({
+          file: rel,
+          kind: "manifest",
+          detail: "Package manifest / brief (not an ingredient)",
+        });
+        continue;
+      }
+
+      if (looksLikeComfyApiGraph(data)) {
+        seen.add(rel);
+        found.push({
+          file: rel,
+          kind: "comfy_api",
+          detail:
+            "ComfyUI API graph — kept as workflow sidecar (not an ingredient; Magic uses ATTATTA template / AI for now)",
+        });
+        continue;
+      }
+
+      if (MagicWorkflowPackageSchema.safeParse(data).success) {
+        seen.add(rel);
+        found.push({
+          file: rel,
+          kind: "attatta",
+          detail: "ATTATTA workflow package",
+        });
+        continue;
+      }
+
+      if (isMagicWorkflowFilename(name) || isImportSidecarFilename(name)) {
+        seen.add(rel);
+        found.push({
+          file: rel,
+          kind: "unknown_json",
+          detail: "Named workflow sidecar (not an ingredient)",
+        });
+      }
+    }
+  }
+
+  await walk(root, "");
+  return found;
 }
 
 function extractPosterFrames(mediaAbs: string, outDir: string): string[] {
@@ -279,6 +406,7 @@ export async function createImportSession(opts: {
 
       if (signal.aborted) throw new JobCancelledError(job.id);
 
+      const detectedWorkflows = await detectImportWorkflowSidecars(filesRoot);
       const media = await collectMediaFiles(filesRoot);
       const rows: ImportRow[] = media.map((m) => ({
         id: nanoid(8),
@@ -299,11 +427,15 @@ export async function createImportSession(opts: {
         error: null,
         committedItemId: null,
       }));
+      const wfNote = detectedWorkflows.length
+        ? ` · ${detectedWorkflows.length} workflow sidecar(s)`
+        : "";
       session = await saveImportSession({
         ...((await loadImportSession(id)) ?? session),
         rows,
+        detectedWorkflows,
         progress: 0.4,
-        message: `Found ${rows.length} media files`,
+        message: `Found ${rows.length} media file(s)${wfNote}`,
         status: opts.autoClassify !== false ? "classifying" : "review",
       });
 

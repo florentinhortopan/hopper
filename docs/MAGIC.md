@@ -14,6 +14,7 @@ Zip (or folder) may include:
 |------|---------|
 | Media (mp4/png/…) | Library ingredients (classified on import) |
 | `attatta.workflow.json` / `*.workflow.json` | ATTATTA workflow template |
+| `api.json` / `*.api.json` / Comfy API graphs | Detected as **workflow sidecar** (not an ingredient). Not executed in Magic MVP — prepare uses AI/preset template |
 | `workflow.url` | Single HTTPS URL to a workflow JSON |
 | `manifest.json` / `attatta.manifest.json` | Optional `workflowUrl`, `brief`, template fields |
 | `brief.json` | Prefill brief |

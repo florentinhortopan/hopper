@@ -76,6 +76,15 @@ export const ImportSessionStatusSchema = z.enum([
 ]);
 export type ImportSessionStatus = z.infer<typeof ImportSessionStatusSchema>;
 
+export const ImportDetectedWorkflowSchema = z.object({
+  /** Relative path under the import staging folder */
+  file: z.string(),
+  /** How we interpreted the sidecar */
+  kind: z.enum(["attatta", "comfy_api", "url", "manifest", "unknown_json"]),
+  detail: z.string().default(""),
+});
+export type ImportDetectedWorkflow = z.infer<typeof ImportDetectedWorkflowSchema>;
+
 export const ImportSessionSchema = z.object({
   id: z.string(),
   libraryId: z.string(),
@@ -86,6 +95,8 @@ export const ImportSessionSchema = z.object({
   message: z.string().default(""),
   jobId: z.string().nullable().default(null),
   rows: z.array(ImportRowSchema).default([]),
+  /** Workflow / Comfy JSON sidecars found in the package (never ingredient rows). */
+  detectedWorkflows: z.array(ImportDetectedWorkflowSchema).default([]),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

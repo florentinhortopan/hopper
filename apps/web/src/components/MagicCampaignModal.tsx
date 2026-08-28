@@ -751,14 +751,52 @@ export function MagicCampaignModal({
                 />
               </label>
 
+              {importSession?.detectedWorkflows?.length ? (
+                <div className="rounded-xl border border-ink-200 bg-ink-50/50 p-4">
+                  <h3 className="text-sm font-medium">
+                    Workflow sidecars (
+                    {importSession.detectedWorkflows.length})
+                  </h3>
+                  <p className="mt-1 text-xs text-ink-600">
+                    These are not ingredients — they stay out of the kind list.
+                    ATTATTA workflow packages are applied on prepare; raw Comfy
+                    API graphs are noted but not executed yet.
+                  </p>
+                  <ul className="mt-3 space-y-2">
+                    {importSession.detectedWorkflows.map((w) => (
+                      <li
+                        key={w.file}
+                        className="rounded-lg border border-ink-100 bg-white px-3 py-2 text-xs"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-ink-800">
+                            {w.file}
+                          </span>
+                          <span className="rounded bg-ink-900/5 px-1.5 py-0.5 uppercase tracking-wide text-[10px] text-ink-600">
+                            {w.kind === "comfy_api"
+                              ? "ComfyUI graph"
+                              : w.kind === "attatta"
+                                ? "ATTATTA workflow"
+                                : w.kind}
+                          </span>
+                        </div>
+                        {w.detail ? (
+                          <p className="mt-1 text-ink-600">{w.detail}</p>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
               {reviewRows.length > 0 ? (
                 <div className="rounded-xl border border-ink-200 bg-white p-4">
                   <h3 className="text-sm font-medium">
                     Categorized assets ({reviewRows.length})
                   </h3>
                   <p className="mt-1 text-xs text-ink-600">
-                    Adjust kind/label if the classifier missed — then confirm to
-                    build variants.
+                    Media plates only — adjust kind/label if the classifier
+                    missed, then confirm to build variants.
                   </p>
                   <ul className="mt-3 max-h-56 space-y-2 overflow-y-auto">
                     {reviewRows.map((row) => (

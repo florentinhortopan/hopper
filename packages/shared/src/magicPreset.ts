@@ -119,11 +119,18 @@ export function isMagicWorkflowFilename(name: string): boolean {
     base === "workflow.json" ||
     base === "comfy-template.json" ||
     base === "attatta.workflow.json" ||
-    base === "magic.workflow.json"
+    base === "magic.workflow.json" ||
+    base === "api.json" ||
+    base === "workflow_api.json" ||
+    base === "prompt.json"
   ) {
     return true;
   }
-  return base.endsWith(".workflow.json");
+  return (
+    base.endsWith(".workflow.json") ||
+    base.endsWith(".api.json") ||
+    base.endsWith(".comfy.json")
+  );
 }
 
 export function isMagicManifestFilename(name: string): boolean {
@@ -138,6 +145,41 @@ export function isMagicManifestFilename(name: string): boolean {
 export function isMagicWorkflowUrlFilename(name: string): boolean {
   const base = name.split(/[/\\]/).pop()?.toLowerCase() || "";
   return base === "workflow.url";
+}
+
+/**
+ * Package sidecars that must never become library ingredient rows.
+ * Media-only classification; workflows/manifests are handled separately.
+ */
+export function isImportSidecarFilename(name: string): boolean {
+  const base = name.split(/[/\\]/).pop()?.toLowerCase() || "";
+  if (!base.endsWith(".json") && base !== "workflow.url") return false;
+  if (isMagicWorkflowFilename(name)) return true;
+  if (isMagicManifestFilename(name)) return true;
+  if (isMagicWorkflowUrlFilename(name)) return true;
+  // Common ComfyUI export names / loose graphs
+  if (base.includes("workflow") || base.includes("comfy")) return true;
+  return false;
+}
+
+/** True when JSON looks like a ComfyUI API-format prompt graph. */
+export function looksLikeComfyApiGraph(obj: unknown): boolean {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
+  const vals = Object.values(obj as Record<string, unknown>);
+  if (!vals.length) return false;
+  const sample = vals.slice(0, 8);
+  let hits = 0;
+  for (const v of sample) {
+    if (
+      v &&
+      typeof v === "object" &&
+      !Array.isArray(v) &&
+      "class_type" in (v as object)
+    ) {
+      hits += 1;
+    }
+  }
+  return hits >= Math.min(2, sample.length) && hits / sample.length >= 0.5;
 }
 
 export function comfyTemplateFromMagicPackage(
