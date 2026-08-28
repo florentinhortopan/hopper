@@ -46,7 +46,18 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(body || res.statusText);
+    let message = body || res.statusText;
+    try {
+      const parsed = JSON.parse(body) as { error?: unknown; message?: unknown };
+      if (typeof parsed.error === "string" && parsed.error.trim()) {
+        message = parsed.error;
+      } else if (typeof parsed.message === "string" && parsed.message.trim()) {
+        message = parsed.message;
+      }
+    } catch {
+      /* keep raw body */
+    }
+    throw new Error(message);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -321,7 +332,12 @@ export const api = {
       },
     ),
   package: (id: string) =>
-    req<{ zipPath: string; downloadUrl: string }>(`/campaigns/${id}/package`, {
+    req<{
+      zipPath: string;
+      downloadUrl: string;
+      fileName: string;
+      rowCount: number;
+    }>(`/campaigns/${id}/package`, {
       method: "POST",
       body: "{}",
     }),

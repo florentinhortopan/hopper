@@ -24,6 +24,7 @@ import { StepNav } from "@/components/StepNav";
 import { PreviewPlayer } from "@/components/PreviewPlayer";
 import { ViewModeToggle } from "@/components/ViewModeToggle";
 import { api } from "@/lib/api";
+import { triggerApiDownload } from "@/lib/download";
 
 type Busy = "review" | "package" | null;
 
@@ -111,9 +112,12 @@ export default function PreviewPage() {
   const [reviews, setReviews] = useState<ReviewEntry[]>([]);
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pkg, setPkg] = useState<{ zipPath: string; downloadUrl: string } | null>(
-    null,
-  );
+  const [pkg, setPkg] = useState<{
+    zipPath: string;
+    downloadUrl: string;
+    fileName?: string;
+    rowCount?: number;
+  } | null>(null);
   const [activeRef, setActiveRef] = useState<string | null>(null);
   const [activeSizeId, setActiveSizeId] = useState<string>("");
   const [view, setView] = useState<PlateDensity>("small");
@@ -236,7 +240,9 @@ export default function PreviewPage() {
     setError(null);
     setPkg(null);
     try {
-      setPkg(await api.package(id));
+      const result = await api.package(id);
+      setPkg(result);
+      triggerApiDownload(result.downloadUrl, result.fileName);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -386,12 +392,13 @@ export default function PreviewPage() {
             : `Celtra package${keptWithPlate ? ` (${keptWithPlate})` : ""}`}
         </button>
         {pkg ? (
-          <a
-            className="rounded-lg bg-ink-900 px-4 py-2.5 text-sm font-medium text-warm-paper no-underline"
-            href={`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8787"}${pkg.downloadUrl}`}
+          <button
+            type="button"
+            className="rounded-lg bg-ink-900 px-4 py-2.5 text-sm font-medium text-warm-paper"
+            onClick={() => triggerApiDownload(pkg.downloadUrl, pkg.fileName)}
           >
-            Download zip
-          </a>
+            Download zip{pkg.fileName ? ` (${pkg.fileName})` : ""}
+          </button>
         ) : null}
         <a
           href={`/campaigns/${id}/package`}

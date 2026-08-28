@@ -13,6 +13,7 @@ import {
 } from "@attatta/shared";
 import { StepNav } from "@/components/StepNav";
 import { api } from "@/lib/api";
+import { triggerApiDownload } from "@/lib/download";
 
 function cellHasPlate(cell: MatrixCell | undefined | null): boolean {
   if (!cell) return false;
@@ -26,7 +27,12 @@ export default function PackagePage() {
   const { id } = useParams<{ id: string }>();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [reviews, setReviews] = useState<ReviewEntry[]>([]);
-  const [result, setResult] = useState<{ zipPath: string; downloadUrl: string } | null>(null);
+  const [result, setResult] = useState<{
+    zipPath: string;
+    downloadUrl: string;
+    fileName?: string;
+    rowCount?: number;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -136,7 +142,9 @@ export default function PackagePage() {
         onClick={async () => {
           setError(null);
           try {
-            setResult(await api.package(id));
+            const next = await api.package(id);
+            setResult(next);
+            triggerApiDownload(next.downloadUrl, next.fileName);
           } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
           }
@@ -153,13 +161,27 @@ export default function PackagePage() {
 
       {result ? (
         <div className="mt-4 rounded-lg border border-ink-200 bg-white p-4 text-sm">
-          <div>Zip ready (content_matrix.xlsx + assets/):</div>
-          <a
-            className="mt-2 inline-block"
-            href={`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8787"}${result.downloadUrl}`}
+          <div>
+            Zip ready
+            {result.rowCount != null ? ` · ${result.rowCount} row(s)` : ""}
+            {result.fileName ? (
+              <>
+                {" "}
+                · <span className="font-mono text-xs">{result.fileName}</span>
+              </>
+            ) : (
+              " (content_matrix.xlsx + assets/)"
+            )}
+          </div>
+          <button
+            type="button"
+            className="mt-2 rounded-md bg-ink-900 px-3 py-1.5 text-sm text-white"
+            onClick={() =>
+              triggerApiDownload(result.downloadUrl, result.fileName)
+            }
           >
-            Download zip
-          </a>
+            Download zip again
+          </button>
           <div className="mt-2 font-mono text-xs text-ink-700">{result.zipPath}</div>
         </div>
       ) : null}

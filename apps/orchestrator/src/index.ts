@@ -1763,10 +1763,15 @@ app.post("/campaigns/:id/reviews/:cellId", async (req, res) => {
 
 app.post("/campaigns/:id/package", async (req, res) => {
   try {
-    const zipPath = await buildCeltraPackage(req.params.id);
+    const result = await buildCeltraPackage(req.params.id);
+    const downloadUrl =
+      `/files?path=${encodeURIComponent(result.zipPath)}` +
+      `&download=1&filename=${encodeURIComponent(result.fileName)}`;
     res.json({
-      zipPath,
-      downloadUrl: `/files?path=${encodeURIComponent(zipPath)}`,
+      zipPath: result.zipPath,
+      fileName: result.fileName,
+      rowCount: result.rowCount,
+      downloadUrl,
     });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });

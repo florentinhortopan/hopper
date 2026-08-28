@@ -16,6 +16,7 @@ import { useImportEta } from "@/lib/useImportEta";
 import { DesignerPublishBanner } from "@/components/DesignerPublishBanner";
 import { JobProgressRow } from "@/components/JobProgressRow";
 import { VariantMediaPreview } from "@/components/VariantMediaPreview";
+import { triggerApiDownload } from "@/lib/download";
 
 /** import → checking (prepare progress) → plan → run */
 type Phase = "import" | "checking" | "plan" | "run";
@@ -147,9 +148,12 @@ export function MagicCampaignModal({
   const [reviews, setReviews] = useState<ReviewEntry[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pkg, setPkg] = useState<{ downloadUrl: string; zipPath: string } | null>(
-    null,
-  );
+  const [pkg, setPkg] = useState<{
+    downloadUrl: string;
+    zipPath: string;
+    fileName?: string;
+    rowCount?: number;
+  } | null>(null);
   const [bootMeta, setBootMeta] = useState<{
     created: boolean;
     promoted: boolean;
@@ -509,8 +513,11 @@ export function MagicCampaignModal({
     if (!campaign) return;
     setBusy("package");
     setError(null);
+    setPkg(null);
     try {
-      setPkg(await api.package(campaign.id));
+      const result = await api.package(campaign.id);
+      setPkg(result);
+      triggerApiDownload(result.downloadUrl, result.fileName);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1270,12 +1277,27 @@ export function MagicCampaignModal({
                 </ul>
               </div>
               {pkg ? (
-                <a
-                  className="inline-block rounded-md bg-ink-900 px-3 py-2 text-sm text-white"
-                  href={`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8787"}${pkg.downloadUrl}`}
-                >
-                  Download Celtra package
-                </a>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-950">
+                  <p>
+                    Celtra zip ready
+                    {pkg.rowCount ? ` · ${pkg.rowCount} row(s)` : ""}
+                    {pkg.fileName ? (
+                      <>
+                        {" "}
+                        · <span className="font-mono">{pkg.fileName}</span>
+                      </>
+                    ) : null}
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-2 rounded-md bg-ink-900 px-3 py-1.5 text-sm text-white"
+                    onClick={() =>
+                      triggerApiDownload(pkg.downloadUrl, pkg.fileName)
+                    }
+                  >
+                    Download again
+                  </button>
+                </div>
               ) : null}
             </div>
           ) : null}

@@ -152,7 +152,21 @@ function buildCsv(profile: CeltraTemplateProfile, dataRows: string[][]): string 
   return lines.join("\n");
 }
 
-export async function buildCeltraPackage(campaignId: string): Promise<string> {
+function clip(s: string, max: number): string {
+  const t = s.trim();
+  if (t.length <= max) return t;
+  return t.slice(0, Math.max(0, max - 1)).trimEnd() + "…";
+}
+
+export type CeltraPackageResult = {
+  zipPath: string;
+  fileName: string;
+  rowCount: number;
+};
+
+export async function buildCeltraPackage(
+  campaignId: string,
+): Promise<CeltraPackageResult> {
   assertGuaranteeTranche3ProfileIntegrity();
 
   const campaign = await getCampaign(campaignId);
@@ -166,7 +180,7 @@ export async function buildCeltraPackage(campaignId: string): Promise<string> {
 
   if (packable.length === 0) {
     throw new Error(
-      "No approved cells with plate media (genPath / preview / master) to package",
+      "No approved cells with plate media (genPath / preview / master) to package. Keep at least one variant that still has a plate.",
     );
   }
 
@@ -216,13 +230,28 @@ export async function buildCeltraPackage(campaignId: string): Promise<string> {
       variantId;
 
     const frameHeadlines: Partial<Record<CeltraFrameId, string>> = {
-      F1: cell.copy.setup || "",
-      F2: cell.copy.punchline || "",
-      F3: cell.sceneTag === "endcard" ? cell.copy.endcard || "" : "",
+      F1: clip(cell.copy.setup || "", profile.charLimits["F1 Headline (max 35 char)"] ?? 35),
+      F2: clip(
+        cell.copy.punchline || "",
+        profile.charLimits["F2 Headline (max 35 char)"] ?? 35,
+      ),
+      F3:
+        cell.sceneTag === "endcard"
+          ? clip(
+              cell.copy.endcard || "",
+              profile.charLimits["F3 Headline (max 35 char)"] ?? 35,
+            )
+          : "",
     };
 
-    const ecEyebrow = campaign.brief.offer?.trim() || cell.copy.cta || "";
-    const ecHeadline = cell.copy.endcard || "";
+    const ecEyebrow = clip(
+      campaign.brief.offer?.trim() || cell.copy.cta || "",
+      profile.charLimits["EC Eyebrow (max 30 char)"] ?? 30,
+    );
+    const ecHeadline = clip(
+      cell.copy.endcard || "",
+      profile.charLimits["EC headline (max 77 char)"] ?? 77,
+    );
     const ecDisclaimer = (campaign.brief.mustSay ?? []).join(" ").trim();
 
     const assetName = formatCeltraAssetName(profile, {
@@ -295,7 +324,12 @@ export async function buildCeltraPackage(campaignId: string): Promise<string> {
   const csvText = buildCsv(profile, wideRows);
 
   await mkdir(PATHS.packages, { recursive: true });
-  const zipName = `${campaign.id}_${Date.now()}.zip`;
+  const safeCampaign =
+    (campaign.name || campaign.id)
+      .replace(/[^a-zA-Z0-9._-]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 48) || campaign.id;
+  const zipName = `${safeCampaign}_celtra_${Date.now()}.zip`;
   const zipPath = path.join(PATHS.packages, zipName);
 
   await new Promise<void>((resolve, reject) => {
@@ -345,5 +379,9 @@ export async function buildCeltraPackage(campaignId: string): Promise<string> {
   });
 
   await readFile(zipPath);
-  return zipPath;
+  return {
+    zipPath,
+    fileName: zipName,
+    rowCount: wideRows.length,
+  };
 }
