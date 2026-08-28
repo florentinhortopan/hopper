@@ -28,12 +28,18 @@ export function StepNav({ campaignId, current }: { campaignId: string; current: 
     <>
       <ActiveGenerationBar campaignId={campaignId} />
       {mode === "magic" ? (
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+        <div className="mb-3 flex flex-wrap items-center gap-3 text-xs">
           <span className="rounded bg-ember-500/15 px-2 py-1 font-medium uppercase tracking-wide text-ember-800">
             Magic · Advanced
           </span>
+          <a
+            href={`/?magic=${encodeURIComponent(campaignId)}`}
+            className="rounded border border-ember-500/40 bg-ember-500/10 px-2.5 py-1 font-medium text-ember-900 no-underline hover:bg-ember-500/20"
+          >
+            ← Magic flow
+          </a>
           <span className="text-ink-600">
-            Full StepNav escape hatch for this magic campaign.
+            Edit here, then return to the Magic popup for this campaign.
           </span>
         </div>
       ) : null}

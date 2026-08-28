@@ -14,6 +14,7 @@ export default function HomePage() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [magicOpen, setMagicOpen] = useState(false);
+  const [magicCampaignId, setMagicCampaignId] = useState<string | null>(null);
 
   async function refresh(includeArchived = showArchived) {
     setLoading(true);
@@ -31,6 +32,15 @@ export default function HomePage() {
     void refresh(showArchived);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showArchived]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const id = new URLSearchParams(window.location.search).get("magic");
+    if (id) {
+      setMagicCampaignId(id);
+      setMagicOpen(true);
+    }
+  }, []);
 
   async function create() {
     const c = await api.createCampaign(name);
@@ -54,6 +64,24 @@ export default function HomePage() {
     if (!confirm(`Delete campaign "${c.name}" and its outputs? This cannot be undone.`)) return;
     await api.deleteCampaign(c.id);
     await refresh(showArchived);
+  }
+
+  function openMagic(campaignId?: string) {
+    setMagicCampaignId(campaignId ?? null);
+    setMagicOpen(true);
+  }
+
+  function closeMagic() {
+    setMagicOpen(false);
+    setMagicCampaignId(null);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("magic")) {
+        url.searchParams.delete("magic");
+        window.history.replaceState({}, "", url.pathname + url.search);
+      }
+    }
+    void refresh(showArchived);
   }
 
   return (
@@ -91,7 +119,7 @@ export default function HomePage() {
         </button>
         <button
           type="button"
-          onClick={() => setMagicOpen(true)}
+          onClick={() => openMagic()}
           className="rounded-md border border-ember-500 bg-ember-500/10 px-4 py-2 text-sm font-medium text-ember-800"
         >
           Magic campaign
@@ -148,7 +176,11 @@ export default function HomePage() {
               </div>
             ) : (
               <a
-                href={`/campaigns/${c.id}/brief`}
+                href={
+                  c.mode === "magic"
+                    ? `/?magic=${encodeURIComponent(c.id)}`
+                    : `/campaigns/${c.id}/brief`
+                }
                 className="block font-display text-xl text-ink-900 hover:text-ember-600"
               >
                 {c.name}
@@ -171,6 +203,15 @@ export default function HomePage() {
               Updated {new Date(c.updatedAt).toLocaleString()}
             </div>
             <div className="mt-4 flex flex-wrap gap-3 text-xs">
+              {c.mode === "magic" ? (
+                <button
+                  type="button"
+                  className="text-ember-800 underline"
+                  onClick={() => openMagic(c.id)}
+                >
+                  Open Magic
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="text-ink-900 underline"
@@ -205,7 +246,11 @@ export default function HomePage() {
         </p>
       ) : null}
 
-      <MagicCampaignModal open={magicOpen} onClose={() => setMagicOpen(false)} />
+      <MagicCampaignModal
+        open={magicOpen}
+        campaignId={magicCampaignId}
+        onClose={closeMagic}
+      />
     </div>
   );
 }

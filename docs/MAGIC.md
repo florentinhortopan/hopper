@@ -1,6 +1,8 @@
 # Magic campaign flow
 
-Two-step popup path: **Import → Generate**, then Celtra Package. Full StepNav remains as **Advanced**.
+Popup path: **Import → Prepare checklist → Variant plan → Generate → Celtra Package**. Full StepNav remains as **Advanced**, with **← Magic flow** to return.
+
+Magic reuses **one** non-archived `mode: "magic"` campaign (latest updated) so Advanced edits stay in sync. Use “Start new Magic campaign” only when you intentionally want a fresh id.
 
 ## Package layout
 
@@ -45,12 +47,13 @@ Raw ComfyUI `api.json` graphs are **not** executed in Magic MVP — prepare fall
 ## If no workflow in the package
 
 `POST /campaigns/:id/magic/prepare` synthesizes `comfyTemplate` + copy + prompt hints from the brief (LLM when `ATTATTA_LLM_API_KEY` is set; otherwise `magic_att_v1` heuristics). Response includes:
-- `variants` — one row per sparse matrix cell (the Generate checklist)
-- `gapsFilled` — what was filled (source: `imported` | `url` | `ai` | `preset`)
+- `gapsFilled` — readiness checklist (brief, workflow, talent, hands, copy, tokens, connectors, variants)
+- `variants` — one row per sparse matrix cell (Generate list)
 
 ## API
 
-- `POST /campaigns/magic` — create `mode: "magic"` campaign
+- `POST /campaigns/magic` — `{ name?, libraryId?, forceNew?, campaignId? }` → `{ campaign, created }` (reuses latest magic by default)
+- `GET /campaigns/:id/magic/plan` — snapshot checklist + variants (no LLM)
 - `POST /campaigns/:id/magic/prepare` — `{ brief, importId?, workflowUrl?, workflowJson? }`
 - `POST /campaigns/:id/magic/generate` — enqueue Comfy variants
 - `POST /campaigns/:id/magic/workflow` — `{ url }` or `{ json }`
@@ -59,5 +62,6 @@ Raw ComfyUI `api.json` graphs are **not** executed in Magic MVP — prepare fall
 ## UI flow
 
 1. **Import & categorize** — upload zip (same classify as Library). Review kind/label per file.
-2. **Confirm → variant plan** — sparse matrix rows are the checklist (talent × hands × …). Gaps (workflow/copy) filled from brief; expandable “what AI filled”.
-3. **Generate** — Comfy plates → Keep/Kill → Celtra package.
+2. **Prepare checklist** — progressive checking UI; each row links to Advanced (Brief / Settings / Ingredients / Tokens / Matrix). Return via **← Magic flow**.
+3. **Variant plan** — sparse matrix rows; Generate.
+4. **Generate** — Comfy plates → Keep/Kill → Celtra package.

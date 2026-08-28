@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   Brief,
   Campaign,
@@ -13,8 +13,8 @@ import type {
 } from "@attatta/shared";
 import { api } from "@/lib/api";
 
-/** import = categorize assets · plan = variants checklist · run = generate/review/package */
-type Phase = "import" | "plan" | "run";
+/** import → checking (prepare progress) → plan → run */
+type Phase = "import" | "checking" | "plan" | "run";
 
 type PrepareResult = {
   campaign: Campaign;
@@ -25,6 +25,17 @@ type PrepareResult = {
   plannedCells: number;
   workflowSource: MagicChecklistItem["source"];
   warnings: string[];
+};
+
+type CheckStatus = "pending" | "checking" | "done" | "fail";
+
+type LiveCheckItem = {
+  id: string;
+  label: string;
+  status: CheckStatus;
+  ok?: boolean;
+  source?: MagicChecklistItem["source"];
+  detail?: string;
 };
 
 const KINDS: LibraryKind[] = [
@@ -38,6 +49,17 @@ const KINDS: LibraryKind[] = [
   "copy",
 ];
 
+const PREPARE_STEPS: Array<{ id: string; label: string }> = [
+  { id: "brief", label: "Brief" },
+  { id: "workflow", label: "Workflow template" },
+  { id: "talent", label: "Talent take" },
+  { id: "hands", label: "Hands / variant plates" },
+  { id: "copy", label: "Copy" },
+  { id: "tokens", label: "Design tokens" },
+  { id: "connectors", label: "Comfy + LLM" },
+  { id: "variants", label: "Variant matrix" },
+];
+
 function sourceBadge(source: MagicChecklistItem["source"]) {
   const map: Record<MagicChecklistItem["source"], string> = {
     imported: "from package",
@@ -49,12 +71,42 @@ function sourceBadge(source: MagicChecklistItem["source"]) {
   return map[source] || source;
 }
 
+/** Advanced StepNav page for each checklist row. */
+function advancedHref(campaignId: string, itemId: string): string {
+  const map: Record<string, string> = {
+    brief: `/campaigns/${campaignId}/brief`,
+    workflow: `/campaigns/${campaignId}/settings`,
+    talent: `/campaigns/${campaignId}/ingredients`,
+    hands: `/campaigns/${campaignId}/ingredients`,
+    copy: `/campaigns/${campaignId}/ingredients`,
+    tokens: `/campaigns/${campaignId}/tokens`,
+    connectors: `/campaigns/${campaignId}/settings`,
+    variants: `/campaigns/${campaignId}/matrix`,
+  };
+  return map[itemId] || `/campaigns/${campaignId}/settings`;
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function emptyChecks(): LiveCheckItem[] {
+  return PREPARE_STEPS.map((s) => ({
+    id: s.id,
+    label: s.label,
+    status: "pending" as const,
+  }));
+}
+
 export function MagicCampaignModal({
   open,
   onClose,
+  campaignId: resumeCampaignId = null,
 }: {
   open: boolean;
   onClose: () => void;
+  /** When set (e.g. from StepNav “← Magic”), resume this campaign’s Magic flow. */
+  campaignId?: string | null;
 }) {
   const [phase, setPhase] = useState<Phase>("import");
   const [name, setName] = useState("Magic campaign");
@@ -70,6 +122,7 @@ export function MagicCampaignModal({
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [importSession, setImportSession] = useState<ImportSession | null>(null);
   const [prepare, setPrepare] = useState<PrepareResult | null>(null);
+  const [liveChecks, setLiveChecks] = useState<LiveCheckItem[]>(emptyChecks);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [reviews, setReviews] = useState<ReviewEntry[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -77,25 +130,73 @@ export function MagicCampaignModal({
   const [pkg, setPkg] = useState<{ downloadUrl: string; zipPath: string } | null>(
     null,
   );
-  const [showGaps, setShowGaps] = useState(false);
+  const [createdThisOpen, setCreatedThisOpen] = useState(false);
+  const bootRef = useRef(0);
+
+  const refreshReviews = useCallback(async (id: string) => {
+    setReviews(await api.getReviews(id));
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    setPhase("import");
-    setCampaign(null);
+    const boot = ++bootRef.current;
     setImportSession(null);
     setPrepare(null);
     setJobs([]);
     setReviews([]);
     setPkg(null);
     setError(null);
-    setBusy(null);
-    setShowGaps(false);
-  }, [open]);
+    setBusy("boot");
+    setLiveChecks(emptyChecks());
+    setCreatedThisOpen(false);
 
-  const refreshReviews = useCallback(async (id: string) => {
-    setReviews(await api.getReviews(id));
-  }, []);
+    void (async () => {
+      try {
+        const { campaign: c, created } = await api.ensureMagicCampaign({
+          name: "Magic campaign",
+          campaignId: resumeCampaignId || undefined,
+        });
+        if (boot !== bootRef.current) return;
+        setCampaign(c);
+        setCreatedThisOpen(created);
+        setName(c.name);
+        setBrief({
+          prompt: c.brief.prompt || "",
+          audience: c.brief.audience || "",
+          offer: c.brief.offer || "",
+          cta: c.brief.cta || "Learn more",
+          mustSay: c.brief.mustSay || [],
+          mustNot: c.brief.mustNot || [],
+        });
+
+        if (c.matrix.cells.length > 0) {
+          const plan = await api.magicPlan(c.id);
+          if (boot !== bootRef.current) return;
+          setPrepare(plan);
+          setCampaign(plan.campaign);
+          setLiveChecks(
+            plan.gapsFilled.map((item) => ({
+              id: item.id,
+              label: item.label,
+              status: item.ok ? "done" : "fail",
+              ok: item.ok,
+              source: item.source,
+              detail: item.detail,
+            })),
+          );
+          setPhase("plan");
+        } else {
+          setPhase("import");
+        }
+      } catch (e) {
+        if (boot !== bootRef.current) return;
+        setError(e instanceof Error ? e.message : String(e));
+        setPhase("import");
+      } finally {
+        if (boot === bootRef.current) setBusy(null);
+      }
+    })();
+  }, [open, resumeCampaignId]);
 
   useEffect(() => {
     if (!importSession) return;
@@ -128,8 +229,12 @@ export function MagicCampaignModal({
 
   async function ensureCampaign() {
     if (campaign) return campaign;
-    const c = await api.createMagicCampaign(name.trim() || "Magic campaign");
+    const { campaign: c, created } = await api.ensureMagicCampaign({
+      name: name.trim() || "Magic campaign",
+      campaignId: resumeCampaignId || undefined,
+    });
     setCampaign(c);
+    setCreatedThisOpen(created);
     return c;
   }
 
@@ -156,7 +261,11 @@ export function MagicCampaignModal({
 
   async function patchRow(
     rowId: string,
-    patch: { suggestedKind?: LibraryKind; label?: string; status?: "accepted" | "rejected" },
+    patch: {
+      suggestedKind?: LibraryKind;
+      label?: string;
+      status?: "accepted" | "rejected";
+    },
   ) {
     if (!importSession) return;
     const next = await api.patchImportRows(importSession.id, [
@@ -170,11 +279,25 @@ export function MagicCampaignModal({
       setError("Add a brief (and optionally an import package)");
       return;
     }
-    setBusy("prepare");
     setError(null);
+    setBusy("prepare");
+    setPhase("checking");
+    setLiveChecks(emptyChecks());
+    setPrepare(null);
+
+    const checks = emptyChecks();
+    const setCheck = (id: string, patch: Partial<LiveCheckItem>) => {
+      const idx = checks.findIndex((c) => c.id === id);
+      if (idx >= 0) checks[idx] = { ...checks[idx], ...patch };
+      setLiveChecks(checks.map((c) => ({ ...c })));
+    };
+
     try {
       const c = await ensureCampaign();
       let importId = importSession?.id;
+
+      // Progressive: mark brief checking while we commit import + prepare
+      setCheck("brief", { status: "checking" });
 
       if (importSession && importSession.status === "review") {
         const accepted = importSession.rows.map((r) => ({
@@ -190,17 +313,60 @@ export function MagicCampaignModal({
         importId = done.id;
       }
 
-      const result = await api.magicPrepare(c.id, {
+      const preparePromise = api.magicPrepare(c.id, {
         brief,
         importId: importId || undefined,
         workflowUrl: workflowUrl.trim() || undefined,
       });
+
+      // Walk checklist while prepare runs so the UI isn't a blank stall
+      for (const step of PREPARE_STEPS) {
+        setCheck(step.id, { status: "checking" });
+        await sleep(280);
+      }
+
+      const result = await preparePromise;
+      const byId = new Map(result.gapsFilled.map((g) => [g.id, g]));
+
+      for (const step of PREPARE_STEPS) {
+        const item = byId.get(step.id);
+        if (item) {
+          setCheck(step.id, {
+            status: item.ok ? "done" : "fail",
+            ok: item.ok,
+            source: item.source,
+            detail: item.detail,
+            label: item.label,
+          });
+        } else {
+          setCheck(step.id, {
+            status: "done",
+            ok: true,
+            detail: "Checked",
+          });
+        }
+        await sleep(90);
+      }
+
       setPrepare(result);
       setCampaign(result.campaign);
-      if (result.canContinue) setPhase("plan");
-      else setError(result.reasons.join(" · ") || "Cannot continue yet");
+      await sleep(350);
+
+      if (result.canContinue) {
+        setPhase("plan");
+      } else {
+        setError(result.reasons.join(" · ") || "Cannot continue yet");
+        setPhase("checking");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      setLiveChecks((prev) =>
+        prev.map((c) =>
+          c.status === "checking" || c.status === "pending"
+            ? { ...c, status: "fail", detail: "Prepare failed" }
+            : c,
+        ),
+      );
     } finally {
       setBusy(null);
     }
@@ -223,7 +389,10 @@ export function MagicCampaignModal({
     }
   }
 
-  async function setDecision(cellId: string, decision: "approved" | "rejected") {
+  async function setDecision(
+    cellId: string,
+    decision: "approved" | "rejected",
+  ) {
     if (!campaign) return;
     await api.setReview(campaign.id, cellId, {
       decision,
@@ -239,6 +408,46 @@ export function MagicCampaignModal({
     setError(null);
     try {
       setPkg(await api.package(campaign.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onForceNew() {
+    if (
+      !confirm(
+        "Start a brand-new Magic campaign? The current one stays in the list.",
+      )
+    ) {
+      return;
+    }
+    setBusy("boot");
+    setError(null);
+    try {
+      const { campaign: c } = await api.ensureMagicCampaign({
+        name: name.trim() || "Magic campaign",
+        forceNew: true,
+      });
+      setCampaign(c);
+      setCreatedThisOpen(true);
+      setName(c.name);
+      setBrief({
+        prompt: "",
+        audience: "",
+        offer: "",
+        cta: "Learn more",
+        mustSay: [],
+        mustNot: [],
+      });
+      setImportSession(null);
+      setPrepare(null);
+      setLiveChecks(emptyChecks());
+      setJobs([]);
+      setReviews([]);
+      setPkg(null);
+      setPhase("import");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -262,9 +471,32 @@ export function MagicCampaignModal({
   const phaseLabel =
     phase === "import"
       ? "1 · Import & categorize"
-      : phase === "plan"
-        ? "2 · Variant plan"
-        : "3 · Generate & package";
+      : phase === "checking"
+        ? "2 · Checking readiness"
+        : phase === "plan"
+          ? "3 · Variant plan"
+          : "4 · Generate & package";
+
+  const checklistForDisplay: LiveCheckItem[] =
+    phase === "checking"
+      ? liveChecks
+      : prepare
+        ? prepare.gapsFilled.map((item) => ({
+            id: item.id,
+            label: item.label,
+            status: (item.ok ? "done" : "fail") as CheckStatus,
+            ok: item.ok,
+            source: item.source,
+            detail: item.detail,
+          }))
+        : liveChecks;
+
+  function statusGlyph(status: CheckStatus) {
+    if (status === "checking") return "…";
+    if (status === "done") return "✓";
+    if (status === "fail") return "!";
+    return "○";
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/50 p-4">
@@ -277,6 +509,11 @@ export function MagicCampaignModal({
           <div>
             <h2 className="font-display text-2xl">Magic campaign</h2>
             <p className="mt-1 text-xs text-ink-700">{phaseLabel}</p>
+            {campaign ? (
+              <p className="mt-1 font-mono text-[10px] text-ink-500">
+                {createdThisOpen ? "New" : "Resumed"} · {campaign.id}
+              </p>
+            ) : null}
           </div>
           <button
             type="button"
@@ -294,7 +531,11 @@ export function MagicCampaignModal({
             </pre>
           ) : null}
 
-          {phase === "import" ? (
+          {busy === "boot" ? (
+            <p className="text-sm text-ink-600">Opening Magic campaign…</p>
+          ) : null}
+
+          {phase === "import" && busy !== "boot" ? (
             <div className="space-y-4">
               <label className="block text-sm">
                 <span className="text-ink-700">Campaign name</span>
@@ -302,9 +543,21 @@ export function MagicCampaignModal({
                   className="mt-1 w-full rounded-md border border-ink-200 px-3 py-2"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  disabled={Boolean(campaign)}
+                  disabled={Boolean(campaign) && !createdThisOpen}
                 />
               </label>
+              {!createdThisOpen && campaign ? (
+                <p className="text-xs text-ink-600">
+                  Reusing this Magic campaign so Advanced edits stay in sync.{" "}
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => void onForceNew()}
+                  >
+                    Start new Magic campaign
+                  </button>
+                </p>
+              ) : null}
               <label className="block text-sm">
                 <span className="text-ink-700">Brief (required)</span>
                 <textarea
@@ -427,12 +680,85 @@ export function MagicCampaignModal({
             </div>
           ) : null}
 
+          {(phase === "checking" || phase === "plan") &&
+          checklistForDisplay.length ? (
+            <div className="mb-4 space-y-3">
+              <div className="rounded-xl border border-ink-200 bg-white p-4">
+                <h3 className="text-sm font-medium">
+                  {phase === "checking"
+                    ? "Checking each item…"
+                    : "Readiness checklist"}
+                </h3>
+                <p className="mt-1 text-xs text-ink-600">
+                  Open Advanced to edit any item; use ← Magic on StepNav to
+                  return here.
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {checklistForDisplay.map((item) => (
+                    <li
+                      key={item.id}
+                      className={`flex flex-wrap items-start gap-2 rounded-lg border px-3 py-2 text-xs ${
+                        item.status === "checking"
+                          ? "border-ember-400/40 bg-ember-500/5"
+                          : "border-ink-100 bg-ink-50/40"
+                      }`}
+                    >
+                      <span
+                        className={`mt-0.5 w-4 font-mono ${
+                          item.status === "checking"
+                            ? "animate-pulse text-ember-700"
+                            : item.status === "fail"
+                              ? "text-red-700"
+                              : item.status === "done"
+                                ? "text-emerald-700"
+                                : "text-ink-400"
+                        }`}
+                        aria-hidden
+                      >
+                        {statusGlyph(item.status)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-2">
+                          <span className="font-medium">{item.label}</span>
+                          {item.source ? (
+                            <span className="text-ink-500">
+                              ({sourceBadge(item.source)})
+                            </span>
+                          ) : null}
+                          {item.status === "checking" ? (
+                            <span className="text-ember-700">checking…</span>
+                          ) : null}
+                        </div>
+                        {item.detail ? (
+                          <p className="mt-0.5 text-ink-600">{item.detail}</p>
+                        ) : null}
+                      </div>
+                      {campaign ? (
+                        <a
+                          className="shrink-0 text-ink-700 underline"
+                          href={`${advancedHref(campaign.id, item.id)}?from=magic`}
+                        >
+                          Edit
+                        </a>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+                {prepare?.warnings.length ? (
+                  <p className="mt-2 text-xs text-amber-800">
+                    {prepare.warnings.join(" · ")}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           {phase === "plan" && prepare ? (
             <div className="space-y-4">
               <div className="rounded-xl border border-ink-200 bg-white p-4 text-sm">
                 <p>
-                  <strong>{prepare.variants.length}</strong> variants will
-                  generate from your categorized plates
+                  <strong>{prepare.variants.length}</strong> variants ready to
+                  generate
                   {prepare.workflowSource !== "imported" ? (
                     <span className="text-ink-600">
                       {" "}
@@ -441,16 +767,15 @@ export function MagicCampaignModal({
                   ) : null}
                 </p>
                 <p className="mt-1 text-xs text-ink-600">
-                  This list is the sparse matrix built after import — not the old
-                  readiness checklist. Missing copy/workflow were filled from the
-                  brief where needed.
+                  Sparse matrix from categorized plates. Edit a row in Matrix if
+                  needed.
                 </p>
                 {campaign ? (
                   <a
                     className="mt-2 inline-block text-xs underline"
-                    href={`/campaigns/${campaign.id}/settings`}
+                    href={`/campaigns/${campaign.id}/matrix?from=magic`}
                   >
-                    Advanced (full StepNav)
+                    Open Matrix (Advanced)
                   </a>
                 ) : null}
               </div>
@@ -467,6 +792,14 @@ export function MagicCampaignModal({
                       <span className="text-ink-500">
                         {v.needsGen ? "Comfy" : "no gen"} · {v.sceneTag || "—"}
                       </span>
+                      {campaign ? (
+                        <a
+                          className="ml-auto underline"
+                          href={`/campaigns/${campaign.id}/matrix?from=magic`}
+                        >
+                          Edit
+                        </a>
+                      ) : null}
                     </div>
                     <p className="mt-1 text-ink-700">
                       {v.copySetup}
@@ -480,32 +813,6 @@ export function MagicCampaignModal({
                   </li>
                 ))}
               </ul>
-
-              <button
-                type="button"
-                className="text-xs text-ink-600 underline"
-                onClick={() => setShowGaps((g) => !g)}
-              >
-                {showGaps ? "Hide" : "Show"} what AI/preset filled (gaps)
-              </button>
-              {showGaps ? (
-                <ul className="space-y-1 rounded-lg border border-ink-100 bg-ink-50/50 p-3 text-xs">
-                  {prepare.gapsFilled.map((item) => (
-                    <li key={item.id}>
-                      {item.ok ? "✓" : "○"} {item.label}{" "}
-                      <span className="text-ink-500">
-                        ({sourceBadge(item.source)})
-                      </span>
-                      — {item.detail}
-                    </li>
-                  ))}
-                  {prepare.warnings.length ? (
-                    <li className="text-amber-800">
-                      {prepare.warnings.join(" · ")}
-                    </li>
-                  ) : null}
-                </ul>
-              ) : null}
             </div>
           ) : null}
 
@@ -516,6 +823,14 @@ export function MagicCampaignModal({
                   Jobs running: <strong>{running}</strong> · Approved:{" "}
                   <strong>{approved}</strong>
                 </div>
+                {campaign ? (
+                  <a
+                    className="mt-2 inline-block text-xs underline"
+                    href={`/campaigns/${campaign.id}/variants?from=magic`}
+                  >
+                    Open Variant review (Advanced)
+                  </a>
+                ) : null}
               </div>
               <ul className="max-h-64 space-y-2 overflow-y-auto">
                 {cells.map((cell) => {
@@ -536,14 +851,18 @@ export function MagicCampaignModal({
                       <button
                         type="button"
                         className="ml-auto rounded border border-ink-200 px-2 py-0.5"
-                        onClick={() => void setDecision(cell.cellId, "approved")}
+                        onClick={() =>
+                          void setDecision(cell.cellId, "approved")
+                        }
                       >
                         Keep
                       </button>
                       <button
                         type="button"
                         className="rounded border border-ink-200 px-2 py-0.5"
-                        onClick={() => void setDecision(cell.cellId, "rejected")}
+                        onClick={() =>
+                          void setDecision(cell.cellId, "rejected")
+                        }
                       >
                         Kill
                       </button>
@@ -578,9 +897,23 @@ export function MagicCampaignModal({
               }
               onClick={() => void onConfirmCategoriesAndPlan()}
             >
+              Confirm categories & prepare checklist
+            </button>
+          ) : null}
+          {phase === "checking" ? (
+            <span className="text-xs text-ink-600">
               {busy === "prepare"
-                ? "Building variant plan…"
-                : "Confirm categories & build variant plan"}
+                ? "Preparing checklist…"
+                : "Checklist incomplete — edit Advanced or go back"}
+            </span>
+          ) : null}
+          {phase === "checking" && busy === null ? (
+            <button
+              type="button"
+              className="rounded-md border border-ink-200 px-3 py-2 text-sm"
+              onClick={() => setPhase("import")}
+            >
+              ← Back
             </button>
           ) : null}
           {phase === "plan" ? (
@@ -591,6 +924,14 @@ export function MagicCampaignModal({
                 onClick={() => setPhase("import")}
               >
                 ← Back
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-ink-200 px-3 py-2 text-sm"
+                disabled={busy !== null}
+                onClick={() => void onConfirmCategoriesAndPlan()}
+              >
+                Re-check
               </button>
               <button
                 type="button"

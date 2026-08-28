@@ -49,8 +49,9 @@ import {
 import { PORT, PUBLIC_BASE, PATHS, REPO_ROOT } from "./config.js";
 import { DEFAULT_BRAND_TOKEN_ID } from "./defaultTokens.js";
 import {
-  createMagicCampaign,
+  ensureMagicCampaign,
   generateMagicCampaign,
+  magicPlanSnapshot,
   prepareMagicCampaign,
 } from "./magicRun.js";
 import {
@@ -855,8 +856,26 @@ app.post("/campaigns/magic", async (req, res) => {
     const libraryId = req.body?.libraryId
       ? String(req.body.libraryId)
       : undefined;
-    const campaign = await createMagicCampaign({ name, libraryId });
-    res.status(201).json(campaign);
+    const forceNew = Boolean(req.body?.forceNew);
+    const campaignId = req.body?.campaignId
+      ? String(req.body.campaignId)
+      : undefined;
+    const { campaign, created } = await ensureMagicCampaign({
+      name,
+      libraryId,
+      forceNew,
+      campaignId,
+    });
+    res.status(created ? 201 : 200).json({ campaign, created });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.get("/campaigns/:id/magic/plan", async (req, res) => {
+  try {
+    const result = await magicPlanSnapshot(req.params.id);
+    res.json(result);
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
   }

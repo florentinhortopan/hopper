@@ -45,11 +45,28 @@ export const api = {
     req<Campaign[]>(`/campaigns${includeArchived ? "?includeArchived=1" : ""}`),
   createCampaign: (name: string) =>
     req<Campaign>("/campaigns", { method: "POST", body: JSON.stringify({ name }) }),
-  createMagicCampaign: (name: string, libraryId?: string) =>
-    req<Campaign>("/campaigns/magic", {
+  /** Reuses the latest magic campaign unless forceNew or campaignId is set. */
+  ensureMagicCampaign: (opts?: {
+    name?: string;
+    libraryId?: string;
+    forceNew?: boolean;
+    campaignId?: string;
+  }) =>
+    req<{ campaign: Campaign; created: boolean }>("/campaigns/magic", {
       method: "POST",
-      body: JSON.stringify({ name, libraryId }),
+      body: JSON.stringify(opts ?? {}),
     }),
+  magicPlan: (id: string) =>
+    req<{
+      campaign: Campaign;
+      gapsFilled: import("@attatta/shared").MagicChecklistItem[];
+      variants: import("@attatta/shared").MagicVariantPlanRow[];
+      canContinue: boolean;
+      reasons: string[];
+      plannedCells: number;
+      workflowSource: import("@attatta/shared").MagicChecklistSource;
+      warnings: string[];
+    }>(`/campaigns/${id}/magic/plan`),
   magicPrepare: (
     id: string,
     body: {

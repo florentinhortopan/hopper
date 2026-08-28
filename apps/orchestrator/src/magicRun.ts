@@ -130,6 +130,51 @@ export async function createMagicCampaign(opts: {
   return saveCampaign(draft);
 }
 
+/**
+ * Prefer the latest non-archived magic campaign so Magic stays in sync with
+ * one campaign (Advanced StepNav edits + Magic popup share the same id).
+ */
+export async function ensureMagicCampaign(opts: {
+  name?: string;
+  libraryId?: string;
+  /** Force a brand-new magic campaign instead of reusing. */
+  forceNew?: boolean;
+  /** Resume a specific campaign (must be magic or will be tagged magic). */
+  campaignId?: string;
+}): Promise<{ campaign: Campaign; created: boolean }> {
+  const { listCampaigns } = await import("./store.js");
+
+  if (opts.campaignId?.trim()) {
+    let campaign = await getCampaign(opts.campaignId.trim());
+    if (campaign.mode !== "magic") {
+      campaign = await saveCampaign({
+        ...campaign,
+        mode: "magic",
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    return { campaign, created: false };
+  }
+
+  if (!opts.forceNew) {
+    const existing = (await listCampaigns({ includeArchived: false })).find(
+      (c) => c.mode === "magic",
+    );
+    if (existing) {
+      if (opts.name?.trim() && opts.name.trim() !== existing.name) {
+        // Keep name stable once created — ignore rename on reopen
+      }
+      return { campaign: existing, created: false };
+    }
+  }
+
+  const campaign = await createMagicCampaign({
+    name: opts.name,
+    libraryId: opts.libraryId,
+  });
+  return { campaign, created: true };
+}
+
 function pickMagicActivations(lib: LibraryItem[]): {
   activeIds: string[];
   contractTalentId: string | null;
@@ -426,9 +471,84 @@ export async function prepareMagicCampaign(
   campaign = buildMagicSparse(campaign, lib);
   campaign = await saveCampaign(campaign);
 
-  const talent = lib.find((i) => i.id === act.contractTalentId);
+  return finalizeMagicPrepareResult({
+    campaign,
+    lib,
+    workflowSource,
+    workflowDetail,
+    copySource,
+    copyDetail,
+    warnings,
+    llmConfigured: llm.configured,
+  });
+}
+
+/** Read-only plan from current campaign state (no LLM / sparse rebuild). */
+export async function magicPlanSnapshot(
+  campaignId: string,
+): Promise<MagicPrepareResult> {
+  const campaign = await getCampaign(campaignId);
+  const lib = await listLibrary(
+    undefined,
+    campaign.libraryId || DEFAULT_LIBRARY_ID,
+  );
+  const llm = getOrchLlmStatus();
+  const hasWorkflow = Boolean(
+    campaign.comfyTemplate?.campaignGuidelines ||
+      campaign.comfyTemplate?.steps?.length,
+  );
+  const copyItems = lib.filter((i) => i.kind === "copy");
+  const copySource: MagicChecklistItem["source"] = copyItems.length
+    ? "imported"
+    : campaign.matrix.cells.some((c) => c.copy.setup?.trim())
+      ? "preset"
+      : "missing";
+  return finalizeMagicPrepareResult({
+    campaign,
+    lib,
+    workflowSource: hasWorkflow ? "preset" : "missing",
+    workflowDetail: hasWorkflow
+      ? `base ${campaign.comfyTemplate?.baseWorkflowId || "—"}`
+      : "No workflow on campaign",
+    copySource,
+    copyDetail: copyItems.length
+      ? `${copyItems.length} copy item(s)`
+      : copySource === "preset"
+        ? "Copy on matrix cells"
+        : "No copy yet",
+    warnings: [],
+    llmConfigured: llm.configured,
+  });
+}
+
+function finalizeMagicPrepareResult(args: {
+  campaign: Campaign;
+  lib: LibraryItem[];
+  workflowSource: MagicChecklistItem["source"];
+  workflowDetail: string;
+  copySource: MagicChecklistItem["source"];
+  copyDetail: string;
+  warnings: string[];
+  llmConfigured: boolean;
+}): MagicPrepareResult {
+  const {
+    campaign,
+    lib,
+    workflowSource,
+    workflowDetail,
+    copySource,
+    copyDetail,
+    warnings,
+    llmConfigured,
+  } = args;
+
+  const actIds = new Set(campaign.ingredientSet?.activeIds ?? []);
+  const talentId = campaign.ingredientSet?.contractTalentId;
+  const talent = talentId
+    ? lib.find((i) => i.id === talentId)
+    : lib.find((i) => i.kind === "talent" && actIds.has(i.id));
   const handsReady = lib.filter(
-    (i) => i.kind === "hands" && act.activeIds.includes(i.id),
+    (i) => i.kind === "hands" && (actIds.size === 0 || actIds.has(i.id)),
   );
   const hasTokens = Boolean(campaign.designTokenPackId);
 
@@ -445,15 +565,15 @@ export async function prepareMagicCampaign(
     {
       id: "workflow",
       label: "Workflow template",
-      ok: true,
+      ok: workflowSource !== "missing",
       source: workflowSource,
       detail: workflowDetail || `Source: ${workflowSource}`,
     },
     {
       id: "talent",
       label: "Talent take",
-      ok: Boolean(talent && (isPlateReady(talent) || llm.configured)),
-      source: talent ? "imported" : llm.configured ? "ai" : "missing",
+      ok: Boolean(talent && (isPlateReady(talent) || llmConfigured)),
+      source: talent ? "imported" : llmConfigured ? "ai" : "missing",
       detail: talent
         ? `${talent.label}${isPlateReady(talent) ? "" : " (needs media)"}`
         : "Upload a talent talking-head video",
@@ -461,8 +581,8 @@ export async function prepareMagicCampaign(
     {
       id: "hands",
       label: "Hands / variant plates",
-      ok: handsReady.length > 0 || llm.configured,
-      source: handsReady.length ? "imported" : llm.configured ? "ai" : "missing",
+      ok: handsReady.length > 0 || llmConfigured,
+      source: handsReady.length ? "imported" : llmConfigured ? "ai" : "missing",
       detail: handsReady.length
         ? `${handsReady.length} hands plate(s) active`
         : "AI can generate from synthesized prompts",
@@ -485,15 +605,25 @@ export async function prepareMagicCampaign(
       id: "connectors",
       label: "Comfy + LLM",
       ok: true,
-      source: llm.configured ? "ai" : "preset",
-      detail: `LLM ${llm.configured ? "on" : "off"} · model ${campaign.modelProfileId}`,
+      source: llmConfigured ? "ai" : "preset",
+      detail: `LLM ${llmConfigured ? "on" : "off"} · model ${campaign.modelProfileId}`,
+    },
+    {
+      id: "variants",
+      label: "Variant matrix",
+      ok: campaign.matrix.cells.length > 0,
+      source: campaign.matrix.cells.length ? "imported" : "missing",
+      detail: campaign.matrix.cells.length
+        ? `${campaign.matrix.cells.length} sparse cell(s)`
+        : "Confirm import to build variants",
     },
   ];
 
   const libById = new Map(lib.map((i) => [i.id, i]));
   const variants: MagicVariantPlanRow[] = campaign.matrix.cells.map((cell) => {
     const fillNotes: string[] = [];
-    const talentLabel = libById.get(cell.talentTakeId)?.label || cell.talentTakeId || "—";
+    const talentLabel =
+      libById.get(cell.talentTakeId)?.label || cell.talentTakeId || "—";
     const handsLabel = cell.handsId
       ? libById.get(cell.handsId)?.label || cell.handsId
       : "(no hands)";
