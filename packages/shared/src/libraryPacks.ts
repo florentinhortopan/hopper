@@ -76,12 +76,33 @@ export const ImportSessionStatusSchema = z.enum([
 ]);
 export type ImportSessionStatus = z.infer<typeof ImportSessionStatusSchema>;
 
+export const ImportWorkflowSanitySchema = z.object({
+  ok: z.boolean(),
+  status: z.enum(["ok", "warn", "fail", "skipped"]).default("skipped"),
+  nodeCount: z.number().int().nonnegative().default(0),
+  classTypes: z.array(z.string()).default([]),
+  issues: z.array(z.string()).default([]),
+  checkedAgainstComfy: z.boolean().default(false),
+});
+export type ImportWorkflowSanity = z.infer<typeof ImportWorkflowSanitySchema>;
+
 export const ImportDetectedWorkflowSchema = z.object({
   /** Relative path under the import staging folder */
   file: z.string(),
   /** How we interpreted the sidecar */
-  kind: z.enum(["attatta", "comfy_api", "url", "manifest", "unknown_json"]),
+  kind: z.enum([
+    "attatta",
+    "comfy_api",
+    "comfy_ui",
+    "url",
+    "manifest",
+    "unknown_json",
+  ]),
   detail: z.string().default(""),
+  /** Display label in categorized assets */
+  label: z.string().default(""),
+  /** Structural / Comfy live sanity check */
+  sanity: ImportWorkflowSanitySchema.optional(),
 });
 export type ImportDetectedWorkflow = z.infer<typeof ImportDetectedWorkflowSchema>;
 

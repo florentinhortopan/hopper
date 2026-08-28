@@ -546,15 +546,37 @@ export function LibraryImportPanel({ libraryId, onCommitted, onError }: Props) {
               {(session.detectedWorkflows?.length ?? 0) > 0 ? (
                 <div className="rounded-xl border border-ink-200 bg-ink-50/60 px-3 py-2 text-xs text-ink-700">
                   <p className="font-medium text-ink-900">
-                    Workflow sidecars (not ingredients)
+                    Workflows in package (not ingredient kinds)
                   </p>
-                  <ul className="mt-1 space-y-0.5">
+                  <ul className="mt-1 space-y-1">
                     {session.detectedWorkflows!.map((w) => (
-                      <li key={w.file}>
+                      <li key={w.file} className="flex flex-wrap gap-2">
                         <span className="font-mono">{w.file}</span>
-                        <span className="text-ink-500"> · {w.kind}</span>
-                        {w.detail ? (
-                          <span className="text-ink-500"> — {w.detail}</span>
+                        <span className="rounded bg-white px-1.5 uppercase tracking-wide text-[10px]">
+                          workflow · {w.kind}
+                        </span>
+                        {w.sanity ? (
+                          <span
+                            className={
+                              w.sanity.status === "ok"
+                                ? "text-emerald-800"
+                                : w.sanity.status === "warn"
+                                  ? "text-amber-800"
+                                  : w.sanity.status === "fail"
+                                    ? "text-red-800"
+                                    : "text-ink-500"
+                            }
+                          >
+                            sanity:{w.sanity.status}
+                            {w.sanity.nodeCount
+                              ? ` (${w.sanity.nodeCount} nodes)`
+                              : ""}
+                          </span>
+                        ) : null}
+                        {w.sanity?.issues?.[0] ? (
+                          <span className="text-ink-500">
+                            — {w.sanity.issues[0]}
+                          </span>
                         ) : null}
                       </li>
                     ))}

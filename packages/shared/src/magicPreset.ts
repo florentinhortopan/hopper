@@ -182,6 +182,32 @@ export function looksLikeComfyApiGraph(obj: unknown): boolean {
   return hits >= Math.min(2, sample.length) && hits / sample.length >= 0.5;
 }
 
+/**
+ * True when JSON looks like a ComfyUI canvas/save-format workflow
+ * (`nodes[]` + usually `links[]`), not the API prompt graph.
+ */
+export function looksLikeComfyUiWorkflow(obj: unknown): boolean {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
+  const o = obj as Record<string, unknown>;
+  if (!Array.isArray(o.nodes) || o.nodes.length < 1) return false;
+  const sample = o.nodes.slice(0, 8) as unknown[];
+  let typed = 0;
+  for (const n of sample) {
+    if (
+      n &&
+      typeof n === "object" &&
+      !Array.isArray(n) &&
+      typeof (n as { type?: unknown }).type === "string"
+    ) {
+      typed += 1;
+    }
+  }
+  if (typed < Math.min(1, sample.length)) return false;
+  // Prefer links present; allow missing links for tiny single-node graphs
+  if ("links" in o && o.links != null && !Array.isArray(o.links)) return false;
+  return true;
+}
+
 export function comfyTemplateFromMagicPackage(
   pkg: MagicWorkflowPackage,
 ): ComfyTemplate {

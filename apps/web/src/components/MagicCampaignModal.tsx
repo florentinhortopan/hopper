@@ -751,54 +751,73 @@ export function MagicCampaignModal({
                 />
               </label>
 
-              {importSession?.detectedWorkflows?.length ? (
-                <div className="rounded-xl border border-ink-200 bg-ink-50/50 p-4">
-                  <h3 className="text-sm font-medium">
-                    Workflow sidecars (
-                    {importSession.detectedWorkflows.length})
-                  </h3>
-                  <p className="mt-1 text-xs text-ink-600">
-                    These are not ingredients — they stay out of the kind list.
-                    ATTATTA workflow packages are applied on prepare; raw Comfy
-                    API graphs are noted but not executed yet.
-                  </p>
-                  <ul className="mt-3 space-y-2">
-                    {importSession.detectedWorkflows.map((w) => (
-                      <li
-                        key={w.file}
-                        className="rounded-lg border border-ink-100 bg-white px-3 py-2 text-xs"
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-ink-800">
-                            {w.file}
-                          </span>
-                          <span className="rounded bg-ink-900/5 px-1.5 py-0.5 uppercase tracking-wide text-[10px] text-ink-600">
-                            {w.kind === "comfy_api"
-                              ? "ComfyUI graph"
-                              : w.kind === "attatta"
-                                ? "ATTATTA workflow"
-                                : w.kind}
-                          </span>
-                        </div>
-                        {w.detail ? (
-                          <p className="mt-1 text-ink-600">{w.detail}</p>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {reviewRows.length > 0 ? (
+              {importSession?.detectedWorkflows?.length ||
+              reviewRows.length > 0 ? (
                 <div className="rounded-xl border border-ink-200 bg-white p-4">
                   <h3 className="text-sm font-medium">
-                    Categorized assets ({reviewRows.length})
+                    Recognized assets (
+                    {(importSession?.detectedWorkflows?.length || 0) +
+                      reviewRows.length}
+                    )
                   </h3>
                   <p className="mt-1 text-xs text-ink-600">
-                    Media plates only — adjust kind/label if the classifier
-                    missed, then confirm to build variants.
+                    Media plates get ingredient kinds. Valid Comfy/ATTATTA
+                    workflow JSON shows as{" "}
+                    <span className="font-medium">workflow</span> with a sanity
+                    check — not as talent/prop/etc.
                   </p>
-                  <ul className="mt-3 max-h-56 space-y-2 overflow-y-auto">
+                  <ul className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+                    {(importSession?.detectedWorkflows || [])
+                      .filter(
+                        (w) =>
+                          w.kind === "comfy_api" ||
+                          w.kind === "comfy_ui" ||
+                          w.kind === "attatta" ||
+                          w.kind === "url" ||
+                          w.kind === "unknown_json",
+                      )
+                      .map((w) => {
+                        const sanity = w.sanity;
+                        const tone =
+                          sanity?.status === "ok"
+                            ? "bg-emerald-100 text-emerald-900"
+                            : sanity?.status === "warn"
+                              ? "bg-amber-100 text-amber-950"
+                              : sanity?.status === "fail"
+                                ? "bg-red-100 text-red-900"
+                                : "bg-ink-900/5 text-ink-600";
+                        return (
+                          <li
+                            key={`wf-${w.file}`}
+                            className="flex flex-wrap items-center gap-2 rounded-lg border border-ink-100 px-2 py-1.5 text-xs"
+                          >
+                            <span className="min-w-0 flex-1 truncate font-mono">
+                              {w.file}
+                            </span>
+                            <span className="rounded border border-ink-200 bg-ink-50 px-2 py-0.5 font-medium uppercase tracking-wide text-[10px] text-ink-700">
+                              workflow
+                            </span>
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${tone}`}
+                              title={sanity?.issues?.join("\n") || w.detail}
+                            >
+                              {sanity?.status === "ok"
+                                ? "sanity ok"
+                                : sanity?.status === "warn"
+                                  ? "sanity warn"
+                                  : sanity?.status === "fail"
+                                    ? "sanity fail"
+                                    : w.kind}
+                              {sanity?.nodeCount
+                                ? ` · ${sanity.nodeCount}n`
+                                : ""}
+                            </span>
+                            <span className="w-28 truncate text-ink-600">
+                              {w.label || w.kind}
+                            </span>
+                          </li>
+                        );
+                      })}
                     {reviewRows.map((row) => (
                       <li
                         key={row.id}
@@ -834,6 +853,29 @@ export function MagicCampaignModal({
                       </li>
                     ))}
                   </ul>
+                  {(importSession?.detectedWorkflows || []).some(
+                    (w) => (w.sanity?.issues?.length ?? 0) > 0,
+                  ) ? (
+                    <details className="mt-2 text-[11px] text-ink-600">
+                      <summary className="cursor-pointer">
+                        Workflow sanity details
+                      </summary>
+                      <ul className="mt-1 space-y-1">
+                        {(importSession?.detectedWorkflows || [])
+                          .filter((w) => w.sanity?.issues?.length)
+                          .map((w) => (
+                            <li key={`iss-${w.file}`}>
+                              <span className="font-mono">{w.file}</span>
+                              <ul className="ml-3 list-disc">
+                                {w.sanity!.issues.map((iss) => (
+                                  <li key={iss}>{iss}</li>
+                                ))}
+                              </ul>
+                            </li>
+                          ))}
+                      </ul>
+                    </details>
+                  ) : null}
                 </div>
               ) : null}
             </div>

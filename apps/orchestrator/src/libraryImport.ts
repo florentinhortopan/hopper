@@ -18,6 +18,7 @@ import {
   isMagicWorkflowFilename,
   isMagicWorkflowUrlFilename,
   looksLikeComfyApiGraph,
+  looksLikeComfyUiWorkflow,
   type ImportDetectedWorkflow,
   type ImportRow,
   type ImportSession,
@@ -43,6 +44,11 @@ import {
   JobCancelledError,
 } from "./jobControl.js";
 import { getJob, upsertJob } from "./store.js";
+import {
+  sanityCheckAttattaWorkflowPackage,
+  sanityCheckComfyApiGraph,
+  sanityCheckComfyUiWorkflow,
+} from "./workflowSanity.js";
 
 function sessionDir(importId: string) {
   return path.join(PATHS.imports, importId);
@@ -113,6 +119,7 @@ async function collectMediaFiles(
           const raw = JSON.parse(await readFile(abs, "utf8"));
           if (
             looksLikeComfyApiGraph(raw) ||
+            looksLikeComfyUiWorkflow(raw) ||
             MagicWorkflowPackageSchema.safeParse(raw).success
           ) {
             continue;
@@ -125,6 +132,26 @@ async function collectMediaFiles(
   }
   await walk(root, baseRel);
   return out;
+}
+
+function sidecarLabel(rel: string): string {
+  return path.basename(rel).replace(/\.[^.]+$/, "") || rel;
+}
+
+function formatSanityDetail(
+  base: string,
+  sanity: {
+    status: string;
+    nodeCount: number;
+    issues: string[];
+    checkedAgainstComfy: boolean;
+  },
+): string {
+  const bits = [base];
+  if (sanity.nodeCount) bits.push(`${sanity.nodeCount} nodes`);
+  if (sanity.checkedAgainstComfy) bits.push("checked vs Comfy");
+  if (sanity.issues[0]) bits.push(sanity.issues[0]);
+  return bits.join(" · ");
 }
 
 /** Find workflow / Comfy JSON sidecars in a staged import package. */
@@ -158,7 +185,16 @@ export async function detectImportWorkflowSidecars(
         found.push({
           file: rel,
           kind: "url",
+          label: sidecarLabel(rel),
           detail: `Workflow URL pointer → ${text.slice(0, 120)}`,
+          sanity: {
+            ok: Boolean(text),
+            status: text ? "ok" : "fail",
+            nodeCount: 0,
+            classTypes: [],
+            issues: text ? [] : ["Empty workflow.url"],
+            checkedAgainstComfy: false,
+          },
         });
         continue;
       }
@@ -175,7 +211,16 @@ export async function detectImportWorkflowSidecars(
           found.push({
             file: rel,
             kind: "unknown_json",
-            detail: "Invalid JSON sidecar (skipped as ingredient)",
+            label: sidecarLabel(rel),
+            detail: "Invalid JSON — failed parse",
+            sanity: {
+              ok: false,
+              status: "fail",
+              nodeCount: 0,
+              classTypes: [],
+              issues: ["Invalid JSON"],
+              checkedAgainstComfy: false,
+            },
           });
         }
         continue;
@@ -186,28 +231,61 @@ export async function detectImportWorkflowSidecars(
         found.push({
           file: rel,
           kind: "manifest",
+          label: sidecarLabel(rel),
           detail: "Package manifest / brief (not an ingredient)",
+          sanity: {
+            ok: true,
+            status: "skipped",
+            nodeCount: 0,
+            classTypes: [],
+            issues: [],
+            checkedAgainstComfy: false,
+          },
         });
         continue;
       }
 
       if (looksLikeComfyApiGraph(data)) {
         seen.add(rel);
+        const sanity = await sanityCheckComfyApiGraph(data);
         found.push({
           file: rel,
           kind: "comfy_api",
-          detail:
-            "ComfyUI API graph — kept as workflow sidecar (not an ingredient; Magic uses ATTATTA template / AI for now)",
+          label: sidecarLabel(rel),
+          detail: formatSanityDetail(
+            "ComfyUI API graph (workflow — not an ingredient plate)",
+            sanity,
+          ),
+          sanity,
+        });
+        continue;
+      }
+
+      if (looksLikeComfyUiWorkflow(data)) {
+        seen.add(rel);
+        const sanity = sanityCheckComfyUiWorkflow(data);
+        found.push({
+          file: rel,
+          kind: "comfy_ui",
+          label: sidecarLabel(rel),
+          detail: formatSanityDetail(
+            "ComfyUI canvas workflow (workflow — not an ingredient plate)",
+            sanity,
+          ),
+          sanity,
         });
         continue;
       }
 
       if (MagicWorkflowPackageSchema.safeParse(data).success) {
         seen.add(rel);
+        const sanity = sanityCheckAttattaWorkflowPackage(data);
         found.push({
           file: rel,
           kind: "attatta",
-          detail: "ATTATTA workflow package",
+          label: sidecarLabel(rel),
+          detail: formatSanityDetail("ATTATTA workflow package", sanity),
+          sanity,
         });
         continue;
       }
@@ -217,7 +295,16 @@ export async function detectImportWorkflowSidecars(
         found.push({
           file: rel,
           kind: "unknown_json",
-          detail: "Named workflow sidecar (not an ingredient)",
+          label: sidecarLabel(rel),
+          detail: "Named workflow sidecar (not a valid Comfy/ATTATTA graph)",
+          sanity: {
+            ok: false,
+            status: "fail",
+            nodeCount: 0,
+            classTypes: [],
+            issues: ["Unrecognized workflow JSON shape"],
+            checkedAgainstComfy: false,
+          },
         });
       }
     }
