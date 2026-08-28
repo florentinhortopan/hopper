@@ -61,7 +61,8 @@ export const api = {
   ) =>
     req<{
       campaign: Campaign;
-      checklist: import("@attatta/shared").MagicChecklistItem[];
+      gapsFilled: import("@attatta/shared").MagicChecklistItem[];
+      variants: import("@attatta/shared").MagicVariantPlanRow[];
       canContinue: boolean;
       reasons: string[];
       plannedCells: number;

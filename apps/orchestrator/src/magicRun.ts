@@ -15,6 +15,7 @@ import {
   type Job,
   type LibraryItem,
   type MagicChecklistItem,
+  type MagicVariantPlanRow,
   type MatrixCell,
   type RetiredMatrixCell,
 } from "@attatta/shared";
@@ -44,7 +45,10 @@ import {
 
 export type MagicPrepareResult = {
   campaign: Campaign;
-  checklist: MagicChecklistItem[];
+  /** Secondary: gaps AI/preset filled (workflow, copy, etc.) — not the main UI checklist */
+  gapsFilled: MagicChecklistItem[];
+  /** Primary checklist: each sparse matrix variant that will run on Generate */
+  variants: MagicVariantPlanRow[];
   canContinue: boolean;
   reasons: string[];
   plannedCells: number;
@@ -428,7 +432,7 @@ export async function prepareMagicCampaign(
   );
   const hasTokens = Boolean(campaign.designTokenPackId);
 
-  const checklist: MagicChecklistItem[] = [
+  const gapsFilled: MagicChecklistItem[] = [
     {
       id: "brief",
       label: "Brief",
@@ -486,10 +490,45 @@ export async function prepareMagicCampaign(
     },
   ];
 
-  const gate = magicCanContinue(checklist);
+  const libById = new Map(lib.map((i) => [i.id, i]));
+  const variants: MagicVariantPlanRow[] = campaign.matrix.cells.map((cell) => {
+    const fillNotes: string[] = [];
+    const talentLabel = libById.get(cell.talentTakeId)?.label || cell.talentTakeId || "—";
+    const handsLabel = cell.handsId
+      ? libById.get(cell.handsId)?.label || cell.handsId
+      : "(no hands)";
+    if (!cell.handsId) fillNotes.push("No hands plate — talent-only / AI prompt");
+    if (copySource === "ai" || copySource === "preset") {
+      fillNotes.push(`Copy ${copySource}-filled from brief`);
+    }
+    if (workflowSource === "ai" || workflowSource === "preset") {
+      fillNotes.push(`Workflow ${workflowSource}`);
+    }
+    if (cell.needsGen) fillNotes.push("Will run Comfy generate");
+    else fillNotes.push("Assemble-only (no Comfy)");
+
+    return {
+      cellId: cell.cellId,
+      label: `${talentLabel} × ${handsLabel}`,
+      talentTakeId: cell.talentTakeId,
+      handsId: cell.handsId,
+      attireId: cell.attireId,
+      backgroundId: cell.backgroundId,
+      propIds: cell.propIds ?? [],
+      sceneTag: cell.sceneTag,
+      needsGen: cell.needsGen,
+      copySetup: cell.copy.setup,
+      copyPunchline: cell.copy.punchline,
+      copyEndcard: cell.copy.endcard,
+      fillNotes,
+    };
+  });
+
+  const gate = magicCanContinue(gapsFilled);
   return {
     campaign,
-    checklist,
+    gapsFilled,
+    variants,
     canContinue: gate.ok,
     reasons: gate.reasons,
     plannedCells: campaign.matrix.cells.length,

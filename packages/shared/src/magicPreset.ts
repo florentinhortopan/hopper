@@ -60,6 +60,25 @@ export const MagicChecklistItemSchema = z.object({
 });
 export type MagicChecklistItem = z.infer<typeof MagicChecklistItemSchema>;
 
+/** One planned matrix variant shown before Generate. */
+export const MagicVariantPlanRowSchema = z.object({
+  cellId: z.string(),
+  label: z.string(),
+  talentTakeId: z.string(),
+  handsId: z.string(),
+  attireId: z.string().nullable(),
+  backgroundId: z.string().nullable(),
+  propIds: z.array(z.string()),
+  sceneTag: z.string().nullable(),
+  needsGen: z.boolean(),
+  copySetup: z.string(),
+  copyPunchline: z.string(),
+  copyEndcard: z.string(),
+  /** Human notes: what was imported vs AI-filled for this row */
+  fillNotes: z.array(z.string()).default([]),
+});
+export type MagicVariantPlanRow = z.infer<typeof MagicVariantPlanRowSchema>;
+
 export const MAGIC_COMFY_TEMPLATE: ComfyTemplate = {
   baseWorkflowId: "talent_variant_video_v1",
   campaignGuidelines:

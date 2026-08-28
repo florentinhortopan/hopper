@@ -40,11 +40,13 @@ Zip (or folder) may include:
 }
 ```
 
-Raw ComfyUI `api.json` graphs are **not** executed in Magic MVP — checklist falls back to AI/preset.
+Raw ComfyUI `api.json` graphs are **not** executed in Magic MVP — prepare falls back to AI/preset for workflow + copy.
 
 ## If no workflow in the package
 
-`POST /campaigns/:id/magic/prepare` synthesizes `comfyTemplate` + copy + prompt hints from the brief (LLM when `ATTATTA_LLM_API_KEY` is set; otherwise `magic_att_v1` heuristics). Checklist rows show source: `imported` | `url` | `ai` | `preset`.
+`POST /campaigns/:id/magic/prepare` synthesizes `comfyTemplate` + copy + prompt hints from the brief (LLM when `ATTATTA_LLM_API_KEY` is set; otherwise `magic_att_v1` heuristics). Response includes:
+- `variants` — one row per sparse matrix cell (the Generate checklist)
+- `gapsFilled` — what was filled (source: `imported` | `url` | `ai` | `preset`)
 
 ## API
 
@@ -54,6 +56,8 @@ Raw ComfyUI `api.json` graphs are **not** executed in Magic MVP — checklist fa
 - `POST /campaigns/:id/magic/workflow` — `{ url }` or `{ json }`
 - `POST /campaigns/:id/package` — Celtra zip (unchanged)
 
-## UI
+## UI flow
 
-Home → **Magic campaign** opens the popup. Campaign list badges Magic campaigns. StepNav shows **Magic · Advanced** when `mode === "magic"`.
+1. **Import & categorize** — upload zip (same classify as Library). Review kind/label per file.
+2. **Confirm → variant plan** — sparse matrix rows are the checklist (talent × hands × …). Gaps (workflow/copy) filled from brief; expandable “what AI filled”.
+3. **Generate** — Comfy plates → Keep/Kill → Celtra package.

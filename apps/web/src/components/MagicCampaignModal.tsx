@@ -4,23 +4,39 @@ import { useCallback, useEffect, useState } from "react";
 import type {
   Brief,
   Campaign,
+  ImportSession,
   Job,
+  LibraryKind,
   MagicChecklistItem,
+  MagicVariantPlanRow,
   ReviewEntry,
 } from "@attatta/shared";
 import { api } from "@/lib/api";
 
-type Step = 1 | 2;
+/** import = categorize assets · plan = variants checklist · run = generate/review/package */
+type Phase = "import" | "plan" | "run";
 
 type PrepareResult = {
   campaign: Campaign;
-  checklist: MagicChecklistItem[];
+  gapsFilled: MagicChecklistItem[];
+  variants: MagicVariantPlanRow[];
   canContinue: boolean;
   reasons: string[];
   plannedCells: number;
   workflowSource: MagicChecklistItem["source"];
   warnings: string[];
 };
+
+const KINDS: LibraryKind[] = [
+  "talent",
+  "hands",
+  "motion",
+  "attire",
+  "background",
+  "prop",
+  "theme",
+  "copy",
+];
 
 function sourceBadge(source: MagicChecklistItem["source"]) {
   const map: Record<MagicChecklistItem["source"], string> = {
@@ -40,7 +56,7 @@ export function MagicCampaignModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const [step, setStep] = useState<Step>(1);
+  const [phase, setPhase] = useState<Phase>("import");
   const [name, setName] = useState("Magic campaign");
   const [brief, setBrief] = useState<Brief>({
     prompt: "",
@@ -52,7 +68,7 @@ export function MagicCampaignModal({
   });
   const [workflowUrl, setWorkflowUrl] = useState("");
   const [campaign, setCampaign] = useState<Campaign | null>(null);
-  const [importId, setImportId] = useState<string | null>(null);
+  const [importSession, setImportSession] = useState<ImportSession | null>(null);
   const [prepare, setPrepare] = useState<PrepareResult | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [reviews, setReviews] = useState<ReviewEntry[]>([]);
@@ -61,18 +77,20 @@ export function MagicCampaignModal({
   const [pkg, setPkg] = useState<{ downloadUrl: string; zipPath: string } | null>(
     null,
   );
+  const [showGaps, setShowGaps] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setStep(1);
+    setPhase("import");
     setCampaign(null);
-    setImportId(null);
+    setImportSession(null);
     setPrepare(null);
     setJobs([]);
     setReviews([]);
     setPkg(null);
     setError(null);
     setBusy(null);
+    setShowGaps(false);
   }, [open]);
 
   const refreshReviews = useCallback(async (id: string) => {
@@ -80,14 +98,31 @@ export function MagicCampaignModal({
   }, []);
 
   useEffect(() => {
-    if (!campaign || step !== 2) return;
+    if (!importSession) return;
+    if (
+      importSession.status !== "staging" &&
+      importSession.status !== "classifying"
+    ) {
+      return;
+    }
+    const t = window.setInterval(() => {
+      void api
+        .getImportSession(importSession.id)
+        .then(setImportSession)
+        .catch(() => undefined);
+    }, 1200);
+    return () => window.clearInterval(t);
+  }, [importSession?.id, importSession?.status]);
+
+  useEffect(() => {
+    if (!campaign || phase !== "run") return;
     const t = setInterval(() => {
       void api.jobs(campaign.id).then(setJobs);
       void refreshReviews(campaign.id);
       void api.getCampaign(campaign.id).then(setCampaign);
     }, 2500);
     return () => clearInterval(t);
-  }, [campaign, step, refreshReviews]);
+  }, [campaign, phase, refreshReviews]);
 
   if (!open) return null;
 
@@ -98,36 +133,20 @@ export function MagicCampaignModal({
     return c;
   }
 
-  async function waitImportReady(id: string) {
-    for (let i = 0; i < 90; i++) {
-      const s = await api.getImportSession(id);
-      if (s.status === "review" || s.status === "done") return s;
-      if (s.status === "failed") {
-        throw new Error(s.message || "Import failed");
-      }
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-    throw new Error("Import timed out");
-  }
-
   async function onUploadZip(file: File) {
     setBusy("import");
     setError(null);
+    setPrepare(null);
     try {
       const c = await ensureCampaign();
       const form = new FormData();
       form.append("zip", file);
       form.append("autoClassify", "1");
-      const { session } = await api.startLibraryImport(c.libraryId || "default", form);
-      setImportId(session.id);
-      const ready = await waitImportReady(session.id);
-      if (ready.status === "review" && ready.rows.length) {
-        await api.patchImportRows(
-          session.id,
-          ready.rows.map((r) => ({ id: r.id, status: "accepted" as const })),
-        );
-        await api.commitImport(session.id);
-      }
+      const { session } = await api.startLibraryImport(
+        c.libraryId || "default",
+        form,
+      );
+      setImportSession(session);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -135,11 +154,42 @@ export function MagicCampaignModal({
     }
   }
 
-  async function onPrepare() {
+  async function patchRow(
+    rowId: string,
+    patch: { suggestedKind?: LibraryKind; label?: string; status?: "accepted" | "rejected" },
+  ) {
+    if (!importSession) return;
+    const next = await api.patchImportRows(importSession.id, [
+      { id: rowId, ...patch },
+    ]);
+    setImportSession(next);
+  }
+
+  async function onConfirmCategoriesAndPlan() {
+    if (!importSession && !brief.prompt.trim()) {
+      setError("Add a brief (and optionally an import package)");
+      return;
+    }
     setBusy("prepare");
     setError(null);
     try {
       const c = await ensureCampaign();
+      let importId = importSession?.id;
+
+      if (importSession && importSession.status === "review") {
+        const accepted = importSession.rows.map((r) => ({
+          id: r.id,
+          status: "accepted" as const,
+          suggestedKind: r.suggestedKind,
+          label: r.label,
+        }));
+        await api.patchImportRows(importSession.id, accepted);
+        await api.commitImport(importSession.id);
+        const done = await api.getImportSession(importSession.id);
+        setImportSession(done);
+        importId = done.id;
+      }
+
       const result = await api.magicPrepare(c.id, {
         brief,
         importId: importId || undefined,
@@ -147,7 +197,8 @@ export function MagicCampaignModal({
       });
       setPrepare(result);
       setCampaign(result.campaign);
-      if (result.canContinue) setStep(2);
+      if (result.canContinue) setPhase("plan");
+      else setError(result.reasons.join(" · ") || "Cannot continue yet");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -160,6 +211,7 @@ export function MagicCampaignModal({
     setBusy("generate");
     setError(null);
     try {
+      setPhase("run");
       const result = await api.magicGenerate(campaign.id);
       setJobs(result.jobs);
       setCampaign(result.campaign);
@@ -199,6 +251,20 @@ export function MagicCampaignModal({
     (j) => j.status === "queued" || j.status === "running",
   ).length;
   const approved = reviews.filter((r) => r.decision === "approved").length;
+  const classifying =
+    importSession?.status === "staging" ||
+    importSession?.status === "classifying";
+  const reviewRows =
+    importSession?.status === "review" || importSession?.status === "done"
+      ? importSession.rows
+      : [];
+
+  const phaseLabel =
+    phase === "import"
+      ? "1 · Import & categorize"
+      : phase === "plan"
+        ? "2 · Variant plan"
+        : "3 · Generate & package";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/50 p-4">
@@ -210,10 +276,7 @@ export function MagicCampaignModal({
         <header className="flex items-start justify-between gap-3 border-b border-ink-200 px-5 py-4">
           <div>
             <h2 className="font-display text-2xl">Magic campaign</h2>
-            <p className="mt-1 text-xs text-ink-700">
-              Step {step} of 2 —{" "}
-              {step === 1 ? "Import package + brief" : "Generate & package"}
-            </p>
+            <p className="mt-1 text-xs text-ink-700">{phaseLabel}</p>
           </div>
           <button
             type="button"
@@ -231,7 +294,7 @@ export function MagicCampaignModal({
             </pre>
           ) : null}
 
-          {step === 1 ? (
+          {phase === "import" ? (
             <div className="space-y-4">
               <label className="block text-sm">
                 <span className="text-ink-700">Campaign name</span>
@@ -280,23 +343,24 @@ export function MagicCampaignModal({
               <div className="rounded-xl border border-ink-200 bg-white/80 p-4">
                 <h3 className="text-sm font-medium">Import package</h3>
                 <p className="mt-1 text-xs text-ink-600">
-                  Zip of media + optional{" "}
-                  <code className="font-mono">attatta.workflow.json</code> or{" "}
-                  <code className="font-mono">workflow.url</code>
+                  Same as Library import: zip is staged, then each file is
+                  classified (talent / hands / …). Fix kinds below, then build
+                  the variant plan.
                 </p>
                 <input
                   type="file"
                   accept=".zip,application/zip"
                   className="mt-3 block w-full text-xs"
-                  disabled={busy !== null}
+                  disabled={busy !== null || classifying}
                   onChange={(e) => {
                     const f = e.target.files?.[0];
                     if (f) void onUploadZip(f);
                   }}
                 />
-                {importId ? (
+                {importSession ? (
                   <p className="mt-2 text-xs text-ink-600">
-                    Import ready · <span className="font-mono">{importId}</span>
+                    Status: {importSession.status}
+                    {importSession.message ? ` · ${importSession.message}` : ""}
                   </p>
                 ) : null}
               </div>
@@ -313,44 +377,74 @@ export function MagicCampaignModal({
                 />
               </label>
 
-              {prepare ? (
-                <ul className="space-y-2 rounded-xl border border-ink-200 bg-white p-4 text-sm">
-                  <li className="text-xs uppercase tracking-wide text-ink-500">
-                    Readiness · workflow {sourceBadge(prepare.workflowSource)}
-                  </li>
-                  {prepare.checklist.map((item) => (
-                    <li key={item.id} className="flex gap-2">
-                      <span>{item.ok ? "✓" : "○"}</span>
-                      <span>
-                        <span className="font-medium">{item.label}</span>
-                        <span className="ml-2 text-[10px] uppercase text-ink-500">
-                          {sourceBadge(item.source)}
+              {reviewRows.length > 0 ? (
+                <div className="rounded-xl border border-ink-200 bg-white p-4">
+                  <h3 className="text-sm font-medium">
+                    Categorized assets ({reviewRows.length})
+                  </h3>
+                  <p className="mt-1 text-xs text-ink-600">
+                    Adjust kind/label if the classifier missed — then confirm to
+                    build variants.
+                  </p>
+                  <ul className="mt-3 max-h-56 space-y-2 overflow-y-auto">
+                    {reviewRows.map((row) => (
+                      <li
+                        key={row.id}
+                        className="flex flex-wrap items-center gap-2 rounded-lg border border-ink-100 px-2 py-1.5 text-xs"
+                      >
+                        <span className="min-w-0 flex-1 truncate font-mono">
+                          {row.originalName}
                         </span>
-                        <span className="mt-0.5 block text-xs text-ink-600">
-                          {item.detail}
-                        </span>
-                      </span>
-                    </li>
-                  ))}
-                  {prepare.warnings.length ? (
-                    <li className="text-xs text-amber-800">
-                      {prepare.warnings.join(" · ")}
-                    </li>
-                  ) : null}
-                </ul>
+                        <select
+                          className="rounded border border-ink-200 px-1 py-0.5"
+                          value={row.suggestedKind}
+                          disabled={importSession?.status === "done"}
+                          onChange={(e) =>
+                            void patchRow(row.id, {
+                              suggestedKind: e.target.value as LibraryKind,
+                            })
+                          }
+                        >
+                          {KINDS.map((k) => (
+                            <option key={k} value={k}>
+                              {k}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          className="w-28 rounded border border-ink-200 px-1 py-0.5"
+                          value={row.label}
+                          disabled={importSession?.status === "done"}
+                          onChange={(e) =>
+                            void patchRow(row.id, { label: e.target.value })
+                          }
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
             </div>
-          ) : (
+          ) : null}
+
+          {phase === "plan" && prepare ? (
             <div className="space-y-4">
               <div className="rounded-xl border border-ink-200 bg-white p-4 text-sm">
-                <div>
-                  Planned variants:{" "}
-                  <strong>{prepare?.plannedCells ?? cells.length}</strong>
-                </div>
-                <div className="mt-1 text-xs text-ink-600">
-                  Workflow: {prepare ? sourceBadge(prepare.workflowSource) : "—"}{" "}
-                  · Jobs running: {running}
-                </div>
+                <p>
+                  <strong>{prepare.variants.length}</strong> variants will
+                  generate from your categorized plates
+                  {prepare.workflowSource !== "imported" ? (
+                    <span className="text-ink-600">
+                      {" "}
+                      · workflow {sourceBadge(prepare.workflowSource)}
+                    </span>
+                  ) : null}
+                </p>
+                <p className="mt-1 text-xs text-ink-600">
+                  This list is the sparse matrix built after import — not the old
+                  readiness checklist. Missing copy/workflow were filled from the
+                  brief where needed.
+                </p>
                 {campaign ? (
                   <a
                     className="mt-2 inline-block text-xs underline"
@@ -361,6 +455,68 @@ export function MagicCampaignModal({
                 ) : null}
               </div>
 
+              <ul className="max-h-72 space-y-2 overflow-y-auto">
+                {prepare.variants.map((v) => (
+                  <li
+                    key={v.cellId}
+                    className="rounded-lg border border-ink-100 bg-white px-3 py-2 text-xs"
+                  >
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <span className="font-medium">{v.label}</span>
+                      <span className="font-mono text-ink-500">{v.cellId}</span>
+                      <span className="text-ink-500">
+                        {v.needsGen ? "Comfy" : "no gen"} · {v.sceneTag || "—"}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-ink-700">
+                      {v.copySetup}
+                      {v.copyPunchline ? ` → ${v.copyPunchline}` : ""}
+                    </p>
+                    {v.fillNotes.length ? (
+                      <p className="mt-1 text-[10px] uppercase tracking-wide text-ink-500">
+                        {v.fillNotes.join(" · ")}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+
+              <button
+                type="button"
+                className="text-xs text-ink-600 underline"
+                onClick={() => setShowGaps((g) => !g)}
+              >
+                {showGaps ? "Hide" : "Show"} what AI/preset filled (gaps)
+              </button>
+              {showGaps ? (
+                <ul className="space-y-1 rounded-lg border border-ink-100 bg-ink-50/50 p-3 text-xs">
+                  {prepare.gapsFilled.map((item) => (
+                    <li key={item.id}>
+                      {item.ok ? "✓" : "○"} {item.label}{" "}
+                      <span className="text-ink-500">
+                        ({sourceBadge(item.source)})
+                      </span>
+                      — {item.detail}
+                    </li>
+                  ))}
+                  {prepare.warnings.length ? (
+                    <li className="text-amber-800">
+                      {prepare.warnings.join(" · ")}
+                    </li>
+                  ) : null}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+
+          {phase === "run" ? (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-ink-200 bg-white p-4 text-sm">
+                <div>
+                  Jobs running: <strong>{running}</strong> · Approved:{" "}
+                  <strong>{approved}</strong>
+                </div>
+              </div>
               <ul className="max-h-64 space-y-2 overflow-y-auto">
                 {cells.map((cell) => {
                   const asset = cell.sizeAssets?.find((a) => a.genPath);
@@ -395,7 +551,6 @@ export function MagicCampaignModal({
                   );
                 })}
               </ul>
-
               {pkg ? (
                 <a
                   className="inline-block rounded-md bg-ink-900 px-3 py-2 text-sm text-white"
@@ -405,50 +560,56 @@ export function MagicCampaignModal({
                 </a>
               ) : null}
             </div>
-          )}
+          ) : null}
         </div>
 
         <footer className="flex flex-wrap items-center gap-2 border-t border-ink-200 px-5 py-3">
-          {step === 1 ? (
-            <>
-              <button
-                type="button"
-                className="rounded-md bg-ink-900 px-4 py-2 text-sm text-white disabled:opacity-40"
-                disabled={busy !== null || !brief.prompt.trim()}
-                onClick={() => void onPrepare()}
-              >
-                {busy === "prepare" ? "Preparing…" : "Prepare checklist"}
-              </button>
-              {prepare?.canContinue ? (
-                <button
-                  type="button"
-                  className="rounded-md border border-ink-300 px-4 py-2 text-sm"
-                  onClick={() => setStep(2)}
-                >
-                  Continue to generate →
-                </button>
-              ) : prepare && !prepare.canContinue ? (
-                <span className="text-xs text-amber-800">
-                  {prepare.reasons.join(" · ")}
-                </span>
-              ) : null}
-            </>
-          ) : (
+          {phase === "import" ? (
+            <button
+              type="button"
+              className="rounded-md bg-ink-900 px-4 py-2 text-sm text-white disabled:opacity-40"
+              disabled={
+                busy !== null ||
+                !brief.prompt.trim() ||
+                classifying ||
+                (importSession !== null &&
+                  importSession.status !== "review" &&
+                  importSession.status !== "done")
+              }
+              onClick={() => void onConfirmCategoriesAndPlan()}
+            >
+              {busy === "prepare"
+                ? "Building variant plan…"
+                : "Confirm categories & build variant plan"}
+            </button>
+          ) : null}
+          {phase === "plan" ? (
             <>
               <button
                 type="button"
                 className="rounded-md border border-ink-200 px-3 py-2 text-sm"
-                onClick={() => setStep(1)}
+                onClick={() => setPhase("import")}
               >
                 ← Back
               </button>
               <button
                 type="button"
                 className="rounded-md bg-ink-900 px-4 py-2 text-sm text-white disabled:opacity-40"
-                disabled={busy !== null}
+                disabled={busy !== null || !prepare?.variants.length}
                 onClick={() => void onGenerate()}
               >
-                {busy === "generate" ? "Generating…" : "Confirm & generate"}
+                {busy === "generate" ? "Generating…" : "Generate"}
+              </button>
+            </>
+          ) : null}
+          {phase === "run" ? (
+            <>
+              <button
+                type="button"
+                className="rounded-md border border-ink-200 px-3 py-2 text-sm"
+                onClick={() => setPhase("plan")}
+              >
+                ← Plan
               </button>
               <button
                 type="button"
@@ -459,9 +620,11 @@ export function MagicCampaignModal({
                 {busy === "package" ? "Packaging…" : "Celtra package"}
               </button>
             </>
-          )}
-          {busy === "import" ? (
-            <span className="text-xs text-ink-600">Importing…</span>
+          ) : null}
+          {busy === "import" || classifying ? (
+            <span className="text-xs text-ink-600">
+              {classifying ? "Classifying assets…" : "Importing…"}
+            </span>
           ) : null}
         </footer>
       </div>
