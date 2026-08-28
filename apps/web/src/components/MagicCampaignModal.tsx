@@ -1115,18 +1115,23 @@ export function MagicCampaignModal({
                     const asset =
                       cell.sizeAssets?.find((a) => a.genPath?.trim()) ||
                       cell.sizeAssets?.[0];
-                    const mediaPath =
-                      asset?.genPath?.trim() ||
-                      asset?.outputPath?.trim() ||
-                      asset?.previewPath?.trim() ||
-                      null;
-                    const failed = asset?.status === "failed";
-                    const rev = reviews.find((r) => r.cellId === cell.cellId);
                     const cellJobs = jobsForCell(cell.cellId);
                     const activeJob = cellJobs.find(
                       (j) => j.status === "queued" || j.status === "running",
                     );
                     const latestJob = activeJob || cellJobs[0];
+                    const jobResult =
+                      latestJob?.status === "done"
+                        ? latestJob.resultPath?.trim() || null
+                        : null;
+                    const mediaPath =
+                      asset?.genPath?.trim() ||
+                      asset?.outputPath?.trim() ||
+                      asset?.previewPath?.trim() ||
+                      jobResult ||
+                      null;
+                    const failed = asset?.status === "failed";
+                    const rev = reviews.find((r) => r.cellId === cell.cellId);
                     const statusLabel = mediaPath
                       ? "OK · plate ready"
                       : failed
@@ -1138,7 +1143,7 @@ export function MagicCampaignModal({
                                 : ""
                             }`
                           : latestJob?.status === "done" && !mediaPath
-                            ? "done · refreshing…"
+                            ? "done · plate missing — Generate again"
                             : latestJob?.status === "failed"
                               ? "job failed"
                               : busy === "generate"

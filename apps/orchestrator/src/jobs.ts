@@ -446,6 +446,26 @@ function applyGenPathToSize(
   a.error = null;
 }
 
+/**
+ * Persist genPath under the campaign lock (re-read from disk).
+ * Parallel variant jobs must not saveCampaign() a stale in-memory snapshot —
+ * that clobbers sibling cells' genPaths (job DONE, UI stuck on refreshing…).
+ */
+async function persistGenPath(
+  campaignId: string,
+  cellId: string,
+  sizeId: string,
+  assetPath: string,
+  promptHash: string,
+): Promise<void> {
+  await updateCampaign(campaignId, (camp) => {
+    ensureSizeAssets(camp, cellId);
+    const cell = camp.matrix.cells.find((c) => c.cellId === cellId);
+    if (!cell) throw new Error("Cell missing");
+    applyGenPathToSize(cell, sizeId, assetPath, promptHash);
+  });
+}
+
 async function runComfyForCellSize(
   campaign: Campaign,
   cellId: string,
@@ -473,8 +493,14 @@ async function runComfyForCellSize(
     };
   }
   if (!forceRegen && slot?.genPath && !slot.promptHash && !sizeNeedsComfyGen(cell, size)) {
+    await persistGenPath(
+      campaign.id,
+      cellId,
+      size.id,
+      slot.genPath,
+      pack.promptHash,
+    );
     applyGenPathToSize(cell, size.id, slot.genPath, pack.promptHash);
-    await saveCampaign(campaign);
     return {
       assetPath: slot.genPath,
       lineage: { reused: true, reason: "legacy_genPath", promptHash: pack.promptHash, sizeId: size.id },
@@ -485,8 +511,14 @@ async function runComfyForCellSize(
   if (!forceRegen) {
     const hit = await lookupPlateCache(pack.promptHash);
     if (hit) {
+      await persistGenPath(
+        campaign.id,
+        cellId,
+        size.id,
+        hit.assetPath,
+        pack.promptHash,
+      );
       applyGenPathToSize(cell, size.id, hit.assetPath, pack.promptHash);
-      await saveCampaign(campaign);
       return {
         assetPath: hit.assetPath,
         lineage: {
@@ -522,8 +554,14 @@ async function runComfyForCellSize(
         ? (promptId) => setJobComfyPromptId(control.jobId!, promptId)
         : undefined,
     });
+    await persistGenPath(
+      campaign.id,
+      cellId,
+      size.id,
+      gen.assetPath,
+      pack.promptHash,
+    );
     applyGenPathToSize(cell, size.id, gen.assetPath, pack.promptHash);
-    await saveCampaign(campaign);
     await putPlateCache({
       promptHash: pack.promptHash,
       assetPath: gen.assetPath,
@@ -883,10 +921,10 @@ export async function enqueueVariantBatch(
           message: `Comfy variant ${primary.aspect}`,
           progress: 0.08,
         });
-        let camp = await getCampaign(campaignId);
-        ensureSizeAssets(camp, cellId);
-        await saveCampaign(camp);
-        camp = await getCampaign(campaignId);
+        await updateCampaign(campaignId, (camp) => {
+          ensureSizeAssets(camp, cellId);
+        });
+        const camp = await getCampaign(campaignId);
         const gen = await runComfyForCellSize(
           camp,
           cellId,
@@ -910,17 +948,16 @@ export async function enqueueVariantBatch(
       } catch (err) {
         if (!isCancelledError(err) && !signal.aborted) {
           try {
-            const camp = await getCampaign(campaignId);
-            ensureSizeAssets(camp, cellId);
-            const cell = camp.matrix.cells.find((c) => c.cellId === cellId);
-            if (cell) {
+            await updateCampaign(campaignId, (camp) => {
+              ensureSizeAssets(camp, cellId);
+              const cell = camp.matrix.cells.find((c) => c.cellId === cellId);
+              if (!cell) return;
               const asset = cell.sizeAssets.find((a) => a.sizeId === primary.id);
               if (asset) {
                 asset.status = "failed";
                 asset.error = err instanceof Error ? err.message : String(err);
               }
-              await saveCampaign(camp);
-            }
+            });
           } catch {
             /* ignore */
           }
@@ -1011,10 +1048,10 @@ export async function enqueueMissingSizeVariantBatch(
           message: `Comfy ${size.aspect}`,
           progress: 0.08,
         });
-        let camp = await getCampaign(campaignId);
-        ensureSizeAssets(camp, cellId);
-        await saveCampaign(camp);
-        camp = await getCampaign(campaignId);
+        await updateCampaign(campaignId, (camp) => {
+          ensureSizeAssets(camp, cellId);
+        });
+        const camp = await getCampaign(campaignId);
         const gen = await runComfyForCellSize(
           camp,
           cellId,
@@ -1040,15 +1077,15 @@ export async function enqueueMissingSizeVariantBatch(
       } catch (err) {
         if (!isCancelledError(err) && !signal.aborted) {
           try {
-            const camp = await getCampaign(campaignId);
-            ensureSizeAssets(camp, cellId);
-            const cell = camp.matrix.cells.find((c) => c.cellId === cellId);
-            const asset = cell?.sizeAssets.find((a) => a.sizeId === size.id);
-            if (asset) {
-              asset.status = "failed";
-              asset.error = err instanceof Error ? err.message : String(err);
-              await saveCampaign(camp);
-            }
+            await updateCampaign(campaignId, (camp) => {
+              ensureSizeAssets(camp, cellId);
+              const cell = camp.matrix.cells.find((c) => c.cellId === cellId);
+              const asset = cell?.sizeAssets.find((a) => a.sizeId === size.id);
+              if (asset) {
+                asset.status = "failed";
+                asset.error = err instanceof Error ? err.message : String(err);
+              }
+            });
           } catch {
             /* ignore */
           }

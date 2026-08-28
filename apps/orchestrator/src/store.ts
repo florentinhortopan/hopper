@@ -221,12 +221,40 @@ async function writeCampaignUnlocked(campaign: Campaign): Promise<Campaign> {
   return next;
 }
 
+/**
+ * If a variant job finished with resultPath but a parallel save wiped genPath,
+ * restore it from the in-memory job record (same process).
+ */
+function healGenPathsFromDoneJobs(campaign: Campaign): boolean {
+  let changed = false;
+  for (const job of listJobs(campaign.id)) {
+    if (job.status !== "done" || !job.resultPath?.trim() || !job.sizeId) continue;
+    const cellId = (job.cellId || "").split(":")[0];
+    if (!cellId) continue;
+    const cell = campaign.matrix.cells.find((c) => c.cellId === cellId);
+    if (!cell?.sizeAssets?.length) continue;
+    const asset = cell.sizeAssets.find((a) => a.sizeId === job.sizeId);
+    if (!asset || asset.genPath?.trim()) continue;
+    asset.genPath = job.resultPath;
+    if (asset.status === "failed") asset.status = "pending";
+    asset.error = null;
+    changed = true;
+  }
+  return changed;
+}
+
 export async function getCampaign(id: string): Promise<Campaign> {
   let campaign = await readCampaignFromDisk(id);
-  if (repairCampaignMediaPaths(campaign)) {
+  const repaired = repairCampaignMediaPaths(campaign);
+  const healed = healGenPathsFromDoneJobs(campaign);
+  if (repaired || healed) {
     try {
       campaign = await saveCampaign(campaign);
-      console.log(`[campaigns] repaired media paths for ${id}`);
+      if (healed) {
+        console.log(`[campaigns] restored genPath(s) from done jobs for ${id}`);
+      } else if (repaired) {
+        console.log(`[campaigns] repaired media paths for ${id}`);
+      }
     } catch (err) {
       console.warn(
         `[campaigns] media repair save failed for ${id}:`,
