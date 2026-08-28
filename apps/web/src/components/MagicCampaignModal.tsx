@@ -12,6 +12,7 @@ import type {
   ReviewEntry,
 } from "@attatta/shared";
 import { api } from "@/lib/api";
+import { useImportEta } from "@/lib/useImportEta";
 
 /** import → checking (prepare progress) → plan → run */
 type Phase = "import" | "checking" | "plan" | "run";
@@ -217,19 +218,29 @@ export function MagicCampaignModal({
 
   useEffect(() => {
     if (!importSession) return;
-    if (
-      importSession.status !== "staging" &&
-      importSession.status !== "classifying"
-    ) {
-      return;
-    }
-    const t = window.setInterval(() => {
+    const id = importSession.id;
+    const active =
+      importSession.status === "staging" ||
+      importSession.status === "classifying" ||
+      importSession.status === "committing";
+    if (!active) return;
+
+    let cancelled = false;
+    const tick = () => {
       void api
-        .getImportSession(importSession.id)
-        .then(setImportSession)
+        .getImportSession(id)
+        .then((next) => {
+          if (cancelled) return;
+          setImportSession(next);
+        })
         .catch(() => undefined);
-    }, 1200);
-    return () => window.clearInterval(t);
+    };
+    tick();
+    const t = window.setInterval(tick, 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
   }, [importSession?.id, importSession?.status]);
 
   useEffect(() => {
@@ -241,6 +252,15 @@ export function MagicCampaignModal({
     }, 2500);
     return () => clearInterval(t);
   }, [campaign, phase, refreshReviews]);
+
+  const classifying =
+    importSession?.status === "staging" ||
+    importSession?.status === "classifying";
+  const importEta = useImportEta(importSession);
+  const reviewRows =
+    importSession?.status === "review" || importSession?.status === "done"
+      ? importSession.rows
+      : [];
 
   if (!open) return null;
 
@@ -447,13 +467,6 @@ export function MagicCampaignModal({
     (j) => j.status === "queued" || j.status === "running",
   ).length;
   const approved = reviews.filter((r) => r.decision === "approved").length;
-  const classifying =
-    importSession?.status === "staging" ||
-    importSession?.status === "classifying";
-  const reviewRows =
-    importSession?.status === "review" || importSession?.status === "done"
-      ? importSession.rows
-      : [];
 
   const phaseLabel =
     phase === "import"
@@ -613,10 +626,25 @@ export function MagicCampaignModal({
                   }}
                 />
                 {importSession ? (
-                  <p className="mt-2 text-xs text-ink-600">
-                    Status: {importSession.status}
-                    {importSession.message ? ` · ${importSession.message}` : ""}
-                  </p>
+                  <div className="mt-2 space-y-2">
+                    <p className="text-xs text-ink-600">
+                      Status: {importSession.status}
+                      {importSession.message ? ` · ${importSession.message}` : ""}
+                    </p>
+                    {importEta.active ? (
+                      <>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-ink-100">
+                          <div
+                            className="h-full bg-ember-500 transition-all duration-500"
+                            style={{
+                              width: `${Math.max(4, importEta.progressPct)}%`,
+                            }}
+                          />
+                        </div>
+                        <p className="text-xs text-ink-600">{importEta.summary}</p>
+                      </>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
 
@@ -966,7 +994,11 @@ export function MagicCampaignModal({
           ) : null}
           {busy === "import" || classifying ? (
             <span className="text-xs text-ink-600">
-              {classifying ? "Classifying assets…" : "Importing…"}
+              {importEta.active
+                ? importEta.summary
+                : classifying
+                  ? "Classifying assets…"
+                  : "Importing…"}
             </span>
           ) : null}
         </footer>

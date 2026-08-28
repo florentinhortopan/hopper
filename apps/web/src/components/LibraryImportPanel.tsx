@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ImportSession, LibraryKind } from "@attatta/shared";
 import { api } from "@/lib/api";
+import { useImportEta } from "@/lib/useImportEta";
 
 type SourceTab =
   | "zip"
@@ -54,6 +55,7 @@ export function LibraryImportPanel({ libraryId, onCommitted, onError }: Props) {
     Array<{ id: string; name: string; type: string; rootAssetId?: string }>
   >([]);
   const [remoteUrl, setRemoteUrl] = useState("");
+  const importEta = useImportEta(session);
 
   const refreshConnectors = useCallback(async () => {
     try {
@@ -68,23 +70,30 @@ export function LibraryImportPanel({ libraryId, onCommitted, onError }: Props) {
   }, [open, refreshConnectors]);
 
   useEffect(() => {
-    if (!session || session.status === "done" || session.status === "failed") {
-      return;
-    }
-    if (
-      session.status !== "staging" &&
-      session.status !== "classifying" &&
-      session.status !== "committing"
-    ) {
-      return;
-    }
-    const t = window.setInterval(() => {
+    if (!session) return;
+    const id = session.id;
+    const active =
+      session.status === "staging" ||
+      session.status === "classifying" ||
+      session.status === "committing";
+    if (!active) return;
+
+    let cancelled = false;
+    const tick = () => {
       void api
-        .getImportSession(session.id)
-        .then(setSession)
+        .getImportSession(id)
+        .then((next) => {
+          if (cancelled) return;
+          setSession(next);
+        })
         .catch(() => undefined);
-    }, 1200);
-    return () => window.clearInterval(t);
+    };
+    tick();
+    const t = window.setInterval(tick, 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
   }, [session?.id, session?.status]);
 
   async function startImport() {
@@ -470,6 +479,11 @@ export function LibraryImportPanel({ libraryId, onCommitted, onError }: Props) {
                   <p className="text-xs text-ink-600">
                     {session.message ||
                       `${Math.round(session.progress * 100)}% · ${session.rows.length} rows`}
+                    {importEta.active
+                      ? ` · ${importEta.elapsedLabel} elapsed${
+                          importEta.etaLabel ? ` · ${importEta.etaLabel}` : ""
+                        }`
+                      : ""}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">

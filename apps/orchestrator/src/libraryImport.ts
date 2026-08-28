@@ -218,19 +218,32 @@ export async function createImportSession(opts: {
       await mkdir(filesRoot, { recursive: true });
 
       const touch = async (progress: number, message: string) => {
+        const current = (await loadImportSession(id)) ?? session;
+        // Never clobber a finished session (late progress callbacks used to
+        // overwrite status:"review" back to "classifying").
+        if (
+          current.status === "review" ||
+          current.status === "done" ||
+          current.status === "failed" ||
+          current.status === "cancelled"
+        ) {
+          return;
+        }
         session = await saveImportSession({
-          ...session,
+          ...current,
           progress,
           message,
-          status: session.status === "staging" ? "staging" : session.status,
         });
-        upsertJob({
-          ...getJob(job.id)!,
-          status: "running",
-          progress,
-          message,
-          updatedAt: new Date().toISOString(),
-        });
+        const j = getJob(job.id);
+        if (j && j.status === "running") {
+          upsertJob({
+            ...j,
+            status: "running",
+            progress,
+            message,
+            updatedAt: new Date().toISOString(),
+          });
+        }
       };
 
       if (opts.zipBuffer) {
@@ -286,7 +299,7 @@ export async function createImportSession(opts: {
         error: null,
       }));
       session = await saveImportSession({
-        ...session,
+        ...((await loadImportSession(id)) ?? session),
         rows,
         progress: 0.4,
         message: `Found ${rows.length} media files`,
@@ -294,12 +307,16 @@ export async function createImportSession(opts: {
       });
 
       if (opts.autoClassify !== false && rows.length) {
-        await classifyImportSession(id, (p, message) => {
-          void touch(0.4 + p * 0.55, message);
-        }, signal);
+        await classifyImportSession(
+          id,
+          async (p, message) => {
+            await touch(0.4 + p * 0.55, message);
+          },
+          signal,
+        );
       } else {
         session = await saveImportSession({
-          ...session,
+          ...((await loadImportSession(id)) ?? session),
           status: "review",
           progress: 1,
           message: "Ready for review",
@@ -307,11 +324,22 @@ export async function createImportSession(opts: {
       }
 
       const final = await loadImportSession(id);
+      // Belt-and-suspenders: ensure we never leave a completed classify as
+      // "classifying" if a late touch raced.
+      if (final && final.status === "classifying" && final.rows.length) {
+        await saveImportSession({
+          ...final,
+          status: "review",
+          progress: 1,
+          message: "Ready for review",
+        });
+      }
+      const ready = (await loadImportSession(id)) ?? final;
       upsertJob({
         ...getJob(job.id)!,
         status: "done",
         progress: 1,
-        message: final?.message || "Import ready for review",
+        message: ready?.message || "Import ready for review",
         updatedAt: new Date().toISOString(),
       });
       finishJobControl(job.id);
@@ -373,7 +401,10 @@ async function copyTree(src: string, dest: string) {
 
 export async function classifyImportSession(
   importId: string,
-  onProgress?: (p: number, message: string) => void,
+  onProgress?: (
+    p: number,
+    message: string,
+  ) => void | Promise<void>,
   signal?: AbortSignal,
 ) {
   let session = await loadImportSession(importId);
@@ -406,13 +437,14 @@ export async function classifyImportSession(
       confidence: result.confidence,
       rationale: result.rationale,
     };
-    onProgress?.(
+    await onProgress?.(
       (i + 1) / Math.max(rows.length, 1),
       `Classified ${i + 1}/${rows.length}: ${result.kind}`,
     );
   }
+  const latest = (await loadImportSession(importId)) ?? session;
   return saveImportSession({
-    ...session,
+    ...latest,
     rows,
     status: "review",
     progress: 1,
