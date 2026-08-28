@@ -241,9 +241,48 @@ async function resolveImportIngredientIds(
     .filter((id): id is string => Boolean(id));
   if (fromRows.length) return [...new Set(fromRows)];
 
+  // Legacy fallback: tagged media from this import — never treat Magic-drafted
+  // copy (magic_att_v1) as package contents.
   const tag = `import:${importId}`;
   const lib = await listLibrary(undefined, libraryId);
-  return lib.filter((i) => i.tags?.includes(tag)).map((i) => i.id);
+  return lib
+    .filter((i) => {
+      if (!i.tags?.includes(tag)) return false;
+      if (i.kind === "copy" && i.tags.includes(MAGIC_PRESET_ID)) return false;
+      return true;
+    })
+    .map((i) => i.id);
+}
+
+function classifyActiveCopySource(
+  copies: LibraryItem[],
+): { source: MagicChecklistItem["source"]; detail: string } {
+  if (!copies.length) {
+    return { source: "missing", detail: "No copy yet" };
+  }
+  const fromPackage = copies.filter(
+    (i) =>
+      i.tags?.some((t) => t.startsWith("import:")) &&
+      !i.tags.includes(MAGIC_PRESET_ID),
+  );
+  if (fromPackage.length === copies.length) {
+    return {
+      source: "imported",
+      detail: `${fromPackage.length} copy plate(s) from package`,
+    };
+  }
+  if (fromPackage.length) {
+    const filled = copies.length - fromPackage.length;
+    return {
+      source: "imported",
+      detail: `${fromPackage.length} from package · ${filled} AI/preset fill`,
+    };
+  }
+  const ai = copies.some((i) => i.tags?.includes("magic"));
+  return {
+    source: ai ? "ai" : "preset",
+    detail: `${copies.length} copy plate(s) filled from brief (not in package)`,
+  };
 }
 
 function buildMagicSparse(campaign: Campaign, lib: LibraryItem[]): Campaign {
@@ -458,41 +497,42 @@ export async function prepareMagicCampaign(
         campaign.libraryId || DEFAULT_LIBRARY_ID,
       )
     : [];
-  if (opts.importId && !importIngredientIds.length) {
+  // When an import was used, always scope — even if id list is empty — so we
+  // never pull unrelated library copy into "from package".
+  const hadImport = Boolean(opts.importId);
+  if (hadImport && !importIngredientIds.length) {
     warnings.push(
-      "Import committed but no ingredient ids found — activations may fall back to library",
+      "Import committed but no ingredient ids found — package activations empty until re-commit",
     );
   }
 
-  // Copy plates — when Magic imported a package, only use copy from that package
-  // (or draft from brief). Do not activate unrelated library copy plates.
-  const importSet = importIngredientIds.length
-    ? new Set(importIngredientIds)
-    : null;
-  const existingCopy = lib.filter(
-    (i) =>
-      i.kind === "copy" &&
-      (importSet ? importSet.has(i.id) : true),
-  );
-  // Without an import scope, still avoid grabbing every library copy — prefer none then draft.
-  const copyPool = importSet
-    ? existingCopy
-    : existingCopy.filter((i) => i.tags?.includes("magic") || i.tags?.includes(MAGIC_PRESET_ID));
-  let copySource: MagicChecklistItem["source"] = copyPool.length
+  // Copy plates — package only when import was used; otherwise draft from brief.
+  // Never treat Magic-drafted library leftovers as package contents.
+  const importSet = hadImport ? new Set(importIngredientIds) : null;
+  const packageCopy = importSet
+    ? lib.filter(
+        (i) =>
+          i.kind === "copy" &&
+          importSet.has(i.id) &&
+          !i.tags?.includes(MAGIC_PRESET_ID),
+      )
+    : [];
+  let copySource: MagicChecklistItem["source"] = packageCopy.length
     ? "imported"
     : "missing";
-  let copyDetail = copyPool.length
-    ? `${copyPool.length} copy plate(s)${importSet ? " from package" : ""}`
+  let copyDetail = packageCopy.length
+    ? `${packageCopy.length} copy plate(s) from package`
     : "";
   const draftedCopyIds: string[] = [];
-  if (!copyPool.length && campaign.brief.prompt?.trim()) {
+  if (!packageCopy.length && campaign.brief.prompt?.trim()) {
     const drafted = await draftCopyFromBrief(campaign.brief);
     let n = 0;
     for (const copy of drafted.copies) {
       const item = await createLibraryIngredient({
         kind: "copy",
         label: `Magic copy ${n + 1}`,
-        tags: ["magic", MAGIC_PRESET_ID, ...(opts.importId ? [`import:${opts.importId}`] : [])],
+        // Do NOT tag with import: — that would fake "from package" on resume.
+        tags: ["magic", MAGIC_PRESET_ID],
         copy,
         promptHint: copy.setup,
         libraryId: campaign.libraryId,
@@ -502,7 +542,7 @@ export async function prepareMagicCampaign(
       n += 1;
     }
     copySource = drafted.source === "ai" ? "ai" : "preset";
-    copyDetail = drafted.rationale;
+    copyDetail = `${drafted.copies.length} filled from brief — ${drafted.rationale}`;
     lib = await listLibrary(undefined, campaign.libraryId || DEFAULT_LIBRARY_ID);
   }
 
@@ -533,9 +573,7 @@ export async function prepareMagicCampaign(
   }
 
   const act = pickMagicActivations(lib, {
-    importIngredientIds: importIngredientIds.length
-      ? importIngredientIds
-      : undefined,
+    importIngredientIds: hadImport ? importIngredientIds : undefined,
     extraIds: draftedCopyIds,
   });
   if (act.scopedToImport) {
@@ -579,12 +617,24 @@ export async function magicPlanSnapshot(
     campaign.comfyTemplate?.campaignGuidelines ||
       campaign.comfyTemplate?.steps?.length,
   );
-  const copyItems = lib.filter((i) => i.kind === "copy");
-  const copySource: MagicChecklistItem["source"] = copyItems.length
-    ? "imported"
-    : campaign.matrix.cells.some((c) => c.copy.setup?.trim())
-      ? "preset"
-      : "missing";
+  const actIds = new Set(campaign.ingredientSet?.activeIds ?? []);
+  const activeCopy = lib.filter(
+    (i) => i.kind === "copy" && actIds.has(i.id),
+  );
+  const classified = classifyActiveCopySource(activeCopy);
+  const copySource: MagicChecklistItem["source"] =
+    activeCopy.length > 0
+      ? classified.source
+      : campaign.matrix.cells.some((c) => c.copy.setup?.trim())
+        ? "preset"
+        : "missing";
+  const copyDetail =
+    activeCopy.length > 0
+      ? classified.detail
+      : copySource === "preset"
+        ? "Copy on matrix cells (brief/preset — not from package)"
+        : "No copy yet";
+
   return finalizeMagicPrepareResult({
     campaign,
     lib,
@@ -593,16 +643,17 @@ export async function magicPlanSnapshot(
       ? `base ${campaign.comfyTemplate?.baseWorkflowId || "—"}`
       : "No workflow on campaign",
     copySource,
-    copyDetail: copyItems.length
-      ? `${copyItems.length} copy item(s)`
-      : copySource === "preset"
-        ? "Copy on matrix cells"
-        : "No copy yet",
+    copyDetail,
     warnings: [],
     llmConfigured: llm.configured,
-    packageScoped: (campaign.ingredientSet?.activeIds ?? []).some((id) =>
-      lib.find((i) => i.id === id)?.tags?.some((t) => t.startsWith("import:")),
-    ),
+    packageScoped: (campaign.ingredientSet?.activeIds ?? []).some((id) => {
+      const item = lib.find((i) => i.id === id);
+      return Boolean(
+        item &&
+          item.kind !== "copy" &&
+          item.tags?.some((t) => t.startsWith("import:")),
+      );
+    }),
   });
 }
 
