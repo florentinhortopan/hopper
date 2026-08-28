@@ -13,6 +13,8 @@ import type {
 } from "@attatta/shared";
 import { api } from "@/lib/api";
 import { useImportEta } from "@/lib/useImportEta";
+import { JobProgressRow } from "@/components/JobProgressRow";
+import { VariantMediaPreview } from "@/components/VariantMediaPreview";
 
 /** import → checking (prepare progress) → plan → run */
 type Phase = "import" | "checking" | "plan" | "run";
@@ -244,14 +246,34 @@ export function MagicCampaignModal({
   }, [importSession?.id, importSession?.status]);
 
   useEffect(() => {
-    if (!campaign || phase !== "run") return;
-    const t = setInterval(() => {
-      void api.jobs(campaign.id).then(setJobs);
-      void refreshReviews(campaign.id);
-      void api.getCampaign(campaign.id).then(setCampaign);
-    }, 2500);
-    return () => clearInterval(t);
-  }, [campaign, phase, refreshReviews]);
+    if (!campaign?.id || phase !== "run") return;
+    const campaignId = campaign.id;
+    let cancelled = false;
+
+    const tick = async () => {
+      try {
+        const [nextJobs, nextCampaign] = await Promise.all([
+          api.jobs(campaignId),
+          api.getCampaign(campaignId),
+        ]);
+        if (cancelled) return;
+        setJobs(nextJobs);
+        setCampaign(nextCampaign);
+        await refreshReviews(campaignId);
+      } catch {
+        /* keep last known state */
+      }
+    };
+
+    void tick();
+    const t = window.setInterval(() => void tick(), 1500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+    // Depend on id only — full campaign object changes every poll and would reset the timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaign?.id, phase, refreshReviews]);
 
   const classifying =
     importSession?.status === "staging" ||
@@ -415,12 +437,28 @@ export function MagicCampaignModal({
     if (!campaign) return;
     setBusy("generate");
     setError(null);
+    setPkg(null);
+    setJobs([]);
+    setPhase("run");
     try {
-      setPhase("run");
       const result = await api.magicGenerate(campaign.id);
       setJobs(result.jobs);
       setCampaign(result.campaign);
       await refreshReviews(campaign.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onStopJobs() {
+    if (!campaign) return;
+    setBusy("stop");
+    try {
+      await api.cancelCampaignJobs(campaign.id);
+      setJobs(await api.jobs(campaign.id));
+      setCampaign(await api.getCampaign(campaign.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -466,7 +504,26 @@ export function MagicCampaignModal({
   const running = jobs.filter(
     (j) => j.status === "queued" || j.status === "running",
   ).length;
+  const failedJobs = jobs.filter((j) => j.status === "failed").length;
+  const doneJobs = jobs.filter((j) => j.status === "done").length;
+  const platesReady = cells.filter((c) =>
+    c.sizeAssets?.some((a) => a.genPath?.trim() && a.status !== "failed"),
+  ).length;
   const approved = reviews.filter((r) => r.decision === "approved").length;
+  const genPct =
+    cells.length > 0
+      ? Math.round((platesReady / cells.length) * 100)
+      : running
+        ? Math.round((doneJobs / Math.max(jobs.length, 1)) * 100)
+        : 0;
+
+  function jobsForCell(cellId: string) {
+    return jobs.filter(
+      (j) =>
+        j.cellId === cellId ||
+        (j.cellId != null && j.cellId.startsWith(`${cellId}:`)),
+    );
+  }
 
   const phaseLabel =
     phase === "import"
@@ -848,58 +905,248 @@ export function MagicCampaignModal({
 
           {phase === "run" ? (
             <div className="space-y-4">
-              <div className="rounded-xl border border-ink-200 bg-white p-4 text-sm">
-                <div>
-                  Jobs running: <strong>{running}</strong> · Approved:{" "}
-                  <strong>{approved}</strong>
+              <div
+                className={`rounded-xl border p-4 text-sm ${
+                  running
+                    ? "border-amber-300 bg-amber-50 text-amber-950"
+                    : platesReady > 0
+                      ? "border-emerald-200 bg-emerald-50/60 text-ink-900"
+                      : "border-ink-200 bg-white"
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  {running ? (
+                    <span className="attatta-spinner shrink-0" aria-hidden />
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">
+                      {busy === "generate"
+                        ? "Queueing Comfy jobs…"
+                        : running
+                          ? `Generating plates — ${running} job${running === 1 ? "" : "s"} live`
+                          : platesReady === cells.length && cells.length > 0
+                            ? "All plates ready"
+                            : platesReady > 0
+                              ? `${platesReady}/${cells.length} plates ready`
+                              : jobs.length
+                                ? "Waiting for queue…"
+                                : "No jobs yet"}
+                    </p>
+                    <p className="mt-0.5 text-xs opacity-80">
+                      {platesReady}/{cells.length || "—"} plates · {doneJobs}{" "}
+                      done · {failedJobs} failed · Approved {approved}
+                    </p>
+                  </div>
+                  {running ? (
+                    <button
+                      type="button"
+                      className="rounded-md bg-red-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                      disabled={busy !== null}
+                      onClick={() => void onStopJobs()}
+                    >
+                      {busy === "stop" ? "Stopping…" : "Stop all"}
+                    </button>
+                  ) : null}
+                </div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/10">
+                  <div
+                    className={`h-full rounded-full transition-[width] duration-500 ${
+                      running ? "bg-amber-500" : "bg-ember-500"
+                    }`}
+                    style={{
+                      width: `${Math.max(running ? 6 : 0, genPct)}%`,
+                    }}
+                  />
                 </div>
                 {campaign ? (
                   <a
                     className="mt-2 inline-block text-xs underline"
-                    href={`/campaigns/${campaign.id}/variants?from=magic`}
+                    href={`/campaigns/${campaign.id}/queue?from=magic`}
                   >
-                    Open Variant review (Advanced)
+                    Open Queue (Advanced)
                   </a>
                 ) : null}
               </div>
-              <ul className="max-h-64 space-y-2 overflow-y-auto">
-                {cells.map((cell) => {
-                  const asset = cell.sizeAssets?.find((a) => a.genPath);
-                  const rev = reviews.find((r) => r.cellId === cell.cellId);
-                  return (
-                    <li
-                      key={cell.cellId}
-                      className="flex flex-wrap items-center gap-2 rounded-lg border border-ink-100 bg-white px-3 py-2 text-xs"
-                    >
-                      <span className="font-mono">{cell.cellId}</span>
-                      <span className="text-ink-500">
-                        {asset?.genPath ? "plate ready" : cell.status}
-                      </span>
-                      <span className="text-ink-500">
-                        {rev?.decision || "pending"}
-                      </span>
-                      <button
-                        type="button"
-                        className="ml-auto rounded border border-ink-200 px-2 py-0.5"
-                        onClick={() =>
-                          void setDecision(cell.cellId, "approved")
-                        }
+
+              {jobs.length > 0 ? (
+                <div>
+                  <h3 className="mb-2 text-[10px] font-medium uppercase tracking-[0.14em] text-ink-500">
+                    Queue
+                  </h3>
+                  <ul className="max-h-48 space-y-2 overflow-y-auto">
+                    {jobs.map((job) => (
+                      <JobProgressRow
+                        key={job.id}
+                        job={job}
+                        onCancelled={() => {
+                          if (!campaign) return;
+                          void api.jobs(campaign.id).then(setJobs);
+                          void api.getCampaign(campaign.id).then(setCampaign);
+                        }}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              <div>
+                <h3 className="mb-2 text-[10px] font-medium uppercase tracking-[0.14em] text-ink-500">
+                  Variants
+                </h3>
+                <ul className="max-h-[22rem] space-y-3 overflow-y-auto">
+                  {cells.map((cell) => {
+                    const asset =
+                      cell.sizeAssets?.find((a) => a.genPath?.trim()) ||
+                      cell.sizeAssets?.[0];
+                    const mediaPath =
+                      asset?.genPath?.trim() ||
+                      asset?.outputPath?.trim() ||
+                      asset?.previewPath?.trim() ||
+                      null;
+                    const failed = asset?.status === "failed";
+                    const rev = reviews.find((r) => r.cellId === cell.cellId);
+                    const cellJobs = jobsForCell(cell.cellId);
+                    const activeJob = cellJobs.find(
+                      (j) => j.status === "queued" || j.status === "running",
+                    );
+                    const latestJob = activeJob || cellJobs[0];
+                    const statusLabel = mediaPath
+                      ? "OK · plate ready"
+                      : failed
+                        ? "failed"
+                        : activeJob
+                          ? `${activeJob.status}${
+                              activeJob.progress > 0.01
+                                ? ` ${Math.round(activeJob.progress * 100)}%`
+                                : ""
+                            }`
+                          : latestJob?.status === "done" && !mediaPath
+                            ? "done · refreshing…"
+                            : latestJob?.status === "failed"
+                              ? "job failed"
+                              : busy === "generate"
+                                ? "queueing…"
+                                : cell.status || "pending";
+
+                    return (
+                      <li
+                        key={cell.cellId}
+                        className={`rounded-xl border p-3 text-xs ${
+                          activeJob
+                            ? "border-amber-300/60 bg-amber-50/40"
+                            : mediaPath
+                              ? "border-emerald-200/80 bg-white"
+                              : "border-ink-100 bg-white"
+                        }`}
                       >
-                        Keep
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded border border-ink-200 px-2 py-0.5"
-                        onClick={() =>
-                          void setDecision(cell.cellId, "rejected")
-                        }
-                      >
-                        Kill
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+                        <div className="flex flex-wrap items-start gap-3">
+                          {mediaPath ? (
+                            <VariantMediaPreview
+                              key={mediaPath}
+                              path={mediaPath}
+                              label={cell.cellId}
+                            />
+                          ) : (
+                            <div className="flex aspect-[9/16] h-40 w-[90px] shrink-0 flex-col items-center justify-center gap-1 rounded-lg bg-ink-100 px-1 text-center text-[10px] text-ink-500">
+                              {activeJob ? (
+                                <>
+                                  <span
+                                    className="attatta-spinner"
+                                    aria-hidden
+                                  />
+                                  <span>Generating</span>
+                                  {activeJob.progress > 0.01 ? (
+                                    <span>
+                                      {Math.round(activeJob.progress * 100)}%
+                                    </span>
+                                  ) : null}
+                                </>
+                              ) : (
+                                "—"
+                              )}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <div className="flex flex-wrap items-baseline gap-2">
+                              <span className="font-mono font-medium">
+                                {cell.cellId}
+                              </span>
+                              <span
+                                className={
+                                  mediaPath
+                                    ? "text-emerald-700"
+                                    : failed || latestJob?.status === "failed"
+                                      ? "text-red-700"
+                                      : activeJob
+                                        ? "text-amber-900"
+                                        : "text-ink-500"
+                                }
+                              >
+                                {statusLabel}
+                              </span>
+                              <span className="text-ink-500">
+                                {rev?.decision || "pending"}
+                              </span>
+                            </div>
+                            <p className="text-ink-700">
+                              {cell.copy.setup}
+                              {cell.copy.punchline
+                                ? ` → ${cell.copy.punchline}`
+                                : ""}
+                            </p>
+                            {latestJob?.message ? (
+                              <p className="truncate text-[10px] text-ink-500">
+                                {latestJob.message}
+                              </p>
+                            ) : null}
+                            {failed && asset?.error ? (
+                              <p className="text-[10px] text-red-700">
+                                {asset.error}
+                              </p>
+                            ) : null}
+                            {activeJob ? (
+                              <div className="h-1 overflow-hidden rounded-full bg-amber-100">
+                                <div
+                                  className="h-full bg-amber-500 transition-[width] duration-500"
+                                  style={{
+                                    width: `${Math.max(
+                                      6,
+                                      Math.round(
+                                        (activeJob.progress || 0.05) * 100,
+                                      ),
+                                    )}%`,
+                                  }}
+                                />
+                              </div>
+                            ) : null}
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              <button
+                                type="button"
+                                className="rounded border border-ink-200 px-2 py-0.5 disabled:opacity-40"
+                                disabled={!mediaPath}
+                                onClick={() =>
+                                  void setDecision(cell.cellId, "approved")
+                                }
+                              >
+                                Keep
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded border border-ink-200 px-2 py-0.5"
+                                onClick={() =>
+                                  void setDecision(cell.cellId, "rejected")
+                                }
+                              >
+                                Kill
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
               {pkg ? (
                 <a
                   className="inline-block rounded-md bg-ink-900 px-3 py-2 text-sm text-white"
