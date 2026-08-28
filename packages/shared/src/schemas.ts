@@ -502,6 +502,8 @@ export const CampaignSchema = z.object({
     .default("guarantee_tranche3_social_video_v1"),
   /** Campaign Comfy guidelines + between-node step prompts / binds */
   comfyTemplate: ComfyTemplateSchema.default(DEFAULT_COMFY_TEMPLATE),
+  /** standard = full StepNav; magic = two-step popup flow */
+  mode: z.enum(["standard", "magic"]).default("standard"),
   archived: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),

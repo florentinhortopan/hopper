@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { ActiveGenerationBar } from "@/components/ActiveGenerationBar";
+import { api } from "@/lib/api";
 
 const STEPS = [
   ["brief", "Brief"],
@@ -13,9 +15,28 @@ const STEPS = [
 ] as const;
 
 export function StepNav({ campaignId, current }: { campaignId: string; current: string }) {
+  const [mode, setMode] = useState<"standard" | "magic" | null>(null);
+
+  useEffect(() => {
+    void api
+      .getCampaign(campaignId)
+      .then((c) => setMode(c.mode === "magic" ? "magic" : "standard"))
+      .catch(() => setMode("standard"));
+  }, [campaignId]);
+
   return (
     <>
       <ActiveGenerationBar campaignId={campaignId} />
+      {mode === "magic" ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded bg-ember-500/15 px-2 py-1 font-medium uppercase tracking-wide text-ember-800">
+            Magic · Advanced
+          </span>
+          <span className="text-ink-600">
+            Full StepNav escape hatch for this magic campaign.
+          </span>
+        </div>
+      ) : null}
       <ol className="mb-8 flex flex-wrap gap-2 text-[11px] font-medium uppercase tracking-[0.14em]">
         {STEPS.map(([id, label]) => {
           const active = current === id;

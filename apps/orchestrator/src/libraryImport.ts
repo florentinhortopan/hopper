@@ -49,6 +49,11 @@ function filesDir(importId: string) {
   return path.join(sessionDir(importId), "files");
 }
 
+/** Absolute path to staged import files (for magic workflow detection). */
+export function getImportSessionFilesDir(importId: string) {
+  return filesDir(importId);
+}
+
 export async function loadImportSession(
   importId: string,
 ): Promise<ImportSession | null> {

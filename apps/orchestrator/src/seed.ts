@@ -392,6 +392,7 @@ async function main() {
       campaignGuidelines: "",
       steps: [],
     },
+    mode: "standard",
     designTokenPackId: DEFAULT_BRAND_TOKEN_ID,
     rail: {
       hero: {

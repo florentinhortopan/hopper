@@ -49,6 +49,16 @@ import {
 import { PORT, PUBLIC_BASE, PATHS, REPO_ROOT } from "./config.js";
 import { DEFAULT_BRAND_TOKEN_ID } from "./defaultTokens.js";
 import {
+  createMagicCampaign,
+  generateMagicCampaign,
+  prepareMagicCampaign,
+} from "./magicRun.js";
+import {
+  applyMagicWorkflowToCampaign,
+  fetchMagicWorkflowUrl,
+  parseMagicWorkflowJson,
+} from "./magicWorkflow.js";
+import {
   enqueueBatch,
   enqueueCellJob,
   enqueueMissingSizeVariantBatch,
@@ -837,6 +847,81 @@ app.post("/campaigns", async (req, res) => {
   const campaign = draft;
 
   res.status(201).json(await saveCampaign(campaign));
+});
+
+app.post("/campaigns/magic", async (req, res) => {
+  try {
+    const name = String(req.body?.name || "Magic campaign");
+    const libraryId = req.body?.libraryId
+      ? String(req.body.libraryId)
+      : undefined;
+    const campaign = await createMagicCampaign({ name, libraryId });
+    res.status(201).json(campaign);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.post("/campaigns/:id/magic/prepare", async (req, res) => {
+  try {
+    const body = z
+      .object({
+        brief: BriefSchema.optional(),
+        importId: z.string().optional(),
+        workflowUrl: z.string().optional(),
+        workflowJson: z.string().optional(),
+      })
+      .parse(req.body ?? {});
+    const result = await prepareMagicCampaign(req.params.id, body);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.post("/campaigns/:id/magic/generate", async (req, res) => {
+  try {
+    const result = await generateMagicCampaign(req.params.id);
+    res.status(202).json(result);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.post("/campaigns/:id/magic/workflow", async (req, res) => {
+  try {
+    let campaign = await getCampaign(req.params.id);
+    const body = z
+      .object({
+        url: z.string().optional(),
+        json: z.string().optional(),
+      })
+      .parse(req.body ?? {});
+    const warnings: string[] = [];
+    if (body.json?.trim()) {
+      const { pkg, warnings: w } = parseMagicWorkflowJson(body.json, "pasted");
+      warnings.push(...w);
+      if (!pkg) {
+        res.status(400).json({ error: "Invalid workflow JSON", warnings });
+        return;
+      }
+      campaign = applyMagicWorkflowToCampaign(campaign, pkg, "imported");
+    } else if (body.url?.trim()) {
+      const { pkg, warnings: w } = await fetchMagicWorkflowUrl(body.url);
+      warnings.push(...w);
+      if (!pkg) {
+        res.status(400).json({ error: "Could not load workflow URL", warnings });
+        return;
+      }
+      campaign = applyMagicWorkflowToCampaign(campaign, pkg, "url");
+    } else {
+      res.status(400).json({ error: "Provide url or json" });
+      return;
+    }
+    res.json({ campaign: await saveCampaign(campaign), warnings });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 app.get("/campaigns/:id", async (req, res) => {

@@ -45,6 +45,45 @@ export const api = {
     req<Campaign[]>(`/campaigns${includeArchived ? "?includeArchived=1" : ""}`),
   createCampaign: (name: string) =>
     req<Campaign>("/campaigns", { method: "POST", body: JSON.stringify({ name }) }),
+  createMagicCampaign: (name: string, libraryId?: string) =>
+    req<Campaign>("/campaigns/magic", {
+      method: "POST",
+      body: JSON.stringify({ name, libraryId }),
+    }),
+  magicPrepare: (
+    id: string,
+    body: {
+      brief?: Brief;
+      importId?: string;
+      workflowUrl?: string;
+      workflowJson?: string;
+    },
+  ) =>
+    req<{
+      campaign: Campaign;
+      checklist: import("@attatta/shared").MagicChecklistItem[];
+      canContinue: boolean;
+      reasons: string[];
+      plannedCells: number;
+      workflowSource: import("@attatta/shared").MagicChecklistSource;
+      warnings: string[];
+    }>(`/campaigns/${id}/magic/prepare`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  magicGenerate: (id: string) =>
+    req<{ campaign: Campaign; jobs: Job[] }>(
+      `/campaigns/${id}/magic/generate`,
+      { method: "POST", body: "{}" },
+    ),
+  magicWorkflow: (
+    id: string,
+    body: { url?: string; json?: string },
+  ) =>
+    req<{ campaign: Campaign; warnings: string[] }>(
+      `/campaigns/${id}/magic/workflow`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
   getCampaign: (id: string) => req<Campaign>(`/campaigns/${id}`),
   patchCampaign: (
     id: string,

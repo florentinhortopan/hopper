@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Campaign } from "@attatta/shared";
+import { MagicCampaignModal } from "@/components/MagicCampaignModal";
 import { api } from "@/lib/api";
 
 export default function HomePage() {
@@ -12,6 +13,7 @@ export default function HomePage() {
   const [showArchived, setShowArchived] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [magicOpen, setMagicOpen] = useState(false);
 
   async function refresh(includeArchived = showArchived) {
     setLoading(true);
@@ -89,6 +91,13 @@ export default function HomePage() {
         </button>
         <button
           type="button"
+          onClick={() => setMagicOpen(true)}
+          className="rounded-md border border-ember-500 bg-ember-500/10 px-4 py-2 text-sm font-medium text-ember-800"
+        >
+          Magic campaign
+        </button>
+        <button
+          type="button"
           onClick={() => void refresh(showArchived)}
           className="rounded-md border border-ink-200 px-4 py-2 text-sm"
         >
@@ -151,6 +160,11 @@ export default function HomePage() {
               </a>
             )}
             <div className="mt-2 text-xs uppercase tracking-wider text-ink-700">
+              {c.mode === "magic" ? (
+                <span className="mr-2 rounded bg-ember-500/15 px-1.5 py-0.5 text-ember-800">
+                  Magic
+                </span>
+              ) : null}
               {c.templateId} · {c.matrix.cells.length} cells · id {c.id}
             </div>
             <div className="mt-1 text-xs text-ink-700/70">
@@ -190,6 +204,8 @@ export default function HomePage() {
           No campaigns yet. Create a batch — each keeps its own brief.
         </p>
       ) : null}
+
+      <MagicCampaignModal open={magicOpen} onClose={() => setMagicOpen(false)} />
     </div>
   );
 }

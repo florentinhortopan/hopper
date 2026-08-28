@@ -2,6 +2,12 @@ import { readFile } from "node:fs/promises";
 import {
   INGREDIENT_KINDS,
   LibraryKindSchema,
+  MAGIC_COMFY_TEMPLATE,
+  heuristicCopyFromBrief,
+  normalizeComfyTemplate,
+  type Brief,
+  type ComfyTemplate,
+  type Copy,
   type LibraryKind,
 } from "@attatta/shared";
 
@@ -169,4 +175,192 @@ Return ONLY JSON:
       rationale: `LLM failed: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
+}
+
+async function chatJson(opts: {
+  system: string;
+  user: string;
+  temperature?: number;
+}): Promise<Record<string, unknown> | null> {
+  if (!llmConfigured()) return null;
+  const baseUrl = (
+    process.env.ATTATTA_LLM_BASE_URL || "https://api.openai.com/v1"
+  ).replace(/\/$/, "");
+  const model =
+    process.env.ATTATTA_LLM_TEXT_MODEL ||
+    process.env.ATTATTA_LLM_VISION_MODEL ||
+    "gpt-4o-mini";
+  const apiKey = process.env.ATTATTA_LLM_API_KEY!;
+  try {
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        temperature: opts.temperature ?? 0.4,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: opts.system },
+          { role: "user", content: opts.user },
+        ],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const raw = data.choices?.[0]?.message?.content || "{}";
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/** Synthesize campaign Comfy template guidelines + steps from brief. */
+export async function synthesizeComfyTemplateFromBrief(
+  brief: Brief,
+): Promise<{ template: ComfyTemplate; source: "ai" | "preset"; rationale: string }> {
+  const parsed = await chatJson({
+    system:
+      "You write ComfyUI prompt guidelines for paid-social video ads. JSON only.",
+    user: `Brief:
+prompt: ${brief.prompt}
+audience: ${brief.audience}
+offer: ${brief.offer}
+cta: ${brief.cta}
+mustSay: ${(brief.mustSay || []).join("; ")}
+mustNot: ${(brief.mustNot || []).join("; ")}
+
+Return JSON:
+{"campaignGuidelines":"2-4 sentences","steps":[{"id":"string","label":"string","patchKey":"prompt","prompt":"string"}],"rationale":"one sentence"}
+Prefer 2-3 steps. patchKey usually "prompt". One step may use patchKey "duration" with prompt "4".`,
+  });
+
+  if (!parsed) {
+    return {
+      template: normalizeComfyTemplate(MAGIC_COMFY_TEMPLATE),
+      source: "preset",
+      rationale: "LLM unavailable — magic_att_v1 preset template",
+    };
+  }
+
+  const stepsRaw = Array.isArray(parsed.steps) ? parsed.steps : [];
+  const steps = stepsRaw.slice(0, 6).map((s, i) => {
+    const row = (s && typeof s === "object" ? s : {}) as Record<string, unknown>;
+    return {
+      id: String(row.id || `step_${i + 1}`).slice(0, 40),
+      label: String(row.label || `Step ${i + 1}`).slice(0, 80),
+      patchKey: String(row.patchKey || "prompt").slice(0, 40),
+      prompt: String(row.prompt || "").slice(0, 600),
+      ingredientId: null as string | null,
+    };
+  });
+
+  return {
+    template: normalizeComfyTemplate({
+      baseWorkflowId: "talent_variant_video_v1",
+      campaignGuidelines: String(
+        parsed.campaignGuidelines || MAGIC_COMFY_TEMPLATE.campaignGuidelines,
+      ).slice(0, 1200),
+      steps: steps.length ? steps : MAGIC_COMFY_TEMPLATE.steps,
+    }),
+    source: "ai",
+    rationale: String(parsed.rationale || "Synthesized from brief").slice(0, 300),
+  };
+}
+
+/** Draft 2–3 copy plates from brief. */
+export async function draftCopyFromBrief(
+  brief: Brief,
+): Promise<{ copies: Copy[]; source: "ai" | "preset"; rationale: string }> {
+  const parsed = await chatJson({
+    system: "You write short paid-social ad copy. JSON only.",
+    user: `Brief:
+prompt: ${brief.prompt}
+audience: ${brief.audience}
+offer: ${brief.offer}
+cta: ${brief.cta}
+mustSay: ${(brief.mustSay || []).join("; ")}
+
+Return JSON:
+{"variants":[{"setup":"max 35 chars","punchline":"max 35 chars","endcard":"max 77 chars","cta":"short"}],"rationale":"one sentence"}
+Provide 2 or 3 variants. Respect mustSay when present.`,
+  });
+
+  if (!parsed || !Array.isArray(parsed.variants) || !parsed.variants.length) {
+    return {
+      copies: heuristicCopyFromBrief(brief),
+      source: "preset",
+      rationale: "LLM unavailable — heuristic copy from brief",
+    };
+  }
+
+  const copies: Copy[] = parsed.variants.slice(0, 3).map((v) => {
+    const row = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+    return {
+      setup: String(row.setup || brief.prompt).slice(0, 80),
+      punchline: String(row.punchline || brief.offer || brief.prompt).slice(0, 80),
+      endcard: String(row.endcard || brief.offer || brief.prompt).slice(0, 77),
+      cta: String(row.cta || brief.cta || "Learn more").slice(0, 40),
+    };
+  });
+
+  return {
+    copies,
+    source: "ai",
+    rationale: String(parsed.rationale || "Drafted from brief").slice(0, 300),
+  };
+}
+
+/** Fill empty prompt hints for library items. */
+export async function draftPromptHints(
+  brief: Brief,
+  items: Array<{ id: string; kind: string; label: string; promptHint: string }>,
+): Promise<{
+  hints: Record<string, string>;
+  source: "ai" | "preset";
+  rationale: string;
+}> {
+  const needing = items.filter((i) => !i.promptHint?.trim());
+  if (!needing.length) {
+    return { hints: {}, source: "preset", rationale: "All hints already set" };
+  }
+
+  const parsed = await chatJson({
+    system: "You write English image/video model prompt hints. JSON only.",
+    user: `Campaign brief: ${brief.prompt} / offer: ${brief.offer}
+Ingredients needing hints:
+${needing.map((i) => `- ${i.id} (${i.kind}): ${i.label}`).join("\n")}
+
+Return JSON:
+{"hints":{"<id>":"short English visual phrase"},"rationale":"one sentence"}`,
+  });
+
+  if (!parsed || typeof parsed.hints !== "object" || !parsed.hints) {
+    const hints: Record<string, string> = {};
+    for (const i of needing) {
+      hints[i.id] = `${i.kind}: ${i.label} for ${brief.offer || brief.prompt}`.slice(
+        0,
+        200,
+      );
+    }
+    return {
+      hints,
+      source: "preset",
+      rationale: "LLM unavailable — label-based hints",
+    };
+  }
+
+  const hints: Record<string, string> = {};
+  for (const [k, v] of Object.entries(parsed.hints as Record<string, unknown>)) {
+    hints[k] = String(v).slice(0, 400);
+  }
+  return {
+    hints,
+    source: "ai",
+    rationale: String(parsed.rationale || "Hints from brief").slice(0, 300),
+  };
 }
