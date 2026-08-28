@@ -1,5 +1,8 @@
+"use client";
+
 import { useEffect, useState } from "react";
 import { ActiveGenerationBar } from "@/components/ActiveGenerationBar";
+import { MagicCampaignModal } from "@/components/MagicCampaignModal";
 import { api } from "@/lib/api";
 
 const STEPS = [
@@ -16,33 +19,52 @@ const STEPS = [
 
 export function StepNav({ campaignId, current }: { campaignId: string; current: string }) {
   const [mode, setMode] = useState<"standard" | "magic" | null>(null);
+  const [campaignName, setCampaignName] = useState("");
+  const [magicOpen, setMagicOpen] = useState(false);
 
-  useEffect(() => {
+  function refreshMeta() {
     void api
       .getCampaign(campaignId)
-      .then((c) => setMode(c.mode === "magic" ? "magic" : "standard"))
+      .then((c) => {
+        setMode(c.mode === "magic" ? "magic" : "standard");
+        setCampaignName(c.name);
+      })
       .catch(() => setMode("standard"));
+  }
+
+  useEffect(() => {
+    refreshMeta();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
 
   return (
     <>
       <ActiveGenerationBar campaignId={campaignId} />
-      {mode === "magic" ? (
-        <div className="mb-3 flex flex-wrap items-center gap-3 text-xs">
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-xs">
+        {mode === "magic" ? (
           <span className="rounded bg-ember-500/15 px-2 py-1 font-medium uppercase tracking-wide text-ember-800">
-            Magic · Advanced
+            Magic enabled
           </span>
-          <a
-            href={`/?magic=${encodeURIComponent(campaignId)}`}
-            className="rounded border border-ember-500/40 bg-ember-500/10 px-2.5 py-1 font-medium text-ember-900 no-underline hover:bg-ember-500/20"
-          >
-            ← Magic flow
-          </a>
-          <span className="text-ink-600">
-            Edit here, then return to the Magic popup for this campaign.
+        ) : (
+          <span className="rounded border border-ink-200 px-2 py-1 text-ink-600">
+            Standard
           </span>
-        </div>
-      ) : null}
+        )}
+        <span className="max-w-[14rem] truncate font-medium text-ink-900" title={campaignName}>
+          {campaignName || "…"}
+        </span>
+        <span className="font-mono text-ink-500">{campaignId}</span>
+        <button
+          type="button"
+          className="rounded border border-ember-500/40 bg-ember-500/10 px-2.5 py-1 font-medium text-ember-900 hover:bg-ember-500/20"
+          onClick={() => setMagicOpen(true)}
+        >
+          Magic flow
+        </button>
+        <span className="text-ink-600">
+          Runs Magic on this campaign (does not create a new one).
+        </span>
+      </div>
       <ol className="mb-8 flex flex-wrap gap-2 text-[11px] font-medium uppercase tracking-[0.14em]">
         {STEPS.map(([id, label]) => {
           const active = current === id;
@@ -62,6 +84,14 @@ export function StepNav({ campaignId, current }: { campaignId: string; current: 
           );
         })}
       </ol>
+      <MagicCampaignModal
+        open={magicOpen}
+        campaignId={campaignId}
+        onClose={() => {
+          setMagicOpen(false);
+          refreshMeta();
+        }}
+      />
     </>
   );
 }

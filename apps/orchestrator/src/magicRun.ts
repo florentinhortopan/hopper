@@ -131,48 +131,37 @@ export async function createMagicCampaign(opts: {
 }
 
 /**
- * Prefer the latest non-archived magic campaign so Magic stays in sync with
- * one campaign (Advanced StepNav edits + Magic popup share the same id).
+ * Open or create a Magic-capable campaign.
+ * - `campaignId` → attach Magic to that campaign (promotes mode if needed)
+ * - otherwise → always create a brand-new magic campaign
  */
 export async function ensureMagicCampaign(opts: {
   name?: string;
   libraryId?: string;
-  /** Force a brand-new magic campaign instead of reusing. */
+  /** Ignored when campaignId is set. Kept for API compatibility; create is default. */
   forceNew?: boolean;
-  /** Resume a specific campaign (must be magic or will be tagged magic). */
+  /** Resume / enable Magic on this specific campaign (standard or magic). */
   campaignId?: string;
-}): Promise<{ campaign: Campaign; created: boolean }> {
-  const { listCampaigns } = await import("./store.js");
-
+}): Promise<{ campaign: Campaign; created: boolean; promoted: boolean }> {
   if (opts.campaignId?.trim()) {
     let campaign = await getCampaign(opts.campaignId.trim());
+    let promoted = false;
     if (campaign.mode !== "magic") {
       campaign = await saveCampaign({
         ...campaign,
         mode: "magic",
         updatedAt: new Date().toISOString(),
       });
+      promoted = true;
     }
-    return { campaign, created: false };
-  }
-
-  if (!opts.forceNew) {
-    const existing = (await listCampaigns({ includeArchived: false })).find(
-      (c) => c.mode === "magic",
-    );
-    if (existing) {
-      if (opts.name?.trim() && opts.name.trim() !== existing.name) {
-        // Keep name stable once created — ignore rename on reopen
-      }
-      return { campaign: existing, created: false };
-    }
+    return { campaign, created: false, promoted };
   }
 
   const campaign = await createMagicCampaign({
     name: opts.name,
     libraryId: opts.libraryId,
   });
-  return { campaign, created: true };
+  return { campaign, created: true, promoted: false };
 }
 
 function pickMagicActivations(lib: LibraryItem[]): {

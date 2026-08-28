@@ -1,8 +1,10 @@
 # Magic campaign flow
 
-Popup path: **Import → Prepare checklist → Variant plan → Generate → Celtra Package**. Full StepNav remains as **Advanced**, with **← Magic flow** to return.
+Popup path: **Import → Prepare checklist → Variant plan → Generate → Celtra Package**. Full StepNav remains as **Advanced**.
 
-Magic reuses **one** non-archived `mode: "magic"` campaign (latest updated) so Advanced edits stay in sync. Use “Start new Magic campaign” only when you intentionally want a fresh id.
+- **New Magic campaign** (home) always creates a **new** campaign.
+- **Open Magic** on any campaign card, or **Magic flow** in StepNav, runs Magic on **that** campaign (standard campaigns get `mode: "magic"` when you enter).
+- Modal header always shows **campaign name + id** so you know which campaign you’re on.
 
 ## Package layout
 
@@ -52,7 +54,9 @@ Raw ComfyUI `api.json` graphs are **not** executed in Magic MVP — prepare fall
 
 ## API
 
-- `POST /campaigns/magic` — `{ name?, libraryId?, forceNew?, campaignId? }` → `{ campaign, created }` (reuses latest magic by default)
+- `POST /campaigns/magic` — `{ name?, libraryId?, campaignId? }` → `{ campaign, created, promoted }`
+  - with `campaignId`: attach Magic to that campaign
+  - without: create a new magic campaign
 - `GET /campaigns/:id/magic/plan` — snapshot checklist + variants (no LLM)
 - `POST /campaigns/:id/magic/prepare` — `{ brief, importId?, workflowUrl?, workflowJson? }`
 - `POST /campaigns/:id/magic/generate` — enqueue Comfy variants

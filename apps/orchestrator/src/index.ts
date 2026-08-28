@@ -860,13 +860,13 @@ app.post("/campaigns/magic", async (req, res) => {
     const campaignId = req.body?.campaignId
       ? String(req.body.campaignId)
       : undefined;
-    const { campaign, created } = await ensureMagicCampaign({
+    const { campaign, created, promoted } = await ensureMagicCampaign({
       name,
       libraryId,
       forceNew,
       campaignId,
     });
-    res.status(created ? 201 : 200).json({ campaign, created });
+    res.status(created ? 201 : 200).json({ campaign, created, promoted });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
   }

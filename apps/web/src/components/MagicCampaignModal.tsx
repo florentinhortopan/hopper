@@ -101,15 +101,23 @@ function emptyChecks(): LiveCheckItem[] {
 export function MagicCampaignModal({
   open,
   onClose,
-  campaignId: resumeCampaignId = null,
+  campaignId: attachCampaignId = null,
+  createNew = false,
+  defaultName = "Magic campaign",
 }: {
   open: boolean;
   onClose: () => void;
-  /** When set (e.g. from StepNav “← Magic”), resume this campaign’s Magic flow. */
+  /**
+   * Attach Magic to this existing campaign (standard or magic).
+   * Used from StepNav / Open Magic / `?magic=`.
+   */
   campaignId?: string | null;
+  /** Home “Magic campaign” button: always mint a new campaign. */
+  createNew?: boolean;
+  defaultName?: string;
 }) {
   const [phase, setPhase] = useState<Phase>("import");
-  const [name, setName] = useState("Magic campaign");
+  const [name, setName] = useState(defaultName);
   const [brief, setBrief] = useState<Brief>({
     prompt: "",
     audience: "",
@@ -130,7 +138,10 @@ export function MagicCampaignModal({
   const [pkg, setPkg] = useState<{ downloadUrl: string; zipPath: string } | null>(
     null,
   );
-  const [createdThisOpen, setCreatedThisOpen] = useState(false);
+  const [bootMeta, setBootMeta] = useState<{
+    created: boolean;
+    promoted: boolean;
+  } | null>(null);
   const bootRef = useRef(0);
 
   const refreshReviews = useCallback(async (id: string) => {
@@ -148,17 +159,23 @@ export function MagicCampaignModal({
     setError(null);
     setBusy("boot");
     setLiveChecks(emptyChecks());
-    setCreatedThisOpen(false);
+    setBootMeta(null);
+    setName(defaultName);
 
     void (async () => {
       try {
-        const { campaign: c, created } = await api.ensureMagicCampaign({
-          name: "Magic campaign",
-          campaignId: resumeCampaignId || undefined,
-        });
+        const opts =
+          attachCampaignId && !createNew
+            ? { campaignId: attachCampaignId }
+            : {
+                name: defaultName.trim() || "Magic campaign",
+                forceNew: true,
+              };
+        const { campaign: c, created, promoted } =
+          await api.ensureMagicCampaign(opts);
         if (boot !== bootRef.current) return;
         setCampaign(c);
-        setCreatedThisOpen(created);
+        setBootMeta({ created, promoted: Boolean(promoted) });
         setName(c.name);
         setBrief({
           prompt: c.brief.prompt || "",
@@ -196,7 +213,7 @@ export function MagicCampaignModal({
         if (boot === bootRef.current) setBusy(null);
       }
     })();
-  }, [open, resumeCampaignId]);
+  }, [open, attachCampaignId, createNew, defaultName]);
 
   useEffect(() => {
     if (!importSession) return;
@@ -229,12 +246,14 @@ export function MagicCampaignModal({
 
   async function ensureCampaign() {
     if (campaign) return campaign;
-    const { campaign: c, created } = await api.ensureMagicCampaign({
-      name: name.trim() || "Magic campaign",
-      campaignId: resumeCampaignId || undefined,
-    });
+    const opts =
+      attachCampaignId && !createNew
+        ? { campaignId: attachCampaignId }
+        : { name: name.trim() || "Magic campaign", forceNew: true };
+    const { campaign: c, created, promoted } =
+      await api.ensureMagicCampaign(opts);
     setCampaign(c);
-    setCreatedThisOpen(created);
+    setBootMeta({ created, promoted: Boolean(promoted) });
     return c;
   }
 
@@ -415,44 +434,12 @@ export function MagicCampaignModal({
     }
   }
 
-  async function onForceNew() {
-    if (
-      !confirm(
-        "Start a brand-new Magic campaign? The current one stays in the list.",
-      )
-    ) {
-      return;
-    }
-    setBusy("boot");
-    setError(null);
-    try {
-      const { campaign: c } = await api.ensureMagicCampaign({
-        name: name.trim() || "Magic campaign",
-        forceNew: true,
-      });
-      setCampaign(c);
-      setCreatedThisOpen(true);
-      setName(c.name);
-      setBrief({
-        prompt: "",
-        audience: "",
-        offer: "",
-        cta: "Learn more",
-        mustSay: [],
-        mustNot: [],
-      });
-      setImportSession(null);
-      setPrepare(null);
-      setLiveChecks(emptyChecks());
-      setJobs([]);
-      setReviews([]);
-      setPkg(null);
-      setPhase("import");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(null);
-    }
+  async function saveCampaignName() {
+    if (!campaign) return;
+    const next = name.trim();
+    if (!next || next === campaign.name) return;
+    const updated = await api.patchCampaign(campaign.id, { name: next });
+    setCampaign(updated);
   }
 
   const cells = campaign?.matrix?.cells ?? [];
@@ -498,6 +485,12 @@ export function MagicCampaignModal({
     return "○";
   }
 
+  const bootLabel = bootMeta?.created
+    ? "New campaign"
+    : bootMeta?.promoted
+      ? "Magic enabled on this campaign"
+      : "This campaign";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/50 p-4">
       <div
@@ -506,18 +499,31 @@ export function MagicCampaignModal({
         className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-ink-200 bg-warm-paper shadow-xl"
       >
         <header className="flex items-start justify-between gap-3 border-b border-ink-200 px-5 py-4">
-          <div>
-            <h2 className="font-display text-2xl">Magic campaign</h2>
-            <p className="mt-1 text-xs text-ink-700">{phaseLabel}</p>
+          <div className="min-w-0">
+            <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-ember-800">
+              Magic flow · {phaseLabel}
+            </p>
+            <h2 className="mt-1 truncate font-display text-2xl">
+              {campaign?.name || name || "Magic campaign"}
+            </h2>
             {campaign ? (
-              <p className="mt-1 font-mono text-[10px] text-ink-500">
-                {createdThisOpen ? "New" : "Resumed"} · {campaign.id}
-              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-600">
+                <span className="rounded bg-ember-500/15 px-1.5 py-0.5 text-ember-900">
+                  {bootLabel}
+                </span>
+                <span className="font-mono">id {campaign.id}</span>
+                <a
+                  className="underline"
+                  href={`/campaigns/${campaign.id}/brief`}
+                >
+                  Open Advanced
+                </a>
+              </div>
             ) : null}
           </div>
           <button
             type="button"
-            className="text-sm text-ink-600 underline"
+            className="shrink-0 text-sm text-ink-600 underline"
             onClick={onClose}
           >
             Close
@@ -532,30 +538,26 @@ export function MagicCampaignModal({
           ) : null}
 
           {busy === "boot" ? (
-            <p className="text-sm text-ink-600">Opening Magic campaign…</p>
+            <p className="text-sm text-ink-600">Opening Magic for this campaign…</p>
           ) : null}
 
           {phase === "import" && busy !== "boot" ? (
             <div className="space-y-4">
               <label className="block text-sm">
                 <span className="text-ink-700">Campaign name</span>
-                <input
-                  className="mt-1 w-full rounded-md border border-ink-200 px-3 py-2"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  disabled={Boolean(campaign) && !createdThisOpen}
-                />
+                <div className="mt-1 flex gap-2">
+                  <input
+                    className="w-full rounded-md border border-ink-200 px-3 py-2"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    onBlur={() => void saveCampaignName()}
+                  />
+                </div>
               </label>
-              {!createdThisOpen && campaign ? (
+              {bootMeta?.promoted ? (
                 <p className="text-xs text-ink-600">
-                  Reusing this Magic campaign so Advanced edits stay in sync.{" "}
-                  <button
-                    type="button"
-                    className="underline"
-                    onClick={() => void onForceNew()}
-                  >
-                    Start new Magic campaign
-                  </button>
+                  This was a standard campaign — Magic is now enabled on it so
+                  Advanced and this popup stay on the same id.
                 </p>
               ) : null}
               <label className="block text-sm">

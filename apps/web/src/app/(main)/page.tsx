@@ -15,6 +15,7 @@ export default function HomePage() {
   const [renameValue, setRenameValue] = useState("");
   const [magicOpen, setMagicOpen] = useState(false);
   const [magicCampaignId, setMagicCampaignId] = useState<string | null>(null);
+  const [magicCreateNew, setMagicCreateNew] = useState(false);
 
   async function refresh(includeArchived = showArchived) {
     setLoading(true);
@@ -38,6 +39,7 @@ export default function HomePage() {
     const id = new URLSearchParams(window.location.search).get("magic");
     if (id) {
       setMagicCampaignId(id);
+      setMagicCreateNew(false);
       setMagicOpen(true);
     }
   }, []);
@@ -66,14 +68,24 @@ export default function HomePage() {
     await refresh(showArchived);
   }
 
-  function openMagic(campaignId?: string) {
-    setMagicCampaignId(campaignId ?? null);
+  /** Home Magic button — always creates a new campaign. */
+  function openMagicNew() {
+    setMagicCampaignId(null);
+    setMagicCreateNew(true);
+    setMagicOpen(true);
+  }
+
+  /** Open Magic on an existing campaign (standard or magic). */
+  function openMagicOn(campaignId: string) {
+    setMagicCampaignId(campaignId);
+    setMagicCreateNew(false);
     setMagicOpen(true);
   }
 
   function closeMagic() {
     setMagicOpen(false);
     setMagicCampaignId(null);
+    setMagicCreateNew(false);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       if (url.searchParams.has("magic")) {
@@ -90,7 +102,8 @@ export default function HomePage() {
         <h1 className="font-display text-4xl tracking-tight">Campaigns</h1>
         <p className="mt-2 max-w-xl text-ink-700">
           Each campaign owns its own brief. Creating a new batch never overwrites another — archive
-          or rename to keep the list clear.
+          or rename to keep the list clear. Magic creates a new campaign; open Magic from any
+          campaign card or StepNav to run Magic on that id.
         </p>
       </header>
 
@@ -119,10 +132,10 @@ export default function HomePage() {
         </button>
         <button
           type="button"
-          onClick={() => openMagic()}
+          onClick={openMagicNew}
           className="rounded-md border border-ember-500 bg-ember-500/10 px-4 py-2 text-sm font-medium text-ember-800"
         >
-          Magic campaign
+          New Magic campaign
         </button>
         <button
           type="button"
@@ -176,11 +189,7 @@ export default function HomePage() {
               </div>
             ) : (
               <a
-                href={
-                  c.mode === "magic"
-                    ? `/?magic=${encodeURIComponent(c.id)}`
-                    : `/campaigns/${c.id}/brief`
-                }
+                href={`/campaigns/${c.id}/brief`}
                 className="block font-display text-xl text-ink-900 hover:text-ember-600"
               >
                 {c.name}
@@ -196,22 +205,24 @@ export default function HomePage() {
                 <span className="mr-2 rounded bg-ember-500/15 px-1.5 py-0.5 text-ember-800">
                   Magic
                 </span>
-              ) : null}
+              ) : (
+                <span className="mr-2 rounded border border-ink-200 px-1.5 py-0.5 text-ink-600">
+                  Standard
+                </span>
+              )}
               {c.templateId} · {c.matrix.cells.length} cells · id {c.id}
             </div>
             <div className="mt-1 text-xs text-ink-700/70">
               Updated {new Date(c.updatedAt).toLocaleString()}
             </div>
             <div className="mt-4 flex flex-wrap gap-3 text-xs">
-              {c.mode === "magic" ? (
-                <button
-                  type="button"
-                  className="text-ember-800 underline"
-                  onClick={() => openMagic(c.id)}
-                >
-                  Open Magic
-                </button>
-              ) : null}
+              <button
+                type="button"
+                className="text-ember-800 underline"
+                onClick={() => openMagicOn(c.id)}
+              >
+                Open Magic
+              </button>
               <button
                 type="button"
                 className="text-ink-900 underline"
@@ -249,6 +260,8 @@ export default function HomePage() {
       <MagicCampaignModal
         open={magicOpen}
         campaignId={magicCampaignId}
+        createNew={magicCreateNew}
+        defaultName={name.trim() || "Magic campaign"}
         onClose={closeMagic}
       />
     </div>

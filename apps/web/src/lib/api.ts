@@ -45,17 +45,20 @@ export const api = {
     req<Campaign[]>(`/campaigns${includeArchived ? "?includeArchived=1" : ""}`),
   createCampaign: (name: string) =>
     req<Campaign>("/campaigns", { method: "POST", body: JSON.stringify({ name }) }),
-  /** Reuses the latest magic campaign unless forceNew or campaignId is set. */
+  /** Create a new magic campaign, or attach Magic to campaignId. */
   ensureMagicCampaign: (opts?: {
     name?: string;
     libraryId?: string;
     forceNew?: boolean;
     campaignId?: string;
   }) =>
-    req<{ campaign: Campaign; created: boolean }>("/campaigns/magic", {
-      method: "POST",
-      body: JSON.stringify(opts ?? {}),
-    }),
+    req<{ campaign: Campaign; created: boolean; promoted: boolean }>(
+      "/campaigns/magic",
+      {
+        method: "POST",
+        body: JSON.stringify(opts ?? {}),
+      },
+    ),
   magicPlan: (id: string) =>
     req<{
       campaign: Campaign;
