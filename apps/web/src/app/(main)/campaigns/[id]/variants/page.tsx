@@ -242,7 +242,7 @@ export default function PreviewPage() {
     try {
       const result = await api.package(id);
       setPkg(result);
-      triggerApiDownload(result.downloadUrl, result.fileName);
+      await triggerApiDownload(result.downloadUrl, result.fileName);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -395,7 +395,11 @@ export default function PreviewPage() {
           <button
             type="button"
             className="rounded-lg bg-ink-900 px-4 py-2.5 text-sm font-medium text-warm-paper"
-            onClick={() => triggerApiDownload(pkg.downloadUrl, pkg.fileName)}
+            onClick={() =>
+              void triggerApiDownload(pkg.downloadUrl, pkg.fileName).catch((e) =>
+                setError(e instanceof Error ? e.message : String(e)),
+              )
+            }
           >
             Download zip{pkg.fileName ? ` (${pkg.fileName})` : ""}
           </button>

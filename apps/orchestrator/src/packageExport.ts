@@ -158,10 +158,53 @@ function clip(s: string, max: number): string {
   return t.slice(0, Math.max(0, max - 1)).trimEnd() + "…";
 }
 
+function campaignSlug(campaign: Campaign): string {
+  return (
+    (campaign.name || campaign.id)
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 40) || campaign.id
+  );
+}
+
+function stampLocal(d = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+/**
+ * Package zip naming:
+ *   ATTATTA_<Campaign>_Celtra_vNN_<YYYYMMDD-HHmm>_<N>rows.zip
+ * Version increments per campaign slug from existing files in data/packages.
+ */
+export async function nextCeltraPackageFileName(
+  campaign: Campaign,
+  rowCount: number,
+): Promise<string> {
+  const slug = campaignSlug(campaign);
+  const prefix = `ATTATTA_${slug}_Celtra_v`;
+  let nextVer = 1;
+  try {
+    const { readdir } = await import("node:fs/promises");
+    const names = await readdir(PATHS.packages);
+    for (const name of names) {
+      if (!name.startsWith(prefix) || !name.endsWith(".zip")) continue;
+      const m = name.slice(prefix.length).match(/^(\d+)_/);
+      if (m) nextVer = Math.max(nextVer, Number(m[1]) + 1);
+    }
+  } catch {
+    /* first package for this campaign */
+  }
+  const v = String(nextVer).padStart(2, "0");
+  return `${prefix}${v}_${stampLocal()}_${rowCount}rows.zip`;
+}
+
 export type CeltraPackageResult = {
   zipPath: string;
   fileName: string;
   rowCount: number;
+  /** Path-style download URL ending in .zip (reliable for browsers). */
+  downloadPath: string;
 };
 
 export async function buildCeltraPackage(
@@ -324,12 +367,7 @@ export async function buildCeltraPackage(
   const csvText = buildCsv(profile, wideRows);
 
   await mkdir(PATHS.packages, { recursive: true });
-  const safeCampaign =
-    (campaign.name || campaign.id)
-      .replace(/[^a-zA-Z0-9._-]+/g, "_")
-      .replace(/^_+|_+$/g, "")
-      .slice(0, 48) || campaign.id;
-  const zipName = `${safeCampaign}_celtra_${Date.now()}.zip`;
+  const zipName = await nextCeltraPackageFileName(campaign, wideRows.length);
   const zipPath = path.join(PATHS.packages, zipName);
 
   await new Promise<void>((resolve, reject) => {
@@ -383,5 +421,6 @@ export async function buildCeltraPackage(
     zipPath,
     fileName: zipName,
     rowCount: wideRows.length,
+    downloadPath: `/packages/${encodeURIComponent(zipName)}`,
   };
 }

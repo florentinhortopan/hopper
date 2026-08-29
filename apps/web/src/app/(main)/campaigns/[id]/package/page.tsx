@@ -144,7 +144,7 @@ export default function PackagePage() {
           try {
             const next = await api.package(id);
             setResult(next);
-            triggerApiDownload(next.downloadUrl, next.fileName);
+            await triggerApiDownload(next.downloadUrl, next.fileName);
           } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
           }
@@ -177,7 +177,9 @@ export default function PackagePage() {
             type="button"
             className="mt-2 rounded-md bg-ink-900 px-3 py-1.5 text-sm text-white"
             onClick={() =>
-              triggerApiDownload(result.downloadUrl, result.fileName)
+              void triggerApiDownload(result.downloadUrl, result.fileName).catch(
+                (e) => setError(e instanceof Error ? e.message : String(e)),
+              )
             }
           >
             Download zip again

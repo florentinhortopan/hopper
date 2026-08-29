@@ -66,6 +66,15 @@ Profile id in code: `guarantee_tranche3_social_video_v1` ([`packages/shared/src/
 
 ## 3. Package contract (current)
 
+**Zip filename (download):**
+
+```text
+ATTATTA_<Campaign>_Celtra_vNN_<YYYYMMDD-HHmm>_<N>rows.zip
+```
+
+Example: `ATTATTA_Bacherozzo_Celtra_v03_20260828-1703_2rows.zip`  
+`vNN` increments per campaign from existing files in `data/packages/`. Served at `GET /packages/<filename>.zip`.
+
 **Zip contains:**
 
 - `content_matrix.xlsx` — Social Video sheet, GT3 headers

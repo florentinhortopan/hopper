@@ -1764,17 +1764,45 @@ app.post("/campaigns/:id/reviews/:cellId", async (req, res) => {
 app.post("/campaigns/:id/package", async (req, res) => {
   try {
     const result = await buildCeltraPackage(req.params.id);
-    const downloadUrl =
-      `/files?path=${encodeURIComponent(result.zipPath)}` +
-      `&download=1&filename=${encodeURIComponent(result.fileName)}`;
     res.json({
       zipPath: result.zipPath,
       fileName: result.fileName,
       rowCount: result.rowCount,
-      downloadUrl,
+      downloadUrl: result.downloadPath,
     });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+/**
+ * Named Celtra/package downloads — URL ends with `.zip` so browsers keep the extension
+ * even when the UI is on a different origin than the API.
+ */
+app.get("/packages/:fileName", async (req, res) => {
+  try {
+    const fileName = path.basename(
+      decodeURIComponent(String(req.params.fileName || "")),
+    );
+    if (
+      !fileName ||
+      fileName.includes("..") ||
+      !/^[A-Za-z0-9._-]+\.zip$/i.test(fileName)
+    ) {
+      res.status(400).json({ error: "Expected a safe .zip package basename" });
+      return;
+    }
+    const filePath = path.join(PATHS.packages, fileName);
+    if (!filePath.startsWith(`${PATHS.packages}${path.sep}`)) {
+      res.status(403).json({ error: "Path not allowed" });
+      return;
+    }
+    await sendMediaFile(req, res, filePath, {
+      forceDownload: true,
+      downloadName: fileName,
+    });
+  } catch {
+    res.status(404).json({ error: "Package not found" });
   }
 });
 

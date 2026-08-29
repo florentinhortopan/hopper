@@ -517,7 +517,7 @@ export function MagicCampaignModal({
     try {
       const result = await api.package(campaign.id);
       setPkg(result);
-      triggerApiDownload(result.downloadUrl, result.fileName);
+      await triggerApiDownload(result.downloadUrl, result.fileName);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1292,7 +1292,12 @@ export function MagicCampaignModal({
                     type="button"
                     className="mt-2 rounded-md bg-ink-900 px-3 py-1.5 text-sm text-white"
                     onClick={() =>
-                      triggerApiDownload(pkg.downloadUrl, pkg.fileName)
+                      void triggerApiDownload(pkg.downloadUrl, pkg.fileName).catch(
+                        (e) =>
+                          setError(
+                            e instanceof Error ? e.message : String(e),
+                          ),
+                      )
                     }
                   >
                     Download again
