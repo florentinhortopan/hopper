@@ -21,6 +21,7 @@ import { PATHS } from "./config.js";
 import { ensureDefaultBrandTokens } from "./defaultTokens.js";
 import { migrateLegacyLibraryPack, packKindDir } from "./libraryPacks.js";
 import { resolveDataMediaPath } from "./mediaPaths.js";
+import { findPlateCacheByCellId } from "./plateCache.js";
 
 async function ensureDir(dir: string) {
   await mkdir(dir, { recursive: true });
@@ -223,10 +224,11 @@ async function writeCampaignUnlocked(campaign: Campaign): Promise<Campaign> {
 
 /**
  * If a variant job finished with resultPath but a parallel save wiped genPath,
- * restore it from the in-memory job record (same process).
+ * restore it from the in-memory job record (same process) or on-disk plate cache.
  */
-function healGenPathsFromDoneJobs(campaign: Campaign): boolean {
+async function healMissingGenPaths(campaign: Campaign): Promise<boolean> {
   let changed = false;
+
   for (const job of listJobs(campaign.id)) {
     if (job.status !== "done" || !job.resultPath?.trim() || !job.sizeId) continue;
     const cellId = (job.cellId || "").split(":")[0];
@@ -240,18 +242,35 @@ function healGenPathsFromDoneJobs(campaign: Campaign): boolean {
     asset.error = null;
     changed = true;
   }
+
+  for (const cell of campaign.matrix.cells) {
+    if (!cell.sizeAssets?.length) continue;
+    for (const asset of cell.sizeAssets) {
+      if (asset.genPath?.trim()) continue;
+      const hit = await findPlateCacheByCellId(cell.cellId, asset.sizeId);
+      if (!hit?.assetPath) continue;
+      asset.genPath = hit.assetPath;
+      if (hit.promptHash) asset.promptHash = hit.promptHash;
+      if (asset.status === "failed") asset.status = "pending";
+      asset.error = null;
+      changed = true;
+    }
+  }
+
   return changed;
 }
 
 export async function getCampaign(id: string): Promise<Campaign> {
   let campaign = await readCampaignFromDisk(id);
   const repaired = repairCampaignMediaPaths(campaign);
-  const healed = healGenPathsFromDoneJobs(campaign);
+  const healed = await healMissingGenPaths(campaign);
   if (repaired || healed) {
     try {
       campaign = await saveCampaign(campaign);
       if (healed) {
-        console.log(`[campaigns] restored genPath(s) from done jobs for ${id}`);
+        console.log(
+          `[campaigns] restored missing genPath(s) for ${id} (jobs / plate-cache)`,
+        );
       } else if (repaired) {
         console.log(`[campaigns] repaired media paths for ${id}`);
       }

@@ -62,6 +62,23 @@ export async function lookupPlateCache(
   return hit;
 }
 
+/** Find the newest cached plate for a matrix cell (any size). */
+export async function findPlateCacheByCellId(
+  cellId: string,
+  sizeId?: string | null,
+): Promise<PlateCacheEntry | null> {
+  if (!cellId) return null;
+  const cache = await loadCache();
+  const matches = Object.values(cache.entries)
+    .filter((e) => e.cellId === cellId && e.assetPath)
+    .filter((e) => !sizeId || e.sizeId === sizeId)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  for (const hit of matches) {
+    if (await fileExists(hit.assetPath)) return hit;
+  }
+  return null;
+}
+
 export async function putPlateCache(entry: PlateCacheEntry): Promise<void> {
   const cache = await loadCache();
   cache.entries[entry.promptHash] = entry;
