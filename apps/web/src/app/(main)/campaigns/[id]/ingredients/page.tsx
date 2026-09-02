@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import {
   estimatePlateGenSeconds,
   isPlateReady,
+  isRecentLibraryItem,
   type Campaign,
   type CampaignIngredientSet,
   type LibraryItem,
@@ -62,6 +63,7 @@ export default function CampaignIngredientsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState<LibraryKind | "all">("all");
+  const [recentOnly, setRecentOnly] = useState(false);
   const [showContract, setShowContract] = useState(false);
   const [view, setView] = useState<PlateDensity>("small");
   const [outputMode, setOutputMode] = useState<PlateOutputMode>("video");
@@ -243,10 +245,13 @@ export default function CampaignIngredientsPage() {
     return () => window.clearTimeout(t);
   }, [rows, id]);
 
-  const visible = useMemo(
-    () => (filter === "all" ? rows : rows.filter((r) => r.kind === filter)),
-    [rows, filter],
-  );
+  const visible = useMemo(() => {
+    let list = filter === "all" ? rows : rows.filter((r) => r.kind === filter);
+    if (recentOnly) {
+      list = list.filter((r) => isRecentLibraryItem(r));
+    }
+    return list;
+  }, [rows, filter, recentOnly]);
 
   const activeRows = useMemo(() => rows.filter((r) => r.active), [rows]);
   const readyActive = useMemo(
@@ -809,6 +814,18 @@ export default function CampaignIngredientsPage() {
               {k}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => setRecentOnly((v) => !v)}
+            className={`rounded-full px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] ${
+              recentOnly
+                ? "bg-ember-500 text-white"
+                : "border border-warm-line bg-warm-paper text-ink-700"
+            }`}
+            title="Show plates created or updated in the last 7 days"
+          >
+            Recent
+          </button>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div
@@ -858,6 +875,9 @@ export default function CampaignIngredientsPage() {
           ? `${campaign.outputSizes[0].width}×${campaign.outputSizes[0].height}`
           : "from settings"}
         ; other sizes scale at assemble.
+        {recentOnly
+          ? " · Recent = created/updated in the last 7 days (re-publish updates in place)."
+          : ""}
       </p>
 
       <div className={layoutClass(view)}>

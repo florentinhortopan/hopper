@@ -1,4 +1,5 @@
 import { copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { nanoid } from "nanoid";
 import {
@@ -8,6 +9,7 @@ import {
   LibraryItemSchema,
   getIngredientKind,
   isPlateReady,
+  normalizeLibraryLabel,
   type LibraryItem,
   type LibraryItemPatch,
   type LibraryKind,
@@ -18,6 +20,41 @@ import { PATHS } from "./config.js";
 import { packKindDir, packRelPrefix } from "./libraryPacks.js";
 import { libraryAbsolutePath } from "./store.js";
 import { runComfyJob } from "./comfyAdapter.js";
+
+export type LibraryDedupeMode = "off" | "content" | "label" | "content_or_label";
+
+export type CreateLibraryIngredientResult = {
+  item: LibraryItem;
+  /** True when an existing plate was updated instead of inserting a new id */
+  reused: boolean;
+  /** Id that was reused (same as item.id when reused) */
+  reusedId: string | null;
+};
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+export function hashMediaBuffer(buffer: Buffer): string {
+  return createHash("sha256").update(buffer).digest("hex");
+}
+
+function withTimestamps(
+  partial: Record<string, unknown>,
+  opts?: { createdAt?: string; touchUpdated?: boolean },
+): Record<string, unknown> {
+  const createdAt =
+    (typeof partial.createdAt === "string" && partial.createdAt.trim()) ||
+    opts?.createdAt ||
+    nowIso();
+  const updatedAt =
+    opts?.touchUpdated === false &&
+    typeof partial.updatedAt === "string" &&
+    partial.updatedAt.trim()
+      ? partial.updatedAt
+      : nowIso();
+  return { ...partial, createdAt, updatedAt };
+}
 
 function kindDir(kind: LibraryKind, libraryId = DEFAULT_LIBRARY_ID) {
   return packKindDir(libraryId, kind);
@@ -104,6 +141,44 @@ export function slugId(label: string, kind: string) {
   return `${base || kind}_${nanoid(6)}`;
 }
 
+/** Find an existing plate to reuse instead of appending a duplicate. */
+export async function findLibraryDuplicate(opts: {
+  kind: LibraryKind;
+  libraryId?: string;
+  label?: string;
+  contentHash?: string | null;
+  mode: LibraryDedupeMode;
+  /** Prefer non-archived; fall back to archived match */
+  includeArchived?: boolean;
+}): Promise<LibraryItem | null> {
+  if (opts.mode === "off") return null;
+  const libraryId = opts.libraryId || DEFAULT_LIBRARY_ID;
+  const items = await readKind(opts.kind, libraryId);
+  const live = items.filter((i) => !i.archived);
+  const pool = opts.includeArchived === false ? live : [...live, ...items.filter((i) => i.archived)];
+
+  if (
+    (opts.mode === "content" || opts.mode === "content_or_label") &&
+    opts.contentHash
+  ) {
+    const byHash = pool.find((i) => i.contentHash && i.contentHash === opts.contentHash);
+    if (byHash) return byHash;
+  }
+
+  if (
+    (opts.mode === "label" || opts.mode === "content_or_label") &&
+    opts.label?.trim()
+  ) {
+    const want = normalizeLibraryLabel(opts.label);
+    const byLabel = pool.find(
+      (i) => normalizeLibraryLabel(i.label) === want,
+    );
+    if (byLabel) return byLabel;
+  }
+
+  return null;
+}
+
 /** Clear plates left in `generating` after a killed/restarted orchestrator. */
 export async function reclaimStaleGenerating(
   libraryId = DEFAULT_LIBRARY_ID,
@@ -180,11 +255,85 @@ export async function createLibraryIngredient(opts: {
   /** Allow creating without media (prompt-only draft for later gen) */
   allowNoMedia?: boolean;
   libraryId?: string;
+  /**
+   * Duplicate prevention when appending media:
+   * - content: same kind + SHA-256 (default when buffer present)
+   * - label: same kind + normalized label
+   * - content_or_label: either (Comfy publish)
+   * - off: always insert a new id
+   */
+  dedupe?: LibraryDedupeMode;
 }): Promise<LibraryItem> {
+  const result = await createLibraryIngredientDetailed(opts);
+  return result.item;
+}
+
+/** Like createLibraryIngredient but reports whether an existing plate was reused. */
+export async function createLibraryIngredientDetailed(opts: {
+  kind: LibraryKind;
+  label: string;
+  tags: string[];
+  promptHint?: string;
+  negativeHint?: string;
+  locks?: LibraryItem["locks"];
+  contract?: TalentContract;
+  sourceTalentId?: string | null;
+  filename?: string;
+  buffer?: Buffer;
+  intensity?: number;
+  copy?: LibraryItem["copy"];
+  allowNoMedia?: boolean;
+  libraryId?: string;
+  dedupe?: LibraryDedupeMode;
+}): Promise<CreateLibraryIngredientResult> {
   const libraryId = opts.libraryId || DEFAULT_LIBRARY_ID;
   const def = getIngredientKind(opts.kind);
-  const id = slugId(opts.label, opts.kind);
   const allowNoMedia = opts.allowNoMedia !== false;
+  const contentHash =
+    opts.buffer && opts.buffer.length ? hashMediaBuffer(opts.buffer) : null;
+  const dedupe: LibraryDedupeMode =
+    opts.dedupe ??
+    (opts.buffer && opts.filename ? "content" : "off");
+
+  if (opts.buffer && opts.filename && dedupe !== "off") {
+    const existing = await findLibraryDuplicate({
+      kind: opts.kind,
+      libraryId,
+      label: opts.label,
+      contentHash,
+      mode: dedupe,
+    });
+    if (existing) {
+      let item = existing;
+      if (opts.kind !== "copy" && opts.kind !== "motion") {
+        item = await replaceLibraryMedia(
+          existing.id,
+          opts.filename,
+          opts.buffer,
+          libraryId,
+          contentHash,
+        );
+      }
+      item = await patchLibraryItem(
+        existing.id,
+        {
+          label: opts.label,
+          tags: [...new Set([...(item.tags || []), ...(opts.tags || [])])],
+          promptHint: opts.promptHint?.trim() || item.promptHint || opts.label,
+          negativeHint:
+            opts.negativeHint !== undefined
+              ? opts.negativeHint
+              : item.negativeHint,
+          archived: false,
+        },
+        libraryId,
+      );
+      return { item, reused: true, reusedId: existing.id };
+    }
+  }
+
+  const id = slugId(opts.label, opts.kind);
+  const stamp = nowIso();
 
   if (opts.kind === "copy") {
     const copy = opts.copy ?? {
@@ -197,24 +346,27 @@ export async function createLibraryIngredient(opts: {
     const abs = path.join(PATHS.data, rel);
     await mkdir(path.dirname(abs), { recursive: true });
     await writeFile(abs, JSON.stringify({ id, label: opts.label, copy }, null, 2));
-    const item = LibraryItemSchema.parse({
-      id,
-      kind: "copy",
-      label: opts.label,
-      path: rel,
-      tags: opts.tags,
-      promptHint: opts.promptHint ?? opts.label,
-      negativeHint: opts.negativeHint ?? "",
-      mediaType: "json",
-      status: "ready",
-      sourceMode: "upload",
-      sourceTalentId: null,
-      copy,
-    });
+    const item = LibraryItemSchema.parse(
+      withTimestamps({
+        id,
+        kind: "copy",
+        label: opts.label,
+        path: rel,
+        tags: opts.tags,
+        promptHint: opts.promptHint ?? opts.label,
+        negativeHint: opts.negativeHint ?? "",
+        mediaType: "json",
+        status: "ready",
+        sourceMode: "upload",
+        sourceTalentId: null,
+        copy,
+        contentHash: null,
+      }),
+    );
     const items = await readKind("copy", libraryId);
     items.push(item);
     await writeKind("copy", items, libraryId);
-    return item;
+    return { item, reused: false, reusedId: null };
   }
 
   if (opts.kind === "motion") {
@@ -234,23 +386,26 @@ export async function createLibraryIngredient(opts: {
         2,
       ),
     );
-    const item = LibraryItemSchema.parse({
-      id,
-      kind: "motion",
-      label: opts.label,
-      path: rel,
-      tags: opts.tags,
-      promptHint: opts.promptHint ?? opts.label,
-      negativeHint: opts.negativeHint ?? "",
-      mediaType: "json",
-      status: "ready",
-      sourceMode: "upload",
-      sourceTalentId: opts.sourceTalentId ?? null,
-    });
+    const item = LibraryItemSchema.parse(
+      withTimestamps({
+        id,
+        kind: "motion",
+        label: opts.label,
+        path: rel,
+        tags: opts.tags,
+        promptHint: opts.promptHint ?? opts.label,
+        negativeHint: opts.negativeHint ?? "",
+        mediaType: "json",
+        status: "ready",
+        sourceMode: "upload",
+        sourceTalentId: opts.sourceTalentId ?? null,
+        contentHash: null,
+      }),
+    );
     const items = await readKind("motion", libraryId);
     items.push(item);
     await writeKind("motion", items, libraryId);
-    return item;
+    return { item, reused: false, reusedId: null };
   }
 
   // Prompt-only / draft — no file yet (diffusion will fill later)
@@ -265,29 +420,32 @@ export async function createLibraryIngredient(opts: {
             ...(opts.locks || {}),
           }
         : undefined;
-    const item = LibraryItemSchema.parse({
-      id,
-      kind: opts.kind,
-      label: opts.label,
-      path: "",
-      tags: opts.tags,
-      promptHint: opts.promptHint ?? opts.label,
-      negativeHint: opts.negativeHint ?? "",
-      mediaType: "none",
-      status: "draft",
-      sourceMode: "prompt_only",
-      sourceTalentId: opts.sourceTalentId ?? null,
-      locks: opts.kind === "talent" ? opts.locks ?? {
-        face_locked: true,
-        voice_locked: true,
-        performance_locked: true,
-      } : undefined,
-      contract,
-    });
+    const item = LibraryItemSchema.parse(
+      withTimestamps({
+        id,
+        kind: opts.kind,
+        label: opts.label,
+        path: "",
+        tags: opts.tags,
+        promptHint: opts.promptHint ?? opts.label,
+        negativeHint: opts.negativeHint ?? "",
+        mediaType: "none",
+        status: "draft",
+        sourceMode: "prompt_only",
+        sourceTalentId: opts.sourceTalentId ?? null,
+        locks: opts.kind === "talent" ? opts.locks ?? {
+          face_locked: true,
+          voice_locked: true,
+          performance_locked: true,
+        } : undefined,
+        contract,
+        contentHash: null,
+      }),
+    );
     const items = await readKind(opts.kind, libraryId);
     items.push(item);
     await writeKind(opts.kind, items, libraryId);
-    return item;
+    return { item, reused: false, reusedId: null };
   }
 
   const mediaType = mediaTypeFromFilename(opts.filename, opts.kind);
@@ -311,34 +469,38 @@ export async function createLibraryIngredient(opts: {
         }
       : undefined;
 
-  const item = LibraryItemSchema.parse({
-    id,
-    kind: opts.kind,
-    label: opts.label,
-    path: rel,
-    tags: opts.tags,
-    promptHint: opts.promptHint ?? opts.label,
-    negativeHint: opts.negativeHint ?? "",
-    mediaType,
-    status: "ready",
-    sourceMode: "upload",
-    sourceTalentId: opts.sourceTalentId ?? null,
-    locks:
-      opts.kind === "talent"
-        ? opts.locks ?? {
-            face_locked: true,
-            voice_locked: true,
-            performance_locked: true,
-          }
-        : undefined,
-    contract,
-  });
+  const item = LibraryItemSchema.parse(
+    withTimestamps({
+      id,
+      kind: opts.kind,
+      label: opts.label,
+      path: rel,
+      tags: opts.tags,
+      promptHint: opts.promptHint ?? opts.label,
+      negativeHint: opts.negativeHint ?? "",
+      mediaType,
+      status: "ready",
+      sourceMode: "upload",
+      sourceTalentId: opts.sourceTalentId ?? null,
+      contentHash,
+      locks:
+        opts.kind === "talent"
+          ? opts.locks ?? {
+              face_locked: true,
+              voice_locked: true,
+              performance_locked: true,
+            }
+          : undefined,
+      contract,
+    }, { createdAt: stamp }),
+  );
 
   const items = await readKind(opts.kind, libraryId);
   items.push(item);
   await writeKind(opts.kind, items, libraryId);
-  return item;
+  return { item, reused: false, reusedId: null };
 }
+
 
 function libraryIdFromPath(p: string | undefined | null): string {
   if (!p) return DEFAULT_LIBRARY_ID;
@@ -352,6 +514,7 @@ export async function replaceLibraryMedia(
   filename: string,
   buffer: Buffer,
   libraryId = DEFAULT_LIBRARY_ID,
+  contentHash?: string | null,
 ): Promise<LibraryItem> {
   const hit = await findLibraryItem(id, libraryId);
   if (!hit) throw new Error(`Ingredient not found: ${id}`);
@@ -369,16 +532,25 @@ export async function replaceLibraryMedia(
   await mkdir(path.dirname(abs), { recursive: true });
   await writeFile(abs, buffer);
 
+  const hash = contentHash ?? hashMediaBuffer(buffer);
   const items = await readKind(item.kind, libraryId);
   const idx = items.findIndex((i) => i.id === id);
   if (idx < 0) throw new Error(`Ingredient not found: ${id}`);
-  const next = LibraryItemSchema.parse({
-    ...items[idx],
-    path: rel,
-    mediaType,
-    status: "ready",
-    sourceMode: "upload",
-  });
+  const prev = items[idx]!;
+  const next = LibraryItemSchema.parse(
+    withTimestamps(
+      {
+        ...prev,
+        path: rel,
+        mediaType,
+        status: "ready",
+        sourceMode: "upload",
+        contentHash: hash,
+        archived: false,
+      },
+      { createdAt: prev.createdAt || nowIso() },
+    ),
+  );
   items[idx] = next;
   await writeKind(item.kind, items, libraryId);
   return next;
@@ -518,6 +690,8 @@ export async function patchLibraryItem(
       contract: rest.contract
         ? { ...prev.contract, ...rest.contract }
         : prev.contract,
+      createdAt: prev.createdAt || nowIso(),
+      updatedAt: nowIso(),
     });
     if (next.kind === "copy" && next.copy) {
       const rel =

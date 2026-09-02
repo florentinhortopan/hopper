@@ -102,8 +102,35 @@ export const LibraryItemSchema = z.object({
   copy: CopySchema.nullish(),
   /** Soft-hide from default library / Ingredients lists (recoverable) */
   archived: z.boolean().default(false),
+  /** ISO timestamp — set on create; empty on legacy plates */
+  createdAt: z.string().default(""),
+  /** ISO timestamp — bumped on media replace / metadata patch */
+  updatedAt: z.string().default(""),
+  /** SHA-256 of media bytes (when known) — used to skip duplicate uploads */
+  contentHash: z.string().nullable().default(null),
 });
 export type LibraryItem = z.infer<typeof LibraryItemSchema>;
+
+/** Default window for “Recently uploaded” ingredient filters (7 days). */
+export const RECENT_LIBRARY_ITEM_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Normalize label for duplicate matching (trim + collapse space + lower). */
+export function normalizeLibraryLabel(label: string): string {
+  return label.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** True when createdAt/updatedAt falls within the recent window. */
+export function isRecentLibraryItem(
+  item: { createdAt?: string | null; updatedAt?: string | null },
+  nowMs = Date.now(),
+  windowMs = RECENT_LIBRARY_ITEM_MS,
+): boolean {
+  const raw = (item.updatedAt || item.createdAt || "").trim();
+  if (!raw) return false;
+  const t = Date.parse(raw);
+  if (Number.isNaN(t)) return false;
+  return nowMs - t <= windowMs && nowMs - t >= 0;
+}
 
 export const IngredientRailSchema = z.object({
   hero: z.object({

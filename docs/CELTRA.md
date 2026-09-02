@@ -87,7 +87,7 @@ Example: `ATTATTA_Bacherozzo_Celtra_v03_20260828-1703_2rows.zip`
 
 Scene tags map: `setup`→F1, `punchline`→F2, `endcard`→F3. Each approved cell becomes one Celtra order row with its plate in the tagged frame.
 
-**Sizes:** Live preview shows **one line per variant** with Settings size columns. Keep/Kill is **per size** (zip emits **one Celtra order row per kept size plate**). Shared cross-aspect genPaths are treated as missing until a native plate exists for that aspect.
+**Sizes:** Live preview shows **one line per variant** with Settings size columns. Keep/Kill happens in **Hopper** only; Celtra greys killed size thumbs. Zip emits **one Celtra order row per kept size plate**.
 
 ---
 

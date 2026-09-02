@@ -7,7 +7,16 @@ import type {
   OutputSize,
   ReviewEntry,
 } from "@attatta/shared";
-import { LiveThumb, cellMediaPath, cellMediaRev, sizeAssetMediaPath, sizeAssetMediaRev } from "@/components/live/LiveThumb";
+import {
+  LiveThumb,
+  MediaLightbox,
+  cellMediaPath,
+  cellMediaRev,
+  cssAspect,
+  sizeAssetMediaPath,
+  sizeAssetMediaRev,
+  type MediaLightboxState,
+} from "@/components/live/LiveThumb";
 import {
   axisValue,
   cellComboLabel,
@@ -51,12 +60,7 @@ export function LiveHopperMatrix({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewSizeId, setPreviewSizeId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [sizeLightbox, setSizeLightbox] = useState<{
-    path: string;
-    rev: string | null;
-    label: string;
-    sizeId: string;
-  } | null>(null);
+  const [lightbox, setLightbox] = useState<MediaLightboxState | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,14 +104,21 @@ export function LiveHopperMatrix({
     if (sizeId) setPreviewSizeId(sizeId);
   }
 
-  function openSizePreview(cell: MatrixCell, size: OutputSize) {
-    const path = sizeAssetMediaPath(cell, size.id);
+  function openSizePreview(
+    cell: MatrixCell,
+    size: OutputSize,
+    pathOverride?: string | null,
+  ) {
+    const path = pathOverride?.trim() || sizeAssetMediaPath(cell, size.id);
     selectCell(cell.cellId, size.id);
     if (!path) return;
-    setSizeLightbox({
+    setLightbox({
       path,
-      rev: sizeAssetMediaRev(cell, size.id),
-      label: `${cell.cellId} · ${size.aspect} (${size.width}×${size.height})`,
+      rev: sizeAssetMediaRev(cell, size.id) || `${size.id}:${path}`,
+      label: `${cell.cellId} · ${size.aspect}`,
+      aspect: size.aspect,
+      width: size.width,
+      height: size.height,
       sizeId: size.id,
     });
   }
@@ -305,6 +316,12 @@ export function LiveHopperMatrix({
                   : selected.cellId
               }
               size="md"
+              frameAspect={cssAspect(selectedSize?.aspect)}
+              onOpenPreview={
+                selectedSize
+                  ? (path) => openSizePreview(selected, selectedSize, path)
+                  : undefined
+              }
             />
             <div className="min-w-0 flex-1">
               <p className="font-mono text-[10px] text-ink-500">
@@ -350,17 +367,21 @@ export function LiveHopperMatrix({
                         rev={sizeAssetMediaRev(selected, s.id)}
                         label={`${selected.cellId} · ${s.aspect} (${s.width}×${s.height})`}
                         emptyHint={tone === "running" ? "…" : "—"}
-                        className="!h-9 !w-7"
+                        className="!h-9"
+                        frameAspect={cssAspect(s.aspect)}
+                        onOpenPreview={(path) =>
+                          openSizePreview(selected, s, path)
+                        }
                       />
                       <button
                         type="button"
                         className="min-w-0 flex-1 text-left text-[10px]"
                         title={
                           path
-                            ? `Select ${s.aspect}`
+                            ? `Preview ${s.aspect} (${s.width}×${s.height})`
                             : `${s.label}: ${toneLabel(tone)}`
                         }
-                        onClick={() => openSizePreview(selected, s)}
+                        onClick={() => openSizePreview(selected, s, path)}
                       >
                         <span
                           className={`mr-1 inline-block h-2 w-2 rounded-full ${toneClass(tone)}`}
@@ -443,17 +464,11 @@ export function LiveHopperMatrix({
         </p>
       )}
 
-      {sizeLightbox ? (
-        <LiveThumb
-          key={`${sizeLightbox.sizeId}:${sizeLightbox.path}:${sizeLightbox.rev || ""}`}
-          filePath={sizeLightbox.path}
-          rev={`${sizeLightbox.sizeId}:${sizeLightbox.rev || sizeLightbox.path}`}
-          label={sizeLightbox.label}
-          startExpanded
-          onExpandedChange={(open) => {
-            if (!open) setSizeLightbox(null);
-          }}
-          className="hidden"
+      {lightbox ? (
+        <MediaLightbox
+          key={`${lightbox.sizeId || ""}:${lightbox.path}:${lightbox.rev || ""}`}
+          state={lightbox}
+          onClose={() => setLightbox(null)}
         />
       ) : null}
     </div>

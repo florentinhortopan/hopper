@@ -6,7 +6,7 @@ import {
   type LibraryKind,
 } from "@attatta/shared";
 import {
-  createLibraryIngredient,
+  createLibraryIngredientDetailed,
   patchLibraryItem,
   replaceLibraryMedia,
 } from "./library.js";
@@ -132,7 +132,7 @@ export async function publishComfyIngredient(
     "designer",
     ...(input.tags || []).map((t) => t.trim()).filter(Boolean),
   ];
-  const replacesId = input.replacesId?.trim() || null;
+  let replacesId = input.replacesId?.trim() || null;
 
   let item: LibraryItem;
   if (replacesId) {
@@ -153,7 +153,7 @@ export async function publishComfyIngredient(
       libraryId,
     );
   } else {
-    item = await createLibraryIngredient({
+    const created = await createLibraryIngredientDetailed({
       kind,
       label,
       tags,
@@ -162,7 +162,13 @@ export async function publishComfyIngredient(
       buffer: input.buffer,
       libraryId,
       allowNoMedia: false,
+      // Same bytes OR same label+kind → update in place (stops designer re-queue dupes)
+      dedupe: "content_or_label",
     });
+    item = created.item;
+    if (created.reused) {
+      replacesId = created.reusedId;
+    }
   }
 
   const campaignId = input.campaignId?.trim() || null;
@@ -190,12 +196,15 @@ export async function publishComfyIngredient(
         campaignId,
         column: "magic",
         type: "comfy_publish",
-        summary: `Comfy publish · ${item.kind} “${item.label}”${activated ? " (activated)" : ""}`,
+        summary: `Comfy publish · ${item.kind} “${item.label}”${
+          replacesId ? " (updated)" : ""
+        }${activated ? " (activated)" : ""}`,
         payload: {
           itemId: item.id,
           kind: item.kind,
           label: item.label,
           activated,
+          replacedId: replacesId,
         },
       });
     });

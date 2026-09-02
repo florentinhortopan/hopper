@@ -9,6 +9,7 @@ import type {
   MagicVariantPlanRow,
   OutputSize,
 } from "@attatta/shared";
+import { isRecentLibraryItem } from "@attatta/shared";
 import { api } from "@/lib/api";
 import { LiveMagicSizeCoverage } from "@/components/live/LiveMagicSizeCoverage";
 import { LiveThumb, cellMediaPath } from "@/components/live/LiveThumb";
@@ -57,6 +58,7 @@ export function MagicColumnPanel({
 }: Props) {
   const [plan, setPlan] = useState<MagicPlan | null>(null);
   const [ingredients, setIngredients] = useState<LibraryItem[]>([]);
+  const [recentOnly, setRecentOnly] = useState(false);
   const [importSession, setImportSession] = useState<ImportSession | null>(
     null,
   );
@@ -248,7 +250,10 @@ export function MagicColumnPanel({
       ("active" in i && (i as { active?: boolean }).active) ||
       activeIds.has(i.id),
   );
-  const byKind = activeIngredients.reduce<Record<string, number>>((acc, i) => {
+  const listedIngredients = recentOnly
+    ? activeIngredients.filter((i) => isRecentLibraryItem(i))
+    : activeIngredients;
+  const byKind = listedIngredients.reduce<Record<string, number>>((acc, i) => {
     acc[i.kind] = (acc[i.kind] || 0) + 1;
     return acc;
   }, {});
@@ -452,12 +457,32 @@ export function MagicColumnPanel({
       </div>
 
       <div>
-        <h3 className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-500">
-          Active ingredients ({activeIngredients.length})
-        </h3>
-        {activeIngredients.length === 0 ? (
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-500">
+            Active ingredients ({listedIngredients.length}
+            {recentOnly && activeIngredients.length !== listedIngredients.length
+              ? ` / ${activeIngredients.length}`
+              : ""}
+            )
+          </h3>
+          <button
+            type="button"
+            className={`rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wide ${
+              recentOnly
+                ? "bg-ember-500 text-white"
+                : "border border-ink-200 bg-white text-ink-600 hover:bg-ink-50"
+            }`}
+            title="Only plates created/updated in the last 7 days"
+            onClick={() => setRecentOnly((v) => !v)}
+          >
+            Recent
+          </button>
+        </div>
+        {listedIngredients.length === 0 ? (
           <p className="mt-1 text-[10px] text-ink-500">
-            None activated — import a package or activate on Ingredients.
+            {recentOnly
+              ? "No recent actives — turn off Recent or publish/upload new plates."
+              : "None activated — import a package or activate on Ingredients."}
           </p>
         ) : (
           <>
@@ -467,7 +492,7 @@ export function MagicColumnPanel({
                 .join(" · ")}
             </p>
             <ul className="mt-1 space-y-1">
-              {activeIngredients.slice(0, 16).map((i) => (
+              {listedIngredients.slice(0, 16).map((i) => (
                 <li
                   key={i.id}
                   className="flex items-center gap-2 rounded border border-ink-100 bg-white/60 px-1.5 py-1"

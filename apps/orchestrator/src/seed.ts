@@ -10,11 +10,21 @@ import {
 import { ensureDataDirs, saveCampaign } from "./store.js";
 import {
   resolveOutputSizes,
+  LibraryItemSchema,
   type Campaign,
   type Copy,
   type LibraryItem,
   META_RECOMMENDED_SIZE_IDS,
 } from "@attatta/shared";
+import type { z } from "zod";
+
+function seedItem(partial: z.input<typeof LibraryItemSchema>): LibraryItem {
+  return LibraryItemSchema.parse(partial);
+}
+
+function seedItems(partials: z.input<typeof LibraryItemSchema>[]): LibraryItem[] {
+  return partials.map(seedItem);
+}
 
 function makeClip(out: string, color: string, label: string, seconds = 4) {
   const args = [
@@ -82,7 +92,7 @@ async function main() {
   makeStill(path.join(PATHS.prop, "prop_hat_red.png"), "0xb91c1c", "HAT");
   makeStill(path.join(PATHS.prop, "prop_ribbon_gold.png"), "0xca8a04", "RIBBON");
 
-  const talent: LibraryItem[] = [
+  const talent = seedItems([
     {
       id: "ted_front_offer_03",
       kind: "talent",
@@ -111,9 +121,9 @@ async function main() {
         notes: "Demo contract — wardrobe/BG/props allowed; face/voice/performance locked.",
       },
     },
-  ];
+  ]);
 
-  const hands: LibraryItem[] = [
+  const hands = seedItems([
     {
       id: "hands_phone_swipe_a",
       kind: "hands",
@@ -153,9 +163,9 @@ async function main() {
       sourceMode: "upload",
       sourceTalentId: null,
     },
-  ];
+  ]);
 
-  const motion: LibraryItem[] = [
+  const motion = seedItems([
     {
       id: "gesture_medium_v1",
       kind: "motion",
@@ -182,9 +192,9 @@ async function main() {
       sourceMode: "upload",
       sourceTalentId: null,
     },
-  ];
+  ]);
 
-  const attire: LibraryItem[] = [
+  const attire = seedItems([
     {
       id: "attire_casual_hoodie",
       kind: "attire",
@@ -211,9 +221,9 @@ async function main() {
       sourceMode: "prompt_only",
       sourceTalentId: "ted_front_offer_03",
     },
-  ];
+  ]);
 
-  const background: LibraryItem[] = [
+  const background = seedItems([
     {
       id: "bg_soft_daylight_desk",
       kind: "background",
@@ -227,9 +237,9 @@ async function main() {
       sourceMode: "upload",
       sourceTalentId: "ted_front_offer_03",
     },
-  ];
+  ]);
 
-  const props: LibraryItem[] = [
+  const props = seedItems([
     {
       id: "prop_hat_red",
       kind: "prop",
@@ -256,7 +266,7 @@ async function main() {
       sourceMode: "upload",
       sourceTalentId: "ted_front_offer_03",
     },
-  ];
+  ]);
 
   await writeFile(
     path.join(PATHS.motion, "gesture_medium_v1.json"),
@@ -295,20 +305,22 @@ async function main() {
     },
   ];
 
-  const copyPlates: LibraryItem[] = copies.map((copy, i) => ({
-    id: `copy_line_${i + 1}`,
-    kind: "copy",
-    label: `Copy line ${i + 1}`,
-    path: `libraries/default/copy/copy_line_${i + 1}.json`,
-    tags: ["copy", "demo"],
-    promptHint: copy.setup,
-    negativeHint: "",
-    mediaType: "json",
-    status: "ready",
-    sourceMode: "upload",
-    sourceTalentId: null,
-    copy,
-  }));
+  const copyPlates = copies.map((copy, i) =>
+    seedItem({
+      id: `copy_line_${i + 1}`,
+      kind: "copy",
+      label: `Copy line ${i + 1}`,
+      path: `libraries/default/copy/copy_line_${i + 1}.json`,
+      tags: ["copy", "demo"],
+      promptHint: copy.setup,
+      negativeHint: "",
+      mediaType: "json",
+      status: "ready",
+      sourceMode: "upload",
+      sourceTalentId: null,
+      copy,
+    }),
+  );
   await mkdir(PATHS.copy, { recursive: true });
   for (const plate of copyPlates) {
     await writeFile(

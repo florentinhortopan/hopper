@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   estimatePlateGenSeconds,
   isPlateReady,
+  isRecentLibraryItem,
   type IngredientKindDef,
   type LibraryItem,
   type LibraryKind,
@@ -88,6 +89,7 @@ export default function LibraryPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [recentOnly, setRecentOnly] = useState(false);
   const [view, setView] = useState<PlateDensity>("small");
   const [mediaRev, setMediaRev] = useState<Record<string, number>>({});
   const [genById, setGenById] = useState<Record<string, PlateGenProgress & { jobId: string }>>(
@@ -239,10 +241,11 @@ export default function LibraryPage() {
     return () => window.clearInterval(t);
   }, [generatingIds]);
 
-  const filtered = useMemo(
-    () => (kind === "all" ? items : items.filter((i) => i.kind === kind)),
-    [items, kind],
-  );
+  const filtered = useMemo(() => {
+    let list = kind === "all" ? items : items.filter((i) => i.kind === kind);
+    if (recentOnly) list = list.filter((i) => isRecentLibraryItem(i));
+    return list;
+  }, [items, kind, recentOnly]);
   const selected = items.find((i) => i.id === selectedId) ?? null;
 
   async function createItem(): Promise<LibraryItem | null> {
@@ -645,6 +648,18 @@ export default function LibraryPage() {
                     {k.label}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setRecentOnly((v) => !v)}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] ${
+                    recentOnly
+                      ? "bg-ember-500 text-white"
+                      : "border border-warm-line bg-warm-paper text-ink-700 hover:border-ink-300"
+                  }`}
+                  title="Created or updated in the last 7 days"
+                >
+                  Recent
+                </button>
               </div>
             </div>
             <div className="flex items-center justify-between gap-3 border-t border-warm-line pt-3">
@@ -653,6 +668,9 @@ export default function LibraryPage() {
                 {filtered.length === 1 ? " plate" : " plates"}
                 {kind !== "all" ? (
                   <span className="text-ink-400"> · {kind}</span>
+                ) : null}
+                {recentOnly ? (
+                  <span className="text-ink-400"> · recent</span>
                 ) : null}
               </p>
               <div className="flex items-center gap-3">

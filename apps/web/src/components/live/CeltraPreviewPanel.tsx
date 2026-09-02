@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { CeltraPreview } from "@attatta/shared";
-import { LiveThumb } from "@/components/live/LiveThumb";
+import {
+  LiveThumb,
+  MediaLightbox,
+  cssAspect,
+  type MediaLightboxState,
+} from "@/components/live/LiveThumb";
 import { api } from "@/lib/api";
 import { triggerApiDownload } from "@/lib/download";
 
@@ -10,7 +15,6 @@ type Props = {
   campaignId: string;
   /** Bump to force refresh (e.g. on SSE review/package events). */
   refreshToken: number;
-  onChanged?: () => Promise<void> | void;
 };
 
 function decisionLabel(d: string) {
@@ -19,16 +23,12 @@ function decisionLabel(d: string) {
   return "draft";
 }
 
-export function CeltraPreviewPanel({
-  campaignId,
-  refreshToken,
-  onChanged,
-}: Props) {
+export function CeltraPreviewPanel({ campaignId, refreshToken }: Props) {
   const [preview, setPreview] = useState<CeltraPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pkgBusy, setPkgBusy] = useState(false);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [lastZip, setLastZip] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<MediaLightboxState | null>(null);
 
   const load = useCallback(() => {
     void api
@@ -61,24 +61,6 @@ export function CeltraPreviewPanel({
     }
   }
 
-  async function setSizeDecision(
-    cellId: string,
-    sizeId: string,
-    decision: "approved" | "rejected" | "pending",
-  ) {
-    const key = `${cellId}:${sizeId}`;
-    setBusyKey(key);
-    try {
-      await api.setReview(campaignId, cellId, { decision, sizeId });
-      load();
-      await onChanged?.();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusyKey(null);
-    }
-  }
-
   const packable = preview?.packableCount ?? 0;
   const sizeCols = preview?.sizes?.length
     ? preview.sizes
@@ -104,7 +86,7 @@ export function CeltraPreviewPanel({
           onClick={() => void packageNow()}
           title={
             packable < 1
-              ? "Keep at least one size with a plate"
+              ? "Keep sizes in Hopper first"
               : "Build Celtra zip — one order row per kept size"
           }
         >
@@ -112,8 +94,8 @@ export function CeltraPreviewPanel({
         </button>
       </div>
       <p className="text-[10px] text-ink-500">
-        One variant per line; Keep/Kill each size. Zip emits one Celtra order
-        per kept size plate.
+        Keep/Kill sizes in Hopper. Killed sizes are greyed here; zip only
+        includes kept plates. Tap a thumb to preview that size.
       </p>
       {error ? (
         <pre className="whitespace-pre-wrap rounded bg-red-50 p-2 text-[10px] text-red-800">
@@ -129,7 +111,7 @@ export function CeltraPreviewPanel({
         </p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[36rem] border-collapse text-left text-[11px]">
+          <table className="w-full min-w-[32rem] border-collapse text-left text-[11px]">
             <thead>
               <tr className="border-b border-ink-200 text-[10px] uppercase tracking-wide text-ink-500">
                 <th className="px-1 py-1 font-medium">#</th>
@@ -160,18 +142,16 @@ export function CeltraPreviewPanel({
                         ready: s.id === sizeCols[0]?.id ? row.hasPlate : false,
                         decision: row.decision,
                         packable: false,
-                        width: null,
-                        height: null,
+                        width: null as number | null,
+                        height: null as number | null,
                       }));
                 return (
                   <tr
                     key={`${row.cellId}-${row.order}`}
                     className={`border-b border-ink-100 align-top ${
                       row.packable
-                        ? "bg-emerald-50/60"
-                        : row.decision === "rejected"
-                          ? "bg-ink-50/80 opacity-70"
-                          : "bg-white"
+                        ? "bg-emerald-50/40"
+                        : "bg-white"
                     }`}
                   >
                     <td className="px-1 py-1.5 font-mono text-ink-500">
@@ -179,10 +159,25 @@ export function CeltraPreviewPanel({
                     </td>
                     <td className="px-1 py-1.5 font-mono">{row.frame}</td>
                     {slots.map((slot) => {
-                      const key = `${row.cellId}:${slot.sizeId}`;
+                      const killed = slot.decision === "rejected";
+                      const kept = slot.packable || slot.decision === "approved";
                       return (
-                        <td key={slot.sizeId} className="px-1 py-1.5 text-center">
-                          <div className="inline-flex flex-col items-center gap-1">
+                        <td
+                          key={slot.sizeId}
+                          className="px-1 py-1.5 text-center"
+                        >
+                          <div
+                            className={`inline-flex flex-col items-center gap-0.5 ${
+                              killed ? "opacity-35 grayscale" : ""
+                            }`}
+                            title={
+                              killed
+                                ? `${slot.aspect} killed in Hopper — skipped in zip`
+                                : kept
+                                  ? `${slot.aspect} kept — included in zip`
+                                  : `${slot.aspect} · ${decisionLabel(slot.decision)}`
+                            }
+                          >
                             <LiveThumb
                               filePath={slot.platePath}
                               rev={`${slot.sizeId}:${slot.platePath || ""}`}
@@ -192,56 +187,38 @@ export function CeltraPreviewPanel({
                                   : ""
                               }`}
                               emptyHint="—"
-                              className="!h-10 !w-8"
+                              className="!h-10"
+                              frameAspect={cssAspect(slot.aspect)}
+                              onOpenPreview={
+                                slot.platePath
+                                  ? (path) =>
+                                      setLightbox({
+                                        path,
+                                        rev: `${slot.sizeId}:${path}`,
+                                        label: `${row.cellId} · ${slot.aspect}`,
+                                        aspect: slot.aspect,
+                                        width: slot.width ?? undefined,
+                                        height: slot.height ?? undefined,
+                                        sizeId: slot.sizeId,
+                                      })
+                                  : undefined
+                              }
                             />
                             <span
                               className={`text-[9px] ${
-                                slot.packable
-                                  ? "text-emerald-800"
-                                  : slot.ready
-                                    ? "text-ink-600"
-                                    : "text-ink-400"
+                                killed
+                                  ? "text-ink-400 line-through"
+                                  : kept
+                                    ? "text-emerald-800"
+                                    : slot.ready
+                                      ? "text-ink-600"
+                                      : "text-ink-400"
                               }`}
                             >
                               {slot.ready
                                 ? decisionLabel(slot.decision)
                                 : "—"}
-                              {slot.width && slot.height
-                                ? ` · ${slot.width}×${slot.height}`
-                                : ""}
                             </span>
-                            <div className="flex gap-0.5">
-                              <button
-                                type="button"
-                                className="rounded border border-emerald-300 bg-emerald-50 px-1 py-0.5 text-[8px] disabled:opacity-40"
-                                disabled={
-                                  busyKey === key || !slot.platePath
-                                }
-                                onClick={() =>
-                                  void setSizeDecision(
-                                    row.cellId,
-                                    slot.sizeId,
-                                    "approved",
-                                  )
-                                }
-                              >
-                                Keep
-                              </button>
-                              <button
-                                type="button"
-                                className="rounded border border-red-200 bg-red-50 px-1 py-0.5 text-[8px] disabled:opacity-40"
-                                disabled={busyKey === key}
-                                onClick={() =>
-                                  void setSizeDecision(
-                                    row.cellId,
-                                    slot.sizeId,
-                                    "rejected",
-                                  )
-                                }
-                              >
-                                Kill
-                              </button>
-                            </div>
                           </div>
                         </td>
                       );
@@ -268,6 +245,13 @@ export function CeltraPreviewPanel({
         <p className="text-[10px] text-amber-900">
           {preview.warnings.slice(0, 3).join(" · ")}
         </p>
+      ) : null}
+      {lightbox ? (
+        <MediaLightbox
+          key={`${lightbox.sizeId || ""}:${lightbox.path}`}
+          state={lightbox}
+          onClose={() => setLightbox(null)}
+        />
       ) : null}
     </div>
   );

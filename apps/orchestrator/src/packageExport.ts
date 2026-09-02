@@ -303,14 +303,39 @@ export async function buildCeltraPreview(
     const sizeSlots = catalog.map((s) => {
       const asset = cell.sizeAssets?.find((a) => a.sizeId === s.id);
       let path = asset ? resolveSizePlateAbs(asset) : null;
-      if (path && asset?.genPath?.trim()) {
-        const sharedWrong = (cell.sizeAssets ?? []).some(
-          (a) =>
-            a.sizeId !== s.id &&
-            a.aspect !== s.aspect &&
-            a.genPath === asset.genPath,
-        );
-        if (sharedWrong) path = null;
+      if (path && asset) {
+        const candidates = [
+          asset.genPath?.trim(),
+          asset.outputPath?.trim(),
+          asset.previewPath?.trim(),
+        ].filter(Boolean) as string[];
+        let accepted: string | null = null;
+        for (const key of candidates) {
+          const sharedWrong = (cell.sizeAssets ?? []).some(
+            (a) =>
+              a.sizeId !== s.id &&
+              a.aspect !== s.aspect &&
+              (a.genPath?.trim() ||
+                a.outputPath?.trim() ||
+                a.previewPath?.trim() ||
+                "") === key,
+          );
+          if (!sharedWrong) {
+            accepted = key;
+            break;
+          }
+        }
+        if (!accepted) {
+          path = null;
+        } else if (accepted !== (asset.genPath?.trim() || "")) {
+          // Prefer a non-shared field (e.g. assembled output over inherited gen)
+          const abs = resolveDataMediaPath(accepted);
+          path = existsSync(abs) ? abs : resolveSizePlateAbs({
+            genPath: null,
+            outputPath: asset.outputPath,
+            previewPath: asset.previewPath,
+          });
+        }
       }
       const sizeDecision = reviewDecisionFor(reviews, cell.cellId, s.id);
       const packable = isSizePackable(

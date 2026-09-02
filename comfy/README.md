@@ -64,7 +64,9 @@ Add **ATTATTA Publish Ingredient** as the last node. Connect IMAGE (or set `file
 | `publish_key` | same as `ATTATTA_COMFY_PUBLISH_KEY` |
 | `kind` | `background` / `hands` / … |
 | `campaign_id` | campaign uuid (optional — auto-activate) |
-| `replaces_id` | existing ingredient id to overwrite media |
+| `replaces_id` | existing ingredient id to overwrite media (optional — same label or identical bytes auto-update) |
+
+Without `replaces_id`, publish **reuses** an existing plate when the media SHA-256 matches or the **kind + label** already exists (updates in place instead of stacking duplicates).
 
 Env shortcuts inside Comfy: `ATTATTA_BASE_URL`, `ATTATTA_COMFY_PUBLISH_KEY`.
 

@@ -711,6 +711,8 @@ export async function commitImportSession(importId: string) {
       buffer: buf,
       libraryId: session.libraryId,
       allowNoMedia: false,
+      // Same file bytes → reuse plate instead of stacking duplicates on re-commit
+      dedupe: "content",
     });
     const idx = nextRows.findIndex((r) => r.id === row.id);
     if (idx >= 0) {
