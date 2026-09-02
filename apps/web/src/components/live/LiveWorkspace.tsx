@@ -773,6 +773,10 @@ export function LiveWorkspace({ campaignId }: Props) {
                   <CeltraPreviewPanel
                     campaignId={campaignId}
                     refreshToken={celtraTick}
+                    onChanged={async () => {
+                      await refresh();
+                      setQueueTick((n) => n + 1);
+                    }}
                   />
                 ) : null}
 

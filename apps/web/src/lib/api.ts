@@ -322,7 +322,12 @@ export const api = {
   setReview: (
     id: string,
     cellId: string,
-    body: { decision: string; reasonTags?: string[]; notes?: string },
+    body: {
+      decision: string;
+      sizeId?: string | null;
+      reasonTags?: string[];
+      notes?: string;
+    },
   ) =>
     req<ReviewEntry>(
       `/campaigns/${id}/reviews/${encodeURIComponent(cellId)}`,

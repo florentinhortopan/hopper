@@ -41,15 +41,15 @@ export function sizeAssetMediaRev(
   );
 }
 
-/** Prefer first size with media; optional preferred sizeId. */
+/** Prefer first size with media. When preferredSizeId is set, do NOT fall back
+ * to another size — that made every size chip open the original plate. */
 export function cellMediaPath(
   cell: MatrixCell | undefined | null,
   preferredSizeId?: string | null,
 ): string | null {
   if (!cell) return null;
   if (preferredSizeId) {
-    const hit = sizeAssetMediaPath(cell, preferredSizeId);
-    if (hit) return hit;
+    return sizeAssetMediaPath(cell, preferredSizeId);
   }
   const asset =
     cell.sizeAssets?.find((a) => a.genPath?.trim()) ||
@@ -71,8 +71,7 @@ export function cellMediaRev(
 ): string | null {
   if (!cell) return null;
   if (preferredSizeId) {
-    const hit = sizeAssetMediaRev(cell, preferredSizeId);
-    if (hit) return hit;
+    return sizeAssetMediaRev(cell, preferredSizeId);
   }
   const asset =
     cell.sizeAssets?.find((a) => a.genPath?.trim()) ||

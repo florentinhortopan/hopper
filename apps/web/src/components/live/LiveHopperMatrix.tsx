@@ -55,6 +55,7 @@ export function LiveHopperMatrix({
     path: string;
     rev: string | null;
     label: string;
+    sizeId: string;
   } | null>(null);
 
   useEffect(() => {
@@ -101,25 +102,39 @@ export function LiveHopperMatrix({
 
   function openSizePreview(cell: MatrixCell, size: OutputSize) {
     const path = sizeAssetMediaPath(cell, size.id);
-    if (!path) {
-      selectCell(cell.cellId, size.id);
-      return;
-    }
     selectCell(cell.cellId, size.id);
+    if (!path) return;
     setSizeLightbox({
       path,
       rev: sizeAssetMediaRev(cell, size.id),
-      label: `${cell.cellId} · ${size.aspect} ${size.label}`,
+      label: `${cell.cellId} · ${size.aspect} (${size.width}×${size.height})`,
+      sizeId: size.id,
     });
   }
 
   async function setDecision(
     cellId: string,
     decision: "approved" | "rejected" | "pending",
+    sizeId?: string | null,
   ) {
-    setBusyId(cellId);
+    const busyKey = sizeId ? `${cellId}:${sizeId}` : cellId;
+    setBusyId(busyKey);
     try {
-      await api.setReview(campaignId, cellId, { decision });
+      await api.setReview(campaignId, cellId, {
+        decision,
+        sizeId: sizeId ?? null,
+      });
+      // Whole-variant Keep/Kill also stamps every Settings size so Celtra pack matches.
+      if (!sizeId && sizes.length) {
+        await Promise.all(
+          sizes.map((s) =>
+            api.setReview(campaignId, cellId, {
+              decision,
+              sizeId: s.id,
+            }),
+          ),
+        );
+      }
       await onChanged();
     } finally {
       setBusyId(null);
@@ -312,53 +327,77 @@ export function LiveHopperMatrix({
                   : ""}
               </p>
               <p className="mt-2 text-[9px] uppercase tracking-wide text-ink-500">
-                Sizes — tap to preview
+                Sizes — tap thumb to preview · Keep/Kill per size for Celtra
               </p>
               <div className="mt-1 flex flex-col gap-1">
                 {sizes.map((s) => {
                   const tone = sizeSlotTone(selected, s, jobs);
                   const path = sizeAssetMediaPath(selected, s.id);
                   const active = previewSizeId === s.id;
+                  const sizeDecision = reviewOf(reviews, selected.cellId, s.id);
+                  const busyKey = `${selected.cellId}:${s.id}`;
                   return (
                     <div
                       key={s.id}
-                      role="button"
-                      tabIndex={0}
-                      className={`flex w-full cursor-pointer items-center gap-2 rounded border px-1.5 py-1 text-left ${
+                      className={`flex w-full items-center gap-2 rounded border px-1.5 py-1 ${
                         active
                           ? "border-ink-900 bg-ink-50"
-                          : "border-ink-100 hover:bg-ink-50"
+                          : "border-ink-100"
                       }`}
-                      title={
-                        path
-                          ? `Preview ${s.aspect}`
-                          : `${s.label}: ${toneLabel(tone)}`
-                      }
-                      onClick={() => openSizePreview(selected, s)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          openSizePreview(selected, s);
-                        }
-                      }}
                     >
                       <LiveThumb
                         filePath={path}
                         rev={sizeAssetMediaRev(selected, s.id)}
-                        label={`${selected.cellId} · ${s.aspect}`}
+                        label={`${selected.cellId} · ${s.aspect} (${s.width}×${s.height})`}
                         emptyHint={tone === "running" ? "…" : "—"}
                         className="!h-9 !w-7"
                       />
-                      <span
-                        className={`h-2 w-2 shrink-0 rounded-full ${toneClass(tone)}`}
-                      />
-                      <span className="min-w-0 flex-1 text-[10px]">
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 text-left text-[10px]"
+                        title={
+                          path
+                            ? `Select ${s.aspect}`
+                            : `${s.label}: ${toneLabel(tone)}`
+                        }
+                        onClick={() => openSizePreview(selected, s)}
+                      >
+                        <span
+                          className={`mr-1 inline-block h-2 w-2 rounded-full ${toneClass(tone)}`}
+                        />
                         <span className="font-medium">{s.aspect}</span>
                         <span className="text-ink-500">
                           {" "}
-                          {s.label} · {toneLabel(tone)}
+                          {s.width}×{s.height} · {toneLabel(tone)}
+                          {sizeDecision !== "pending"
+                            ? ` · ${sizeDecision === "approved" ? "kept" : "killed"}`
+                            : ""}
                         </span>
-                      </span>
+                      </button>
+                      <div className="flex shrink-0 gap-0.5">
+                        <button
+                          type="button"
+                          className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[9px] disabled:opacity-40"
+                          disabled={busyId === busyKey || !path}
+                          title="Keep this size for Celtra zip"
+                          onClick={() =>
+                            void setDecision(selected.cellId, "approved", s.id)
+                          }
+                        >
+                          Keep
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[9px] disabled:opacity-40"
+                          disabled={busyId === busyKey}
+                          title="Kill this size — skip in zip"
+                          onClick={() =>
+                            void setDecision(selected.cellId, "rejected", s.id)
+                          }
+                        >
+                          Kill
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -372,7 +411,7 @@ export function LiveHopperMatrix({
                     void setDecision(selected.cellId, "approved")
                   }
                 >
-                  Keep
+                  Keep all sizes
                 </button>
                 <button
                   type="button"
@@ -382,7 +421,7 @@ export function LiveHopperMatrix({
                     void setDecision(selected.cellId, "rejected")
                   }
                 >
-                  Kill
+                  Kill all
                 </button>
                 <button
                   type="button"
@@ -392,7 +431,7 @@ export function LiveHopperMatrix({
                     void setDecision(selected.cellId, "pending")
                   }
                 >
-                  Reset
+                  Reset all
                 </button>
               </div>
             </div>
@@ -406,9 +445,9 @@ export function LiveHopperMatrix({
 
       {sizeLightbox ? (
         <LiveThumb
-          key={`${sizeLightbox.path}:${sizeLightbox.rev || ""}`}
+          key={`${sizeLightbox.sizeId}:${sizeLightbox.path}:${sizeLightbox.rev || ""}`}
           filePath={sizeLightbox.path}
-          rev={sizeLightbox.rev}
+          rev={`${sizeLightbox.sizeId}:${sizeLightbox.rev || sizeLightbox.path}`}
           label={sizeLightbox.label}
           startExpanded
           onExpandedChange={(open) => {

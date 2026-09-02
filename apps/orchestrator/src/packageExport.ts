@@ -9,7 +9,9 @@ import {
   buildCeltraWideRow,
   formatCeltraAssetName,
   getCeltraTemplateProfile,
+  isSizePackable,
   makeArchiveRef,
+  reviewDecisionFor,
   sceneTagToCeltraFrame,
   validateCeltraWideRow,
   type Campaign,
@@ -18,6 +20,7 @@ import {
   type CeltraPreview,
   type CeltraTemplateProfile,
   type MatrixCell,
+  type OutputSize,
 } from "@attatta/shared";
 import { PATHS } from "./config.js";
 import { emitCampaignEvent } from "./campaignEvents.js";
@@ -28,6 +31,8 @@ type PackRow = {
   ref: string;
   variantId: string;
   cell: MatrixCell;
+  size: OutputSize;
+  plateAbs: string;
 };
 
 function pickPlateAbsPath(cell: MatrixCell): string | null {
@@ -69,23 +74,66 @@ function resolveSizePlateAbs(asset: {
 
 function collectPackable(
   campaign: Campaign,
-  approved: Set<string>,
+  reviews: Awaited<ReturnType<typeof getReviews>>,
 ): PackRow[] {
+  const sizes = campaign.outputSizes || [];
   const packable: PackRow[] = [];
+
+  function plateForSize(cell: MatrixCell, size: OutputSize): string | null {
+    const asset = cell.sizeAssets?.find((a) => a.sizeId === size.id);
+    if (!asset) return sizes.length <= 1 ? pickPlateAbsPath(cell) : null;
+    const path = resolveSizePlateAbs(asset);
+    if (!path) return null;
+    const key = asset.genPath?.trim() || asset.outputPath?.trim() || "";
+    if (key) {
+      const sharedWrong = (cell.sizeAssets ?? []).some(
+        (a) =>
+          a.sizeId !== size.id &&
+          a.aspect !== size.aspect &&
+          (a.genPath?.trim() || a.outputPath?.trim() || "") === key,
+      );
+      if (sharedWrong) return null;
+    }
+    return path;
+  }
+
+  function pushCell(ref: string, variantId: string, cell: MatrixCell) {
+    if (!sizes.length) {
+      const plateAbs = pickPlateAbsPath(cell);
+      if (!plateAbs) return;
+      if (reviewDecisionFor(reviews, cell.cellId) !== "approved") return;
+      packable.push({
+        ref,
+        variantId,
+        cell,
+        size: {
+          id: "legacy",
+          label: "default",
+          aspect: "9:16",
+          width: 1080,
+          height: 1920,
+        },
+        plateAbs,
+      });
+      return;
+    }
+    for (const size of sizes) {
+      const plateAbs = plateForSize(cell, size);
+      if (!plateAbs) continue;
+      const kept =
+        isSizePackable(reviews, cell.cellId, size.id, true) ||
+        (ref !== cell.cellId && isSizePackable(reviews, ref, size.id, true));
+      if (!kept) continue;
+      packable.push({ ref, variantId, cell, size, plateAbs });
+    }
+  }
+
   for (const cell of campaign.matrix.cells) {
-    if (!approved.has(cell.cellId)) continue;
-    if (!pickPlateAbsPath(cell)) continue;
-    packable.push({ ref: cell.cellId, variantId: cell.cellId, cell });
+    pushCell(cell.cellId, cell.cellId, cell);
   }
   for (const cell of campaign.matrix.retired ?? []) {
     const ref = makeArchiveRef(archiveIdOf(cell));
-    if (!approved.has(ref) && !approved.has(cell.cellId)) continue;
-    if (!pickPlateAbsPath(cell)) continue;
-    packable.push({
-      ref: approved.has(ref) ? ref : cell.cellId,
-      variantId: ref,
-      cell,
-    });
+    pushCell(ref, ref, cell);
   }
   return packable;
 }
@@ -221,13 +269,11 @@ export async function buildCeltraPreview(
   assertGuaranteeTranche3ProfileIntegrity();
   const campaign = await getCampaign(campaignId);
   const reviews = await getReviews(campaignId);
-  const decisionByCell = new Map(
-    reviews.map((r) => [r.cellId, r.decision] as const),
-  );
   const profile = getCeltraTemplateProfile(campaign.celtraTemplateProfileId);
   const warnings: string[] = [];
   const rows: CeltraPreview["rows"] = [];
-  const sizes = (campaign.outputSizes || []).map((s) => ({
+  const catalog = campaign.outputSizes || [];
+  const sizes = catalog.map((s) => ({
     id: s.id,
     aspect: s.aspect,
     label: s.label,
@@ -238,11 +284,7 @@ export async function buildCeltraPreview(
   let sizeSlotTotal = 0;
   for (const cell of campaign.matrix.cells) {
     const plateAbs = pickPlateAbsPath(cell);
-    const decisionRaw = decisionByCell.get(cell.cellId) || "pending";
-    const decision =
-      decisionRaw === "approved" || decisionRaw === "rejected"
-        ? decisionRaw
-        : "pending";
+    const decision = reviewDecisionFor(reviews, cell.cellId);
     const frame =
       sceneTagToCeltraFrame(profile, cell.sceneTag) ??
       ("F2" as CeltraFrameId);
@@ -258,19 +300,40 @@ export async function buildCeltraPreview(
       cell.copy.endcard || "",
       profile.charLimits["EC headline (max 77 char)"] ?? 77,
     );
-    const sizeSlots = sizes.map((s) => {
+    const sizeSlots = catalog.map((s) => {
       const asset = cell.sizeAssets?.find((a) => a.sizeId === s.id);
-      const path = asset ? resolveSizePlateAbs(asset) : null;
+      let path = asset ? resolveSizePlateAbs(asset) : null;
+      if (path && asset?.genPath?.trim()) {
+        const sharedWrong = (cell.sizeAssets ?? []).some(
+          (a) =>
+            a.sizeId !== s.id &&
+            a.aspect !== s.aspect &&
+            a.genPath === asset.genPath,
+        );
+        if (sharedWrong) path = null;
+      }
+      const sizeDecision = reviewDecisionFor(reviews, cell.cellId, s.id);
+      const packable = isSizePackable(
+        reviews,
+        cell.cellId,
+        s.id,
+        Boolean(path),
+      );
       return {
         sizeId: s.id,
         aspect: s.aspect,
         label: s.label,
         platePath: path,
         ready: Boolean(path),
+        decision: sizeDecision,
+        packable,
+        width: s.width,
+        height: s.height,
       };
     });
     const sizesReady = sizeSlots.filter((s) => s.ready).length;
     const sizesTotal = sizeSlots.length || (plateAbs ? 1 : 0);
+    const sizesPackable = sizeSlots.filter((s) => s.packable).length;
     sizeSlotReady += sizesReady;
     sizeSlotTotal += sizesTotal;
     const rowWarnings: string[] = [];
@@ -278,9 +341,9 @@ export async function buildCeltraPreview(
     if (sizesTotal > 0 && sizesReady < sizesTotal) {
       rowWarnings.push(`${sizesReady}/${sizesTotal} sizes ready`);
     }
-    if (decision !== "approved") rowWarnings.push("Not kept — zip will skip");
-    const packable =
-      decision === "approved" && (Boolean(plateAbs) || sizesReady > 0);
+    if (sizesPackable === 0) {
+      rowWarnings.push("Keep a size (or whole variant) to include in zip");
+    }
     rows.push({
       order,
       cellId: cell.cellId,
@@ -291,7 +354,7 @@ export async function buildCeltraPreview(
       endcard,
       decision,
       hasPlate: Boolean(plateAbs) || sizesReady > 0,
-      packable,
+      packable: sizesPackable > 0,
       sizes: sizeSlots,
       sizesReady,
       sizesTotal,
@@ -300,19 +363,24 @@ export async function buildCeltraPreview(
     order += 1;
   }
 
-  const approvedCount = rows.filter((r) => r.decision === "approved").length;
-  const packableCount = rows.filter((r) => r.packable).length;
+  const approvedCount = rows.filter(
+    (r) => r.decision === "approved" || r.sizes.some((s) => s.packable),
+  ).length;
+  const packableCount = rows.reduce(
+    (n, r) => n + r.sizes.filter((s) => s.packable).length,
+    0,
+  );
 
   if (!rows.length) {
     warnings.push("No matrix cells yet — run Magic prepare to draft Celtra rows");
   } else if (!packableCount) {
     warnings.push(
-      "Draft matrix live — Keep variants with plates to include them in the zip",
+      "Draft matrix live — Keep a size (or Keep all) with plates to include in the zip",
     );
   }
   if (sizeSlotTotal > 0 && sizeSlotReady < sizeSlotTotal) {
     warnings.push(
-      `Size coverage ${sizeSlotReady}/${sizeSlotTotal} — Celtra Asset Name uses _SIZE_LENGTH explode; native plates per aspect when present`,
+      `Size coverage ${sizeSlotReady}/${sizeSlotTotal} — native plates per aspect; zip emits one order row per kept size`,
     );
   }
 
@@ -338,16 +406,13 @@ export async function buildCeltraPackage(
 
   const campaign = await getCampaign(campaignId);
   const reviews = await getReviews(campaignId);
-  const approved = new Set(
-    reviews.filter((r) => r.decision === "approved").map((r) => r.cellId),
-  );
 
   const profile = getCeltraTemplateProfile(campaign.celtraTemplateProfileId);
-  const packable = collectPackable(campaign, approved);
+  const packable = collectPackable(campaign, reviews);
 
   if (packable.length === 0) {
     throw new Error(
-      "No approved cells with plate media (genPath / preview / master) to package. Keep at least one variant that still has a plate.",
+      "No kept sizes with plate media to package. Keep at least one size (or Keep all on a variant) that still has a plate.",
     );
   }
 
@@ -373,17 +438,14 @@ export async function buildCeltraPackage(
   const hardErrors: string[] = [];
 
   let order = 1;
-  for (const { ref, variantId, cell } of packable) {
-    const plateAbs = pickPlateAbsPath(cell);
-    if (!plateAbs) continue;
-
+  for (const { ref, variantId, cell, size, plateAbs } of packable) {
     const frame =
       sceneTagToCeltraFrame(profile, cell.sceneTag) ??
       ("F2" as CeltraFrameId);
 
     const rawBase = path.basename(plateAbs);
     const zipBase = uniqueAssetBasename(
-      `${variantId.replace(/[^a-zA-Z0-9._-]+/g, "_")}_${frame}_${rawBase}`,
+      `${variantId.replace(/[^a-zA-Z0-9._-]+/g, "_")}_${size.aspect.replace(":", "x")}_${frame}_${rawBase}`,
       usedBasenames,
     );
     assetFiles.push({ abs: plateAbs, zipName: `assets/${zipBase}` });
@@ -393,8 +455,14 @@ export async function buildCeltraPackage(
     };
 
     const versionLabel =
-      [cell.copy.setup, cell.copy.punchline].filter(Boolean).join(" / ").trim() ||
-      variantId;
+      [
+        cell.copy.setup,
+        cell.copy.punchline,
+        size.aspect !== "legacy" ? size.aspect : "",
+      ]
+        .filter(Boolean)
+        .join(" / ")
+        .trim() || variantId;
 
     const frameHeadlines: Partial<Record<CeltraFrameId, string>> = {
       F1: clip(cell.copy.setup || "", profile.charLimits["F1 Headline (max 35 char)"] ?? 35),
@@ -444,10 +512,9 @@ export async function buildCeltraPackage(
     const { errors, warnings } = validateCeltraWideRow(profile, values, {
       requireFrames: false,
     });
-    for (const e of errors) hardErrors.push(`Row ${order} (${variantId}): ${e}`);
-    for (const w of warnings) allWarnings.push(`Row ${order} (${variantId}): ${w}`);
+    for (const e of errors) hardErrors.push(`Row ${order} (${variantId}/${size.aspect}): ${e}`);
+    for (const w of warnings) allWarnings.push(`Row ${order} (${variantId}/${size.aspect}): ${w}`);
 
-    // Soft required-frame check for the tagged frame only
     if (!frameFiles[frame]) {
       hardErrors.push(`Row ${order}: missing plate for frame ${frame}`);
     }
@@ -455,14 +522,16 @@ export async function buildCeltraPackage(
     wideRows.push(values);
 
     const review =
-      reviews.find((r) => r.cellId === ref) ||
-      reviews.find((r) => r.cellId === cell.cellId);
+      reviews.find((r) => r.cellId === ref && r.sizeId === size.id) ||
+      reviews.find((r) => r.cellId === cell.cellId && r.sizeId === size.id) ||
+      reviews.find((r) => r.cellId === ref && !r.sizeId) ||
+      reviews.find((r) => r.cellId === cell.cellId && !r.sizeId);
 
     debugRows.push({
-      variantId,
+      variantId: `${variantId}:${size.id}`,
       campaignId: campaign.id,
       videoPath: zipBase,
-      aspect: campaign.outputSizes?.[0]?.aspect ?? "9:16",
+      aspect: size.aspect,
       primaryText: cell.copy.setup,
       headline: cell.copy.endcard,
       cta: cell.copy.cta,

@@ -88,18 +88,31 @@ export function sizeSlotTone(
   const live = jobs.find(
     (j) =>
       j.cellId === cell.cellId &&
-      (j.sizeId === size.id || (!j.sizeId && jobs.length)) &&
+      j.sizeId === size.id &&
       (j.status === "queued" || j.status === "running"),
   );
   if (live) return "running";
   if (asset?.status === "failed") return "failed";
-  if (asset?.genPath?.trim() || asset?.outputPath?.trim() || asset?.previewPath?.trim()) {
+  const path =
+    asset?.genPath?.trim() ||
+    asset?.outputPath?.trim() ||
+    asset?.previewPath?.trim() ||
+    "";
+  if (path) {
+    // Shared path across different aspects = stale inherit, not a real size plate
+    const sharedWrong = (cell.sizeAssets ?? []).some(
+      (a) =>
+        a.sizeId !== size.id &&
+        a.aspect !== size.aspect &&
+        (a.genPath?.trim() || a.outputPath?.trim() || "") === path,
+    );
+    if (sharedWrong) return "missing";
     return "ready";
   }
-  // Job running for this cell without sizeId (legacy)
   const cellJob = jobs.find(
     (j) =>
       j.cellId === cell.cellId &&
+      !j.sizeId &&
       (j.status === "queued" || j.status === "running"),
   );
   if (cellJob) return "running";
@@ -168,6 +181,18 @@ export function coverageSummary(
 export function reviewOf(
   reviews: ReviewEntry[],
   cellId: string,
+  sizeId?: string | null,
 ): ReviewEntry["decision"] {
-  return reviews.find((r) => r.cellId === cellId)?.decision || "pending";
+  // Prefer shared helper when size-scoped; cell-level ignores size-only entries.
+  if (sizeId) {
+    const sized = reviews.find(
+      (r) => r.cellId === cellId && (r.sizeId || null) === sizeId,
+    );
+    if (sized) return sized.decision;
+  }
+  return (
+    reviews.find(
+      (r) => r.cellId === cellId && (r.sizeId == null || r.sizeId === ""),
+    )?.decision || "pending"
+  );
 }

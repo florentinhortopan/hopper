@@ -1747,25 +1747,36 @@ app.put("/campaigns/:id/reviews", async (req, res) => {
 
 app.post("/campaigns/:id/reviews/:cellId", async (req, res) => {
   const reviews = await getReviews(req.params.id);
+  const sizeIdRaw = req.body.sizeId;
+  const sizeId =
+    typeof sizeIdRaw === "string" && sizeIdRaw.trim()
+      ? sizeIdRaw.trim()
+      : null;
   const next: ReviewEntry = ReviewEntrySchema.parse({
     cellId: req.params.cellId,
+    sizeId,
     decision: req.body.decision ?? "pending",
     reasonTags: req.body.reasonTags ?? [],
     notes: req.body.notes ?? "",
     updatedAt: new Date().toISOString(),
   });
-  const idx = reviews.findIndex((r) => r.cellId === next.cellId);
+  const idx = reviews.findIndex(
+    (r) =>
+      r.cellId === next.cellId && (r.sizeId || null) === (next.sizeId || null),
+  );
   if (idx >= 0) reviews[idx] = next;
   else reviews.push(next);
   await saveReviews(req.params.id, reviews);
   const { emitCampaignEvent } = await import("./campaignEvents.js");
+  const scope = next.sizeId ? `${next.cellId}:${next.sizeId}` : next.cellId;
   emitCampaignEvent({
     campaignId: req.params.id,
     column: "hopper",
     type: "review_decision",
-    summary: `Review ${next.cellId} → ${next.decision}`,
+    summary: `Review ${scope} → ${next.decision}`,
     payload: {
       cellId: next.cellId,
+      sizeId: next.sizeId,
       decision: next.decision,
       notes: next.notes,
     },
@@ -1774,8 +1785,12 @@ app.post("/campaigns/:id/reviews/:cellId", async (req, res) => {
     campaignId: req.params.id,
     column: "celtra",
     type: "celtra_preview",
-    summary: `Matrix updated · ${next.cellId} ${next.decision}`,
-    payload: { cellId: next.cellId, decision: next.decision },
+    summary: `Matrix updated · ${scope} ${next.decision}`,
+    payload: {
+      cellId: next.cellId,
+      sizeId: next.sizeId,
+      decision: next.decision,
+    },
   });
   res.json(next);
 });

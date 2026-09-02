@@ -35,6 +35,10 @@ export const CeltraPreviewSizeSlotSchema = z.object({
   label: z.string(),
   platePath: z.string().nullable().default(null),
   ready: z.boolean().default(false),
+  decision: z.enum(["pending", "approved", "rejected"]).default("pending"),
+  packable: z.boolean().default(false),
+  width: z.number().int().nullable().default(null),
+  height: z.number().int().nullable().default(null),
 });
 export type CeltraPreviewSizeSlot = z.infer<typeof CeltraPreviewSizeSlotSchema>;
 

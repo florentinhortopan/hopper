@@ -264,13 +264,33 @@ export async function getCampaign(id: string): Promise<Campaign> {
   let campaign = await readCampaignFromDisk(id);
   const repaired = repairCampaignMediaPaths(campaign);
   const healed = await healMissingGenPaths(campaign);
-  if (repaired || healed) {
+  let clearedShared = false;
+  try {
+    const { syncCampaignSizeAssets } = await import("./jobs.js");
+    const before = JSON.stringify(
+      campaign.matrix.cells.map((c) =>
+        (c.sizeAssets || []).map((a) => [a.sizeId, a.genPath]),
+      ),
+    );
+    syncCampaignSizeAssets(campaign);
+    const after = JSON.stringify(
+      campaign.matrix.cells.map((c) =>
+        (c.sizeAssets || []).map((a) => [a.sizeId, a.genPath]),
+      ),
+    );
+    clearedShared = before !== after;
+  } catch {
+    /* jobs import optional during early boot */
+  }
+  if (repaired || healed || clearedShared) {
     try {
       campaign = await saveCampaign(campaign);
       if (healed) {
         console.log(
           `[campaigns] restored missing genPath(s) for ${id} (jobs / plate-cache)`,
         );
+      } else if (clearedShared) {
+        console.log(`[campaigns] cleared shared cross-aspect genPaths for ${id}`);
       } else if (repaired) {
         console.log(`[campaigns] repaired media paths for ${id}`);
       }

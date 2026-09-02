@@ -248,12 +248,54 @@ export const ReviewEntrySchema = z.object({
    * Field name kept for API compatibility.
    */
   cellId: z.string(),
+  /**
+   * When set, decision applies to one Settings size only.
+   * Null/omitted = whole-variant decision (legacy Keep/Kill).
+   */
+  sizeId: z.string().nullable().default(null),
   decision: ReviewDecisionSchema.default("pending"),
   reasonTags: z.array(z.string()).default([]),
   notes: z.string().default(""),
   updatedAt: z.string(),
 });
 export type ReviewEntry = z.infer<typeof ReviewEntrySchema>;
+export type ReviewDecision = z.infer<typeof ReviewDecisionSchema>;
+
+/** Resolve decision for a cell, optionally scoped to one size (size overrides cell). */
+export function reviewDecisionFor(
+  reviews: ReviewEntry[],
+  cellId: string,
+  sizeId?: string | null,
+): ReviewDecision {
+  if (sizeId) {
+    const sized = reviews.find(
+      (r) => r.cellId === cellId && (r.sizeId || null) === sizeId,
+    );
+    if (sized) return sized.decision;
+  }
+  const cell = reviews.find(
+    (r) => r.cellId === cellId && (r.sizeId == null || r.sizeId === ""),
+  );
+  return cell?.decision ?? "pending";
+}
+
+/** Size is zip-packable when it has a plate and is kept (size or parent cell). */
+export function isSizePackable(
+  reviews: ReviewEntry[],
+  cellId: string,
+  sizeId: string,
+  hasPlate: boolean,
+): boolean {
+  if (!hasPlate) return false;
+  const sized = reviews.find(
+    (r) => r.cellId === cellId && (r.sizeId || null) === sizeId,
+  );
+  if (sized) return sized.decision === "approved";
+  const cell = reviews.find(
+    (r) => r.cellId === cellId && (r.sizeId == null || r.sizeId === ""),
+  );
+  return cell?.decision === "approved";
+}
 
 /** Remotion assemble structure — one recipe for all output sizes. */
 export const AssemblySceneSchema = z.object({
