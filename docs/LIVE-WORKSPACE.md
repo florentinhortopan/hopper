@@ -15,9 +15,11 @@ ATTATTA is the **source of truth** for creative → review → delivery. The Liv
 
 | Column | Role |
 |--------|------|
-| **Magic** | Brief, zip import, readiness, variant plan, prepare/generate; event feed + composer (`/prepare`, `/generate`) |
+| **Magic** | Brief, zip import, readiness, variant plan, prepare; **live queue preview**; event feed + composer. Generate CTA when checks pass |
 | **Hopper** | Keep/Kill, deep links; feed fans in prepare/generate/job/review events |
-| **Celtra** | **Live content matrix** (all matrix cells as draft/kept/killed + plate status); compact event strip; **Package zip** only includes kept + plated rows |
+| **Celtra** | **Live content matrix** (all matrix cells as draft/kept/killed + plate status); activity feed; **Package zip** only includes kept + plated rows |
+
+Each column has **one scroll body** (header + composer fixed). Nested panel scrollers are avoided so the pointer always scrolls the column.
 
 Columns expand/collapse independently (at least one stays open).
 
@@ -34,9 +36,9 @@ Comfy stays publish webhook + job poll. Celtra stays one-way zip (no Celtra clou
 
 ## Conversational UI
 
-Each column: reverse-chron **event cards** + bottom **composer**.  
-Magic: when prepare checklist is green and variants exist, a **Generate** CTA appears above the composer (conversational, not a top-panel button).  
-Celtra: matrix table on top, compact event strip below.  
+Each column: reverse-chron **event cards** + bottom **composer** in one scroll.  
+Magic: queue preview lives in the same column; when prepare checklist is green, a **Generate** CTA appears above the composer.  
+Celtra: matrix + activity in the same column scroll.  
 LLM status shown when `ATTATTA_LLM_API_KEY` is set; rich agent behavior is deferred.
 
 ## Aspirational (not MVP)

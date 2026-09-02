@@ -55,8 +55,8 @@ export function CeltraPreviewPanel({ campaignId, refreshToken }: Props) {
   const packable = preview?.packableCount ?? 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-3 py-2">
+    <div className="space-y-2 px-3 py-2 text-xs">
+      <div className="flex items-center justify-between gap-2">
         <div className="text-[10px] uppercase tracking-wide text-ink-500">
           Content matrix
           {preview
@@ -78,19 +78,19 @@ export function CeltraPreviewPanel({ campaignId, refreshToken }: Props) {
         </button>
       </div>
       {error ? (
-        <pre className="mx-3 mt-2 whitespace-pre-wrap rounded bg-red-50 p-2 text-[10px] text-red-800">
+        <pre className="whitespace-pre-wrap rounded bg-red-50 p-2 text-[10px] text-red-800">
           {error}
         </pre>
       ) : null}
       {lastZip ? (
-        <p className="px-3 pt-1 font-mono text-[10px] text-ink-600">{lastZip}</p>
+        <p className="font-mono text-[10px] text-ink-600">{lastZip}</p>
       ) : null}
-      <div className="min-h-0 flex-1 overflow-auto px-2 py-2">
-        {!preview?.rows.length ? (
-          <p className="py-6 text-center text-xs text-ink-500">
-            Run Magic prepare — draft Celtra rows appear here live.
-          </p>
-        ) : (
+      {!preview?.rows.length ? (
+        <p className="py-4 text-center text-xs text-ink-500">
+          Run Magic prepare — draft Celtra rows appear here live.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
           <table className="w-full min-w-[28rem] border-collapse text-left text-[11px]">
             <thead>
               <tr className="border-b border-ink-200 text-[10px] uppercase tracking-wide text-ink-500">
@@ -133,7 +133,10 @@ export function CeltraPreviewPanel({ campaignId, refreshToken }: Props) {
                       {row.hasPlate ? "" : " · no plate"}
                     </span>
                   </td>
-                  <td className="max-w-[8rem] truncate px-1 py-1.5" title={row.setup}>
+                  <td
+                    className="max-w-[8rem] truncate px-1 py-1.5"
+                    title={row.setup}
+                  >
                     {row.setup || "—"}
                   </td>
                   <td
@@ -158,12 +161,12 @@ export function CeltraPreviewPanel({ campaignId, refreshToken }: Props) {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
-      {preview?.warnings?.length ? (
-        <div className="border-t border-ink-100 px-3 py-2 text-[10px] text-amber-900">
-          {preview.warnings.slice(0, 3).join(" · ")}
         </div>
+      )}
+      {preview?.warnings?.length ? (
+        <p className="text-[10px] text-amber-900">
+          {preview.warnings.slice(0, 3).join(" · ")}
+        </p>
       ) : null}
     </div>
   );

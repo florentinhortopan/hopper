@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Campaign, LiveColumnId, ReviewEntry } from "@attatta/shared";
 import { CeltraPreviewPanel } from "@/components/live/CeltraPreviewPanel";
 import { ColumnComposer } from "@/components/live/ColumnComposer";
@@ -8,6 +8,7 @@ import {
   EventFeed,
   useCampaignEventStream,
 } from "@/components/live/EventFeed";
+import { LiveQueuePreview } from "@/components/live/LiveQueuePreview";
 import { MagicColumnPanel } from "@/components/live/MagicColumnPanel";
 import { api } from "@/lib/api";
 
@@ -31,12 +32,17 @@ export function LiveWorkspace({ campaignId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [celtraTick, setCeltraTick] = useState(0);
+  const [queueTick, setQueueTick] = useState(0);
   const [briefDraft, setBriefDraft] = useState("");
   const [magicReady, setMagicReady] = useState<{
     ready: boolean;
     variantCount: number;
     detail: string;
   } | null>(null);
+
+  const magicScrollRef = useRef<HTMLDivElement>(null);
+  const hopperScrollRef = useRef<HTMLDivElement>(null);
+  const celtraScrollRef = useRef<HTMLDivElement>(null);
 
   const {
     events,
@@ -79,11 +85,17 @@ export function LiveWorkspace({ campaignId }: Props) {
     ) {
       const t = window.setTimeout(() => {
         setCeltraTick((n) => n + 1);
+        if (
+          relevant.type === "job_update" ||
+          relevant.type === "magic_generate"
+        ) {
+          setQueueTick((n) => n + 1);
+        }
         void refresh().catch(() => undefined);
       }, 400);
       return () => window.clearTimeout(t);
     }
-  }, [events]);
+  }, [events, refresh]);
 
   const openCount = useMemo(
     () => (Object.values(cols) as ColState[]).filter((c) => c.open).length,
@@ -98,6 +110,12 @@ export function LiveWorkspace({ campaignId }: Props) {
       if (opens === 0) return prev;
       return next;
     });
+  }
+
+  function scrollRefFor(id: LiveColumnId) {
+    if (id === "magic") return magicScrollRef;
+    if (id === "hopper") return hopperScrollRef;
+    return celtraScrollRef;
   }
 
   async function runPrepare() {
@@ -126,6 +144,7 @@ export function LiveWorkspace({ campaignId }: Props) {
     try {
       await api.magicGenerate(campaignId);
       await refresh();
+      setQueueTick((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -250,13 +269,14 @@ export function LiveWorkspace({ campaignId }: Props) {
               </button>
             );
           }
+          const scrollRef = scrollRefFor(id);
           return (
             <section
               key={id}
               className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-ink-200 bg-warm-paper/90"
               style={{ flex: state.flex * (openCount === 1 ? 1.2 : 1) }}
             >
-              <div className="flex items-center justify-between border-b border-ink-200 px-3 py-2">
+              <div className="flex shrink-0 items-center justify-between border-b border-ink-200 px-3 py-2">
                 <h2 className="text-sm font-medium">{label}</h2>
                 <button
                   type="button"
@@ -267,142 +287,148 @@ export function LiveWorkspace({ campaignId }: Props) {
                 </button>
               </div>
 
-              {id === "magic" ? (
-                <MagicColumnPanel
-                  campaignId={campaignId}
-                  campaign={campaign}
-                  briefDraft={briefDraft}
-                  onBriefChange={setBriefDraft}
-                  busy={busy}
-                  onPrepare={runPrepare}
-                  onReadinessChange={setMagicReady}
-                  onImported={async () => {
-                    await refresh();
-                    setCeltraTick((n) => n + 1);
-                  }}
-                />
-              ) : null}
+              {/* One scroller for the whole column body */}
+              <div
+                ref={scrollRef}
+                className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+              >
+                {id === "magic" ? (
+                  <MagicColumnPanel
+                    campaignId={campaignId}
+                    campaign={campaign}
+                    briefDraft={briefDraft}
+                    onBriefChange={setBriefDraft}
+                    busy={busy}
+                    onPrepare={runPrepare}
+                    onReadinessChange={setMagicReady}
+                    onImported={async () => {
+                      await refresh();
+                      setCeltraTick((n) => n + 1);
+                    }}
+                  />
+                ) : null}
 
-              {id === "hopper" ? (
-                <div className="border-b border-ink-100 px-3 py-2 text-xs">
-                  <p className="text-ink-600">
-                    {cells.length} cells · {kept} kept · deep links
-                  </p>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    <a
-                      className="underline"
-                      href={`/campaigns/${campaignId}/ingredients`}
-                    >
-                      Ingredients
-                    </a>
-                    <a
-                      className="underline"
-                      href={`/campaigns/${campaignId}/matrix`}
-                    >
-                      Matrix
-                    </a>
-                    <a
-                      className="underline"
-                      href={`/campaigns/${campaignId}/variants`}
-                    >
-                      Variants
-                    </a>
-                    <a
-                      className="underline"
-                      href={`/campaigns/${campaignId}/review`}
-                    >
-                      Assemble
-                    </a>
+                {id === "hopper" ? (
+                  <div className="border-b border-ink-100 px-3 py-2 text-xs">
+                    <p className="text-ink-600">
+                      {cells.length} cells · {kept} kept · deep links
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      <a
+                        className="underline"
+                        href={`/campaigns/${campaignId}/ingredients`}
+                      >
+                        Ingredients
+                      </a>
+                      <a
+                        className="underline"
+                        href={`/campaigns/${campaignId}/matrix`}
+                      >
+                        Matrix
+                      </a>
+                      <a
+                        className="underline"
+                        href={`/campaigns/${campaignId}/variants`}
+                      >
+                        Variants
+                      </a>
+                      <a
+                        className="underline"
+                        href={`/campaigns/${campaignId}/review`}
+                      >
+                        Assemble
+                      </a>
+                    </div>
+                    <ul className="mt-2 space-y-1">
+                      {cells.slice(0, 12).map((cell) => {
+                        const rev = reviews.find((r) => r.cellId === cell.cellId);
+                        return (
+                          <li
+                            key={cell.cellId}
+                            className="flex flex-wrap items-center gap-1 rounded border border-ink-100 px-1.5 py-1"
+                          >
+                            <span className="font-mono text-[10px]">
+                              {cell.cellId}
+                            </span>
+                            <span className="text-[10px] text-ink-500">
+                              {rev?.decision || "pending"}
+                            </span>
+                            <button
+                              type="button"
+                              className="ml-auto rounded border px-1 text-[10px]"
+                              onClick={() =>
+                                void api
+                                  .setReview(campaignId, cell.cellId, {
+                                    decision: "approved",
+                                  })
+                                  .then(() => refresh())
+                                  .then(() => setCeltraTick((n) => n + 1))
+                              }
+                            >
+                              Keep
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border px-1 text-[10px]"
+                              onClick={() =>
+                                void api
+                                  .setReview(campaignId, cell.cellId, {
+                                    decision: "rejected",
+                                  })
+                                  .then(() => refresh())
+                              }
+                            >
+                              Kill
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
                   </div>
-                  <ul className="mt-2 max-h-28 space-y-1 overflow-y-auto">
-                    {cells.slice(0, 12).map((cell) => {
-                      const rev = reviews.find((r) => r.cellId === cell.cellId);
-                      return (
-                        <li
-                          key={cell.cellId}
-                          className="flex flex-wrap items-center gap-1 rounded border border-ink-100 px-1.5 py-1"
-                        >
-                          <span className="font-mono text-[10px]">
-                            {cell.cellId}
-                          </span>
-                          <span className="text-[10px] text-ink-500">
-                            {rev?.decision || "pending"}
-                          </span>
-                          <button
-                            type="button"
-                            className="ml-auto rounded border px-1 text-[10px]"
-                            onClick={() =>
-                              void api
-                                .setReview(campaignId, cell.cellId, {
-                                  decision: "approved",
-                                })
-                                .then(() => refresh())
-                                .then(() => setCeltraTick((n) => n + 1))
-                            }
-                          >
-                            Keep
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded border px-1 text-[10px]"
-                            onClick={() =>
-                              void api
-                                .setReview(campaignId, cell.cellId, {
-                                  decision: "rejected",
-                                })
-                                .then(() => refresh())
-                            }
-                          >
-                            Kill
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              ) : null}
+                ) : null}
 
-              {id === "celtra" ? (
-                <>
+                {id === "celtra" ? (
                   <CeltraPreviewPanel
                     campaignId={campaignId}
                     refreshToken={celtraTick}
                   />
-                  <EventFeed
+                ) : null}
+
+                {id === "magic" ? (
+                  <LiveQueuePreview
                     campaignId={campaignId}
-                    column="celtra"
-                    events={events}
-                    hasMore={hasMore}
-                    onLoadOlder={loadOlder}
-                    compact
+                    refreshToken={queueTick}
                   />
-                </>
-              ) : (
+                ) : null}
+
                 <EventFeed
                   campaignId={campaignId}
                   column={id}
                   events={events}
                   hasMore={hasMore}
                   onLoadOlder={loadOlder}
+                  scrollParentRef={scrollRef}
                 />
-              )}
+              </div>
 
-              <ColumnComposer
-                column={id}
-                llmOn={llmOn}
-                disabled={busy !== null}
-                onSubmit={(t) => handleComposer(id, t)}
-                suggestedAction={
-                  id === "magic" && magicReady?.ready
-                    ? {
-                        label:
-                          busy === "generate" ? "Generating…" : "Generate",
-                        detail: magicReady.detail,
-                        onClick: runGenerate,
-                      }
-                    : null
-                }
-              />
+              <div className="shrink-0">
+                <ColumnComposer
+                  column={id}
+                  llmOn={llmOn}
+                  disabled={busy !== null}
+                  onSubmit={(t) => handleComposer(id, t)}
+                  suggestedAction={
+                    id === "magic" && magicReady?.ready
+                      ? {
+                          label:
+                            busy === "generate" ? "Generating…" : "Generate",
+                          detail: magicReady.detail,
+                          onClick: runGenerate,
+                        }
+                      : null
+                  }
+                />
+              </div>
             </section>
           );
         })}

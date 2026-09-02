@@ -208,7 +208,7 @@ export function MagicColumnPanel({
   const workflows = importSession?.detectedWorkflows ?? [];
 
   return (
-    <div className="max-h-[55%] space-y-2 overflow-y-auto border-b border-ink-100 px-3 py-2 text-xs">
+    <div className="space-y-2 px-3 py-2 text-xs">
       {localError ? (
         <pre className="whitespace-pre-wrap rounded bg-red-50 p-2 text-[10px] text-red-800">
           {localError}
@@ -265,7 +265,7 @@ export function MagicColumnPanel({
           </ul>
         ) : null}
         {reviewRows.length > 0 ? (
-          <ul className="mt-1 max-h-24 space-y-0.5 overflow-y-auto text-[10px]">
+          <ul className="mt-1 space-y-0.5 text-[10px]">
             {reviewRows.slice(0, 20).map((r) => (
               <li key={r.id} className="flex gap-2 truncate">
                 <span className="font-mono text-ink-500">{r.suggestedKind}</span>
@@ -364,7 +364,7 @@ export function MagicColumnPanel({
                 .map(([k, n]) => `${n} ${k}`)
                 .join(" · ")}
             </p>
-            <ul className="mt-1 max-h-20 space-y-0.5 overflow-y-auto">
+            <ul className="mt-1 space-y-0.5">
               {activeIngredients.slice(0, 16).map((i) => (
                 <li key={i.id} className="truncate text-[10px]">
                   <span className="font-mono text-ink-500">{i.kind}</span>{" "}
@@ -390,7 +390,7 @@ export function MagicColumnPanel({
             Prepare builds the variant list from activations + brief.
           </p>
         ) : (
-          <ul className="mt-1 max-h-28 space-y-1 overflow-y-auto">
+          <ul className="mt-1 space-y-1">
             {plan!.variants.slice(0, 12).map((v) => (
               <li
                 key={v.cellId}

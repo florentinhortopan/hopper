@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, type RefObject } from "react";
+import { useState } from "react";
 import type {
   CampaignEvent,
   CampaignEventType,
@@ -44,8 +45,11 @@ type Props = {
   events: CampaignEvent[];
   onLoadOlder: () => Promise<boolean>;
   hasMore: boolean;
-  /** Compact strip under Celtra matrix */
-  compact?: boolean;
+  /**
+   * Render inside the column’s single scroller (no nested overflow).
+   * Pass the column scroll element for load-older + stick-to-bottom.
+   */
+  scrollParentRef?: RefObject<HTMLElement | null>;
 };
 
 export function EventFeed({
@@ -54,72 +58,79 @@ export function EventFeed({
   events,
   onLoadOlder,
   hasMore,
-  compact,
+  scrollParentRef,
 }: Props) {
-  const scrollerRef = useRef<HTMLDivElement>(null);
+  const localRef = useRef<HTMLDivElement>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const filtered = events.filter((e) => eventVisibleInColumn(e, column));
+  const loadingRef = useRef(false);
 
-  const onScroll = useCallback(() => {
-    const el = scrollerRef.current;
-    if (!el || loadingOlder || !hasMore) return;
-    // Feed is newest at bottom; load older when near top
-    if (el.scrollTop < 80) {
-      setLoadingOlder(true);
-      const prevHeight = el.scrollHeight;
-      void onLoadOlder()
-        .then(() => {
-          requestAnimationFrame(() => {
-            if (scrollerRef.current) {
-              scrollerRef.current.scrollTop =
-                scrollerRef.current.scrollHeight - prevHeight;
-            }
-          });
-        })
-        .finally(() => setLoadingOlder(false));
-    }
-  }, [hasMore, loadingOlder, onLoadOlder]);
+  const getScroller = useCallback(() => {
+    return scrollParentRef?.current ?? localRef.current;
+  }, [scrollParentRef]);
+
+  const tryLoadOlder = useCallback(() => {
+    const el = getScroller();
+    if (!el || loadingRef.current || !hasMore) return;
+    if (el.scrollTop >= 80) return;
+    loadingRef.current = true;
+    setLoadingOlder(true);
+    const prevHeight = el.scrollHeight;
+    void onLoadOlder()
+      .then(() => {
+        requestAnimationFrame(() => {
+          const scroller = getScroller();
+          if (scroller) {
+            scroller.scrollTop = scroller.scrollHeight - prevHeight;
+          }
+        });
+      })
+      .finally(() => {
+        loadingRef.current = false;
+        setLoadingOlder(false);
+      });
+  }, [getScroller, hasMore, onLoadOlder]);
 
   useEffect(() => {
-    const el = scrollerRef.current;
+    const el = getScroller();
     if (!el) return;
-    // Stick to bottom on new events when already near bottom
+    const onScroll = () => tryLoadOlder();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [getScroller, tryLoadOlder, campaignId, column]);
+
+  useEffect(() => {
+    const el = getScroller();
+    if (!el) return;
     const nearBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+      el.scrollHeight - el.scrollTop - el.clientHeight < 160;
     if (nearBottom) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [filtered.length, campaignId, column]);
+  }, [filtered.length, campaignId, column, getScroller]);
 
   return (
     <div
-      ref={scrollerRef}
-      onScroll={onScroll}
+      ref={scrollParentRef ? undefined : localRef}
       className={
-        compact
-          ? "max-h-36 shrink-0 space-y-1 overflow-y-auto border-t border-ink-100 px-3 py-2"
+        scrollParentRef
+          ? "space-y-2 px-3 py-2"
           : "min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2"
       }
     >
-      {!compact && (hasMore || loadingOlder) ? (
+      <h3 className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-500">
+        Activity
+      </h3>
+      {hasMore || loadingOlder ? (
         <p className="text-center text-[10px] text-ink-500">
           {loadingOlder ? "Loading…" : "Scroll up for older"}
         </p>
       ) : null}
       {filtered.length === 0 ? (
-        <p
-          className={
-            compact
-              ? "text-center text-[10px] text-ink-500"
-              : "py-8 text-center text-xs text-ink-500"
-          }
-        >
-          {compact
-            ? "Matrix updates appear here"
-            : "No events yet — actions in this column will appear here."}
+        <p className="py-4 text-center text-xs text-ink-500">
+          No events yet — actions in this column will appear here.
         </p>
       ) : (
-        // Chronological: oldest first in the list (events array is newest-first)
         [...filtered].reverse().map((ev) => (
           <EventCard key={ev.id} event={ev} />
         ))
@@ -185,7 +196,6 @@ export function useCampaignEventStream(
       }
     };
 
-    // Poll fallback when SSE is flaky (cross-origin / proxy)
     const poll = () => {
       if (cancelled) return;
       void api
