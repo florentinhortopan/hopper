@@ -67,6 +67,7 @@ export function LiveWorkspace({ campaignId }: Props) {
       relevant.type === "review_decision" ||
       relevant.type === "job_update" ||
       relevant.type === "celtra_package" ||
+      relevant.type === "celtra_preview" ||
       relevant.type === "magic_generate" ||
       relevant.type === "magic_prepare" ||
       relevant.type === "comfy_publish"
@@ -270,7 +271,10 @@ export function LiveWorkspace({ campaignId }: Props) {
                   busy={busy}
                   onPrepare={runPrepare}
                   onGenerate={runGenerate}
-                  onImported={refresh}
+                  onImported={async () => {
+                    await refresh();
+                    setCeltraTick((n) => n + 1);
+                  }}
                 />
               ) : null}
 
@@ -354,10 +358,20 @@ export function LiveWorkspace({ campaignId }: Props) {
               ) : null}
 
               {id === "celtra" ? (
-                <CeltraPreviewPanel
-                  campaignId={campaignId}
-                  refreshToken={celtraTick}
-                />
+                <>
+                  <CeltraPreviewPanel
+                    campaignId={campaignId}
+                    refreshToken={celtraTick}
+                  />
+                  <EventFeed
+                    campaignId={campaignId}
+                    column="celtra"
+                    events={events}
+                    hasMore={hasMore}
+                    onLoadOlder={loadOlder}
+                    compact
+                  />
+                </>
               ) : (
                 <EventFeed
                   campaignId={campaignId}

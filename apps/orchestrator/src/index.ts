@@ -1770,6 +1770,13 @@ app.post("/campaigns/:id/reviews/:cellId", async (req, res) => {
       notes: next.notes,
     },
   });
+  emitCampaignEvent({
+    campaignId: req.params.id,
+    column: "celtra",
+    type: "celtra_preview",
+    summary: `Matrix updated · ${next.cellId} ${next.decision}`,
+    payload: { cellId: next.cellId, decision: next.decision },
+  });
   res.json(next);
 });
 

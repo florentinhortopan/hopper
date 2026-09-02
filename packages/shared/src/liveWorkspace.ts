@@ -37,6 +37,11 @@ export const CeltraPreviewRowSchema = z.object({
   setup: z.string().default(""),
   punchline: z.string().default(""),
   endcard: z.string().default(""),
+  /** Review decision for this cell */
+  decision: z.enum(["pending", "approved", "rejected"]).default("pending"),
+  hasPlate: z.boolean().default(false),
+  /** Included in next zip if packaged now */
+  packable: z.boolean().default(false),
   warnings: z.array(z.string()).default([]),
 });
 export type CeltraPreviewRow = z.infer<typeof CeltraPreviewRowSchema>;
@@ -46,6 +51,7 @@ export const CeltraPreviewSchema = z.object({
   profileId: z.string(),
   rowCount: z.number().int().nonnegative(),
   approvedCount: z.number().int().nonnegative(),
+  packableCount: z.number().int().nonnegative().default(0),
   rows: z.array(CeltraPreviewRowSchema).default([]),
   warnings: z.array(z.string()).default([]),
   updatedAt: z.string(),

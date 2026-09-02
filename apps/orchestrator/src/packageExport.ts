@@ -209,24 +209,28 @@ export type CeltraPackageResult = {
   downloadPath: string;
 };
 
-/** Live Celtra matrix preview — no zip write. */
+/** Live Celtra matrix preview — all matrix cells (draft → kept). No zip write. */
 export async function buildCeltraPreview(
   campaignId: string,
 ): Promise<CeltraPreview> {
   assertGuaranteeTranche3ProfileIntegrity();
   const campaign = await getCampaign(campaignId);
   const reviews = await getReviews(campaignId);
-  const approved = new Set(
-    reviews.filter((r) => r.decision === "approved").map((r) => r.cellId),
+  const decisionByCell = new Map(
+    reviews.map((r) => [r.cellId, r.decision] as const),
   );
   const profile = getCeltraTemplateProfile(campaign.celtraTemplateProfileId);
-  const packable = collectPackable(campaign, approved);
   const warnings: string[] = [];
   const rows: CeltraPreview["rows"] = [];
 
   let order = 1;
-  for (const { cell, variantId } of packable) {
+  for (const cell of campaign.matrix.cells) {
     const plateAbs = pickPlateAbsPath(cell);
+    const decisionRaw = decisionByCell.get(cell.cellId) || "pending";
+    const decision =
+      decisionRaw === "approved" || decisionRaw === "rejected"
+        ? decisionRaw
+        : "pending";
     const frame =
       sceneTagToCeltraFrame(profile, cell.sceneTag) ??
       ("F2" as CeltraFrameId);
@@ -243,24 +247,33 @@ export async function buildCeltraPreview(
       profile.charLimits["EC headline (max 77 char)"] ?? 77,
     );
     const rowWarnings: string[] = [];
-    if (!plateAbs) rowWarnings.push("Missing plate file on disk");
+    if (!plateAbs) rowWarnings.push("No plate yet");
+    if (decision !== "approved") rowWarnings.push("Not kept — zip will skip");
+    const packable = decision === "approved" && Boolean(plateAbs);
     rows.push({
       order,
-      cellId: variantId,
+      cellId: cell.cellId,
       frame,
       platePath: plateAbs,
       setup,
       punchline,
       endcard,
+      decision,
+      hasPlate: Boolean(plateAbs),
+      packable,
       warnings: rowWarnings,
     });
-    warnings.push(...rowWarnings.map((w) => `${variantId}: ${w}`));
     order += 1;
   }
 
-  if (!packable.length) {
+  const approvedCount = rows.filter((r) => r.decision === "approved").length;
+  const packableCount = rows.filter((r) => r.packable).length;
+
+  if (!rows.length) {
+    warnings.push("No matrix cells yet — run Magic prepare to draft Celtra rows");
+  } else if (!packableCount) {
     warnings.push(
-      "No approved cells with plate media — Keep variants with plates to populate Celtra",
+      "Draft matrix live — Keep variants with plates to include them in the zip",
     );
   }
 
@@ -268,7 +281,8 @@ export async function buildCeltraPreview(
     campaignId,
     profileId: profile.id,
     rowCount: rows.length,
-    approvedCount: approved.size,
+    approvedCount,
+    packableCount,
     rows,
     warnings,
     updatedAt: new Date().toISOString(),

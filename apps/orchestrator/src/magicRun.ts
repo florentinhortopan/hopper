@@ -926,6 +926,22 @@ function finalizeMagicPrepareResult(args: {
         warnings,
       },
     });
+    emitCampaignEvent({
+      campaignId: campaign.id,
+      column: "celtra",
+      type: "celtra_preview",
+      summary: `Celtra draft matrix · ${variants.length || campaign.matrix.cells.length} row(s)`,
+      payload: {
+        rowCount: variants.length || campaign.matrix.cells.length,
+      },
+    });
+    emitCampaignEvent({
+      campaignId: campaign.id,
+      column: "hopper",
+      type: "system",
+      summary: `Matrix ready for review · ${campaign.matrix.cells.length} cell(s)`,
+      payload: { cellCount: campaign.matrix.cells.length },
+    });
   });
   return result;
 }
@@ -952,6 +968,13 @@ export async function generateMagicCampaign(
       type: "magic_generate",
       summary: `Generate queued · ${jobs.length} job(s)`,
       payload: { jobIds: jobs.map((j) => j.id), cellCount: cellIds.length },
+    });
+    emitCampaignEvent({
+      campaignId,
+      column: "hopper",
+      type: "system",
+      summary: `Comfy queue · ${jobs.length} job(s) for review plates`,
+      payload: { jobIds: jobs.map((j) => j.id) },
     });
   });
   return { campaign: await getCampaign(campaignId), jobs };

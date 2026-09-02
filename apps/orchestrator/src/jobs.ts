@@ -396,6 +396,15 @@ function touchJob(job: Job, patch: Partial<Job>) {
           message: next.message,
         },
       });
+      if (next.status === "done") {
+        emitCampaignEvent({
+          campaignId: next.campaignId,
+          column: "celtra",
+          type: "celtra_preview",
+          summary: `Plate ready · ${next.cellId || next.id}`,
+          payload: { jobId: next.id, cellId: next.cellId },
+        });
+      }
     });
   }
   return next;
