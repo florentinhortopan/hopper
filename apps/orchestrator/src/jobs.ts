@@ -57,6 +57,46 @@ export type AssembleCopyPlate = {
   copy: Copy;
 };
 
+/**
+ * FIFO plate runner — missing-size / variant jobs used to fire all at once,
+ * so Comfy often finished last-enqueued first. Keep natural chat/list order.
+ */
+const PLATE_CONCURRENCY = Math.max(
+  1,
+  Math.min(4, Number(process.env.COMFY_PLATE_CONCURRENCY || 1) || 1),
+);
+let plateInFlight = 0;
+const plateWaiters: Array<() => void> = [];
+
+function acquirePlateSlot(): Promise<void> {
+  return new Promise((resolve) => {
+    const tryRun = () => {
+      if (plateInFlight < PLATE_CONCURRENCY) {
+        plateInFlight += 1;
+        resolve();
+        return;
+      }
+      plateWaiters.push(tryRun);
+    };
+    tryRun();
+  });
+}
+
+function releasePlateSlot() {
+  plateInFlight = Math.max(0, plateInFlight - 1);
+  const next = plateWaiters.shift();
+  if (next) next();
+}
+
+async function withPlateSlot<T>(fn: () => Promise<T>): Promise<T> {
+  await acquirePlateSlot();
+  try {
+    return await fn();
+  } finally {
+    releasePlateSlot();
+  }
+}
+
 export type BatchOpts = {
   cellIds?: string[];
   /**
@@ -946,56 +986,58 @@ export async function enqueueVariantBatch(
     const signal = attachJobControl(job.id);
 
     void (async () => {
-      try {
-        assertJobNotCancelled(job.id);
-        touchJob(job, {
-          status: "running",
-          message: `Comfy variant ${primary.aspect}`,
-          progress: 0.08,
-        });
-        await updateCampaign(campaignId, (camp) => {
-          ensureSizeAssets(camp, cellId);
-        });
-        const camp = await getCampaign(campaignId);
-        const gen = await runComfyForCellSize(
-          camp,
-          cellId,
-          primary,
-          Boolean(opts.forceRegen),
-          (p, message) => {
-            touchJob(job, {
-              progress: 0.08 + Math.min(0.88, p * 0.88),
-              message,
-            });
-          },
-          { signal, jobId: job.id },
-        );
-        touchJob(job, {
-          status: "done",
-          progress: 1,
-          message: `Variant ready @ ${primary.aspect} — use Fill missing sizes for other aspects`,
-          resultPath: gen?.assetPath ?? null,
-        });
-        finishJobControl(job.id);
-      } catch (err) {
-        if (!isCancelledError(err) && !signal.aborted) {
-          try {
-            await updateCampaign(campaignId, (camp) => {
-              ensureSizeAssets(camp, cellId);
-              const cell = camp.matrix.cells.find((c) => c.cellId === cellId);
-              if (!cell) return;
-              const asset = cell.sizeAssets.find((a) => a.sizeId === primary.id);
-              if (asset) {
-                asset.status = "failed";
-                asset.error = err instanceof Error ? err.message : String(err);
-              }
-            });
-          } catch {
-            /* ignore */
+      await withPlateSlot(async () => {
+        try {
+          assertJobNotCancelled(job.id);
+          touchJob(job, {
+            status: "running",
+            message: `Comfy variant ${primary.aspect}`,
+            progress: 0.08,
+          });
+          await updateCampaign(campaignId, (camp) => {
+            ensureSizeAssets(camp, cellId);
+          });
+          const camp = await getCampaign(campaignId);
+          const gen = await runComfyForCellSize(
+            camp,
+            cellId,
+            primary,
+            Boolean(opts.forceRegen),
+            (p, message) => {
+              touchJob(job, {
+                progress: 0.08 + Math.min(0.88, p * 0.88),
+                message,
+              });
+            },
+            { signal, jobId: job.id },
+          );
+          touchJob(job, {
+            status: "done",
+            progress: 1,
+            message: `Variant ready @ ${primary.aspect} — use Fill missing sizes for other aspects`,
+            resultPath: gen?.assetPath ?? null,
+          });
+          finishJobControl(job.id);
+        } catch (err) {
+          if (!isCancelledError(err) && !signal.aborted) {
+            try {
+              await updateCampaign(campaignId, (camp) => {
+                ensureSizeAssets(camp, cellId);
+                const cell = camp.matrix.cells.find((c) => c.cellId === cellId);
+                if (!cell) return;
+                const asset = cell.sizeAssets.find((a) => a.sizeId === primary.id);
+                if (asset) {
+                  asset.status = "failed";
+                  asset.error = err instanceof Error ? err.message : String(err);
+                }
+              });
+            } catch {
+              /* ignore */
+            }
           }
+          markJobCancelledOrFailed(job, err, signal);
         }
-        markJobCancelledOrFailed(job, err, signal);
-      }
+      });
     })();
   }
   return jobs;
@@ -1073,57 +1115,59 @@ export async function enqueueMissingSizeVariantBatch(
     const signal = attachJobControl(job.id);
 
     void (async () => {
-      try {
-        assertJobNotCancelled(job.id);
-        touchJob(job, {
-          status: "running",
-          message: `Comfy ${size.aspect}`,
-          progress: 0.08,
-        });
-        await updateCampaign(campaignId, (camp) => {
-          ensureSizeAssets(camp, cellId);
-        });
-        const camp = await getCampaign(campaignId);
-        const gen = await runComfyForCellSize(
-          camp,
-          cellId,
-          size,
-          Boolean(opts.forceRegen),
-          (p, message) => {
-            touchJob(job, {
-              progress: 0.08 + Math.min(0.88, p * 0.88),
-              message,
-            });
-          },
-          { signal, jobId: job.id },
-        );
-        assertJobNotCancelled(job.id);
-        // Do not auto-assemble — operator reviews variants then Assembles from Review
-        touchJob(job, {
-          status: "done",
-          progress: 1,
-          message: `Comfy ready @ ${size.aspect} — review variants, then Assemble on Review`,
-          resultPath: gen?.assetPath ?? null,
-        });
-        finishJobControl(job.id);
-      } catch (err) {
-        if (!isCancelledError(err) && !signal.aborted) {
-          try {
-            await updateCampaign(campaignId, (camp) => {
-              ensureSizeAssets(camp, cellId);
-              const cell = camp.matrix.cells.find((c) => c.cellId === cellId);
-              const asset = cell?.sizeAssets.find((a) => a.sizeId === size.id);
-              if (asset) {
-                asset.status = "failed";
-                asset.error = err instanceof Error ? err.message : String(err);
-              }
-            });
-          } catch {
-            /* ignore */
+      await withPlateSlot(async () => {
+        try {
+          assertJobNotCancelled(job.id);
+          touchJob(job, {
+            status: "running",
+            message: `Comfy ${size.aspect}`,
+            progress: 0.08,
+          });
+          await updateCampaign(campaignId, (camp) => {
+            ensureSizeAssets(camp, cellId);
+          });
+          const camp = await getCampaign(campaignId);
+          const gen = await runComfyForCellSize(
+            camp,
+            cellId,
+            size,
+            Boolean(opts.forceRegen),
+            (p, message) => {
+              touchJob(job, {
+                progress: 0.08 + Math.min(0.88, p * 0.88),
+                message,
+              });
+            },
+            { signal, jobId: job.id },
+          );
+          assertJobNotCancelled(job.id);
+          // Do not auto-assemble — operator reviews variants then Assembles from Review
+          touchJob(job, {
+            status: "done",
+            progress: 1,
+            message: `Comfy ready @ ${size.aspect} — review variants, then Assemble on Review`,
+            resultPath: gen?.assetPath ?? null,
+          });
+          finishJobControl(job.id);
+        } catch (err) {
+          if (!isCancelledError(err) && !signal.aborted) {
+            try {
+              await updateCampaign(campaignId, (camp) => {
+                ensureSizeAssets(camp, cellId);
+                const cell = camp.matrix.cells.find((c) => c.cellId === cellId);
+                const asset = cell?.sizeAssets.find((a) => a.sizeId === size.id);
+                if (asset) {
+                  asset.status = "failed";
+                  asset.error = err instanceof Error ? err.message : String(err);
+                }
+              });
+            } catch {
+              /* ignore */
+            }
           }
+          markJobCancelledOrFailed(job, err, signal);
         }
-        markJobCancelledOrFailed(job, err, signal);
-      }
+      });
     })();
   }
   return jobs;

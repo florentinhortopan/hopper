@@ -20,6 +20,10 @@ import {
   normalizeComfyTemplate,
   assemblyRecipeTotalSeconds,
 } from "@attatta/shared";
+import {
+  aspectFramingLines,
+  aspectFramingNegatives,
+} from "./aspectFraming.js";
 import { REPO_ROOT } from "./config.js";
 import { isIngredientActive, railReferencedIds } from "./policy.js";
 import { getTokens, listLibrary } from "./store.js";
@@ -308,12 +312,25 @@ export async function buildPromptPack(
     if (cell.copy.setup) parts.push(`spoken hook energy: ${cell.copy.setup}`);
     if (cell.copy.punchline) parts.push(`punchline beat: ${cell.copy.punchline}`);
     if (brief.offer) parts.push(`offer context: ${brief.offer}`);
+    parts.push("photoreal paid-social video, clean composition, no text overlay");
     parts.push(
-      `photoreal paid-social ${resolvedSize.aspect} video, ${resolvedSize.width}x${resolvedSize.height}, clean composition, no text overlay`,
+      ...aspectFramingLines({
+        size: resolvedSize,
+        hasTalent: Boolean(talent),
+        hasBackground: Boolean(background),
+        hasHands: Boolean(hands) || knob === "hands" || knob === "prop",
+      }),
     );
   } else if (videoPipeline === "bria_replace") {
     parts.push(
       `Replace background of talent talking-head video with: ${phrase(background) || "rail background"}`,
+    );
+    parts.push(
+      ...aspectFramingLines({
+        size: resolvedSize,
+        hasTalent: true,
+        hasBackground: Boolean(background),
+      }),
     );
   } else {
     if (brief.prompt.trim()) parts.push(`campaign brief: ${brief.prompt.trim()}`);
@@ -342,8 +359,14 @@ export async function buildPromptPack(
         "spokesperson in new setting, preserve face identity from reference, change environment only",
       );
     }
+    parts.push("photoreal, clean composition");
     parts.push(
-      `${resolvedSize.aspect} paid social frame, ${resolvedSize.width}x${resolvedSize.height} delivery, photoreal, clean composition`,
+      ...aspectFramingLines({
+        size: resolvedSize,
+        hasTalent: Boolean(talent),
+        hasBackground: Boolean(background),
+        hasHands: Boolean(hands) || knob === "hands" || knob === "prop",
+      }),
     );
   }
 
@@ -374,6 +397,7 @@ export async function buildPromptPack(
     comboItems.attire?.negativeHint,
     comboItems.background?.negativeHint,
     ...props.map((p) => p.negativeHint),
+    ...aspectFramingNegatives(resolvedSize.aspect),
     "deformed hands",
     "extra fingers",
     "blurry face",
@@ -762,7 +786,11 @@ export async function buildIngredientPromptPack(opts: {
       "photoreal, modern cinema look, rich lighting, sharp detail, 35mm depth of field, high dynamic range — not vintage or low-res",
     );
     parts.push(
-      `${size.aspect} frame, ${gen.width}x${gen.height} gen / ${size.width}x${size.height} delivery, clean composition`,
+      ...aspectFramingLines({
+        size,
+        hasTalent: false,
+        hasBackground: true,
+      }),
     );
     if (campaign?.name) parts.push(`campaign mood: ${campaign.name}`);
     if (brief?.prompt?.trim()) {
@@ -896,8 +924,14 @@ export async function buildIngredientPromptPack(opts: {
   }
 
   if (!sceneStill) {
+    parts.push("photoreal, clean composition");
     parts.push(
-      `${size.aspect} paid social frame, ${size.width}x${size.height} delivery, photoreal, clean composition`,
+      ...aspectFramingLines({
+        size,
+        hasTalent: Boolean(talent) && !(isBackground && outputMode === "video"),
+        hasBackground: isBackground || Boolean(background),
+        hasHands: knob === "hands" || knob === "prop",
+      }),
     );
     parts.push("English, photoreal plate for ATTATTA ingredient library");
   }
@@ -906,12 +940,14 @@ export async function buildIngredientPromptPack(opts: {
 
   const scenePeopleOk =
     isBackground && sceneAllowsPeople(operatorPrompt || item.label);
+  const framingNeg = aspectFramingNegatives(size.aspect);
   const negBits = sceneStill
     ? [
         item.negativeHint,
         ...(scenePeopleOk
           ? ["talking head close-up", "portrait selfie", "spokesperson facing camera"]
           : ["person", "people", "human", "face", "portrait", "talking head", "spokesperson"]),
+        ...framingNeg,
         "text overlay",
         "watermark",
         "logo",
@@ -930,6 +966,7 @@ export async function buildIngredientPromptPack(opts: {
           "identity of Video 1 person",
           "same person as reference video",
           "portrait selfie",
+          ...framingNeg,
           "text overlay",
           "watermark",
           "logo",
@@ -943,6 +980,7 @@ export async function buildIngredientPromptPack(opts: {
         attire?.negativeHint,
         background?.negativeHint,
         ...props.map((p) => p.negativeHint),
+        ...framingNeg,
         "deformed hands",
         "extra fingers",
         "blurry face",

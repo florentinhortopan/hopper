@@ -131,8 +131,9 @@ function applyPatches(
 }
 
 /**
- * Still → short MP4 with a subtle Ken Burns move (not a frozen frame).
- * True AI scene motion (I2V) is a separate pipeline; this avoids “video with no motion”.
+ * Still → short MP4 for Remotion. Fit the whole plate into the target size
+ * (no Ken Burns crop/zoom — that was cutting heads when wrapping missing-size
+ * stills). True AI motion is a separate pipeline.
  */
 function stillToMp4(
   imagePath: string,
@@ -142,13 +143,8 @@ function stillToMp4(
   seconds = 5,
 ) {
   const fps = 24;
-  const frames = Math.max(fps, Math.round(seconds * fps));
-  // Oversample then zoompan so we get real camera drift, not a static encode.
-  const vf = [
-    `scale=${Math.round(width * 1.2)}:${Math.round(height * 1.2)}:force_original_aspect_ratio=increase`,
-    `crop=${Math.round(width * 1.2)}:${Math.round(height * 1.2)}`,
-    `zoompan=z='min(1.12,1.02+0.1*on/${frames})':x='iw/2-(iw/zoom/2)+3*sin(on/25)':y='ih/2-(ih/zoom/2)+2*cos(on/30)':d=${frames}:s=${width}x${height}:fps=${fps}`,
-  ].join(",");
+  // Fit inside frame + center pad — preserves talent/background composition.
+  const vf = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1`;
   const res = spawnSync(
     "ffmpeg",
     [
@@ -172,7 +168,6 @@ function stillToMp4(
     { stdio: "pipe" },
   );
   if (res.status !== 0) {
-    // Fallback: static pad (better than failing the whole plate)
     const fallback = spawnSync(
       "ffmpeg",
       [
@@ -184,7 +179,7 @@ function stillToMp4(
         "-t",
         String(seconds),
         "-vf",
-        `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
+        `scale=${width}:${height}`,
         "-c:v",
         "libx264",
         "-pix_fmt",

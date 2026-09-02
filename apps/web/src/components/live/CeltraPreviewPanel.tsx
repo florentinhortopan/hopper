@@ -36,6 +36,9 @@ export function CeltraPreviewPanel({ campaignId, refreshToken }: Props) {
 
   useEffect(() => {
     load();
+    // Poll so Celtra stays live even when SSE/job events are missed.
+    const t = window.setInterval(load, 3000);
+    return () => window.clearInterval(t);
   }, [load, refreshToken]);
 
   async function packageNow() {

@@ -1,28 +1,46 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Job } from "@attatta/shared";
 import { JobProgressRow } from "@/components/JobProgressRow";
-import { LiveThumb } from "@/components/live/LiveThumb";
 import { api } from "@/lib/api";
 
 type Props = {
   campaignId: string;
   /** Bump when bus events imply queue changed. */
   refreshToken?: number;
+  /** Notify parent so Hopper/Celtra can refresh when jobs settle (jobs poll ≠ SSE). */
+  onJobsChange?: (jobs: Job[]) => void;
 };
 
-export function LiveQueuePreview({ campaignId, refreshToken = 0 }: Props) {
+function sortJobsNatural(jobs: Job[]): Job[] {
+  return [...jobs].sort((a, b) => {
+    const ta = Date.parse(a.createdAt) || 0;
+    const tb = Date.parse(b.createdAt) || 0;
+    if (ta !== tb) return ta - tb;
+    return a.id.localeCompare(b.id);
+  });
+}
+
+export function LiveQueuePreview({
+  campaignId,
+  refreshToken = 0,
+  onJobsChange,
+}: Props) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const onJobsChangeRef = useRef(onJobsChange);
+  onJobsChangeRef.current = onJobsChange;
 
   const load = useCallback(() => {
     void api
       .jobs(campaignId)
       .then((list) => {
-        setJobs(list);
+        const ordered = sortJobsNatural(list);
+        setJobs(ordered);
         setError(null);
+        onJobsChangeRef.current?.(ordered);
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, [campaignId]);
@@ -33,11 +51,12 @@ export function LiveQueuePreview({ campaignId, refreshToken = 0 }: Props) {
     return () => window.clearInterval(t);
   }, [load, refreshToken]);
 
-  const active = jobs.filter(
+  const ordered = useMemo(() => sortJobsNatural(jobs), [jobs]);
+  const active = ordered.filter(
     (j) => j.status === "queued" || j.status === "running",
   );
-  const done = jobs.filter((j) => j.status === "done").length;
-  const failed = jobs.filter((j) => j.status === "failed").length;
+  const done = ordered.filter((j) => j.status === "done").length;
+  const failed = ordered.filter((j) => j.status === "failed").length;
 
   async function stopAll() {
     setStopping(true);
@@ -52,13 +71,13 @@ export function LiveQueuePreview({ campaignId, refreshToken = 0 }: Props) {
   }
 
   return (
-    <div className="space-y-2 border-t border-ink-100 px-3 py-3 text-xs">
+    <div className="space-y-1.5 border-t border-ink-100 px-3 py-2 text-xs">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-500">
           Queue
         </h3>
         <span className="text-[10px] text-ink-500">
-          {jobs.length
+          {ordered.length
             ? `${active.length} live · ${done} done · ${failed} failed`
             : "No jobs yet — Generate to enqueue plates"}
         </span>
@@ -78,32 +97,22 @@ export function LiveQueuePreview({ campaignId, refreshToken = 0 }: Props) {
           {error}
         </pre>
       ) : null}
-      {jobs.length > 0 ? (
-        <div className="space-y-2">
-          {jobs.slice(0, 24).map((job) => (
-            <div key={job.id} className="flex items-start gap-2">
-              <LiveThumb
-                filePath={
-                  job.status === "done" ? job.resultPath : null
-                }
-                label={job.cellId || job.id}
-                emptyHint={
-                  job.status === "running" || job.status === "queued"
-                    ? "…"
-                    : "—"
-                }
-              />
-              <ul className="min-w-0 flex-1">
-                <JobProgressRow job={job} onCancelled={load} />
-              </ul>
-            </div>
+      {ordered.length > 0 ? (
+        <ul className="space-y-1">
+          {ordered.slice(0, 24).map((job) => (
+            <JobProgressRow
+              key={job.id}
+              job={job}
+              compact
+              onCancelled={load}
+            />
           ))}
-          {jobs.length > 24 ? (
-            <p className="text-[10px] text-ink-500">
-              +{jobs.length - 24} more — open Advanced → Queue for full list
-            </p>
+          {ordered.length > 24 ? (
+            <li className="text-[10px] text-ink-500">
+              +{ordered.length - 24} more — open Advanced → Queue for full list
+            </li>
           ) : null}
-        </div>
+        </ul>
       ) : null}
     </div>
   );

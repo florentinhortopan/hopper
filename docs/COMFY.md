@@ -4,8 +4,15 @@
 
 ATTATTA’s generative path has two layers:
 
-1. **Library plates** — upload or `POST /library/:id/generate` with `outputMode: "image" | "video"` (default **video**). Video uses the same Bria / MiniMax router as matrix when talent video is present; image is SD still. **One master @ primary campaign size** — do not fan out Comfy across every delivery size (Remotion scales).
-2. **Matrix variants** — each matrix cell is a combo; `Generate variants` runs **video** Comfy jobs into `sizeAssets.genPath`, then Remotion assembles. **BG-only rails** need talent + background (hands/motion optional).
+1. **Library plates** — upload or `POST /library/:id/generate` with `outputMode: "image" | "video"` (default **video**). Video uses the same Bria / MiniMax router as matrix when talent video is present; image is SD still. Plates are typically generated at the campaign **primary** size.
+2. **Matrix / missing-size variants** — each matrix cell + **each selected Settings size** that needs a plate gets its own Comfy job at native gen dims (not a dumb crop of another aspect). Missing-size batch (`enqueueMissingSizeVariantBatch`) rebuilds prompts per size so talent/background are **recomposed** for 9:16 / 4:5 / 1:1 / 16:9.
+
+**Where prompts live (runtime, not static files):**
+
+- Built in `apps/orchestrator/src/promptPack.ts` (`buildPromptPack` for matrix cells, `buildIngredientPromptPack` for library plates).
+- Aspect-aware framing + negatives: `apps/orchestrator/src/aspectFraming.ts` (headroom, safe zones, “recompose don’t crop”).
+- Ingredient copy from `LibraryItem.promptHint` / `negativeHint`; campaign brief / comfy template / brand-look tokens fold in.
+- Cache key: `promptHash` on size assets (includes size dims + prompt text).
 
 **Design tokens** (Tokens step) dress Remotion end cards. Variant Comfy prompts also get a soft `Brand look:` clause from the campaign pack (`comfyStyleHints`, or auto-derived from colors/fonts). Import packs as ATTATTA JSON or CSS variables — not live Figma.
 
@@ -21,7 +28,7 @@ Rail → Matrix “Build from rail”
 
 Matrix “Generate variants”
   → POST /campaigns/:id/generate-variants
-  → One Comfy VIDEO job per needsGen cell @ primary size
+  → One Comfy VIDEO job per needsGen cell × size (native aspect framing)
   → Writes sizeAssets[].genPath (real MP4)
 
 Matrix “generate variants” / Review “Assemble”

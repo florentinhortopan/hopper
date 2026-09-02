@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import type {
   Job,
   MatrixCell,
@@ -64,12 +64,8 @@ export function LiveHopperMatrix({
 
   const axes = useMemo(() => detectComboAxes(cells), [cells]);
   const xAxis = axes[0];
-  const yAxis = axes[1] || axes[0];
-  const canXy = Boolean(xAxis && yAxis && xAxis.key !== yAxis?.key);
-
-  useEffect(() => {
-    if (!canXy && view === "xy") setView("list");
-  }, [canXy, view]);
+  const yAxis = axes[1] || null;
+  const canComboXy = Boolean(xAxis && yAxis && xAxis.key !== yAxis.key);
 
   const selected =
     cells.find((c) => c.cellId === selectedId) || cells[0] || null;
@@ -102,13 +98,12 @@ export function LiveHopperMatrix({
             className={`rounded border px-1.5 py-0.5 text-[10px] ${
               view === "xy"
                 ? "border-ink-900 bg-ink-900 text-white"
-                : "border-ink-200 bg-white"
+                : "border-ink-200 bg-white hover:bg-ink-50"
             }`}
-            disabled={!canXy}
             title={
-              canXy
+              canComboXy
                 ? "Combination grid"
-                : "Need 2+ fanning axes for XY view"
+                : "Variants × sizes coverage grid"
             }
             onClick={() => setView("xy")}
           >
@@ -119,8 +114,9 @@ export function LiveHopperMatrix({
             className={`rounded border px-1.5 py-0.5 text-[10px] ${
               view === "list"
                 ? "border-ink-900 bg-ink-900 text-white"
-                : "border-ink-200 bg-white"
+                : "border-ink-200 bg-white hover:bg-ink-50"
             }`}
+            title="Flat list"
             onClick={() => setView("list")}
           >
             List
@@ -142,7 +138,7 @@ export function LiveHopperMatrix({
         </a>
       </p>
 
-      {view === "xy" && canXy && xAxis && yAxis ? (
+      {view === "xy" && canComboXy && xAxis && yAxis ? (
         <XyGrid
           cells={cells}
           sizes={sizes}
@@ -154,6 +150,14 @@ export function LiveHopperMatrix({
           yKey={yAxis.key}
           yLabel={yAxis.label}
           yValues={yAxis.values}
+          selectedId={selected?.cellId ?? null}
+          onSelect={setSelectedId}
+        />
+      ) : view === "xy" ? (
+        <SizeCoverageGrid
+          cells={cells}
+          sizes={sizes}
+          jobs={jobs}
           selectedId={selected?.cellId ?? null}
           onSelect={setSelectedId}
         />
@@ -307,6 +311,108 @@ function SizeDots({
           </span>
         );
       })}
+    </div>
+  );
+}
+
+/** Fallback XY when only one combo axis — variants × Settings sizes. */
+function SizeCoverageGrid({
+  cells,
+  sizes,
+  jobs,
+  selectedId,
+  onSelect,
+}: {
+  cells: MatrixCell[];
+  sizes: OutputSize[];
+  jobs: Job[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <p className="mb-1 text-[10px] text-ink-500">Variants × sizes</p>
+      <table className="w-full min-w-[16rem] border-collapse text-[10px]">
+        <thead>
+          <tr className="border-b border-ink-200 text-ink-500">
+            <th className="px-1 py-1 text-left font-medium">Variant</th>
+            {sizes.map((s) => (
+              <th
+                key={s.id}
+                className="px-1 py-1 text-center font-medium"
+                title={s.label}
+              >
+                {s.aspect}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {cells.slice(0, 32).map((cell) => {
+            const selected = selectedId === cell.cellId;
+            return (
+              <tr key={cell.cellId} className="border-b border-ink-50">
+                <td className="max-w-[9rem] px-1 py-0.5">
+                  <button
+                    type="button"
+                    className={`w-full truncate rounded px-1 py-0.5 text-left ${
+                      selected
+                        ? "bg-ink-900 text-white"
+                        : "hover:bg-ink-50"
+                    }`}
+                    onClick={() => onSelect(cell.cellId)}
+                    title={cellComboLabel(cell)}
+                  >
+                    <span className="font-mono text-[9px] opacity-70">
+                      {cell.sceneTag || shortId(cell.cellId, 8)}
+                    </span>
+                    <span className="block truncate text-[10px]">
+                      {cellComboLabel(cell)}
+                    </span>
+                  </button>
+                </td>
+                {sizes.map((s) => {
+                  const tone = sizeSlotTone(cell, s, jobs);
+                  return (
+                    <td key={s.id} className="px-1 py-1 text-center">
+                      <button
+                        type="button"
+                        className={`inline-flex items-center gap-1 rounded px-1 py-0.5 ${
+                          tone === "ready"
+                            ? "bg-emerald-50 text-emerald-900"
+                            : tone === "running"
+                              ? "bg-amber-50 text-amber-950"
+                              : tone === "failed"
+                                ? "bg-red-50 text-red-800"
+                                : "bg-ink-50 text-ink-500"
+                        }`}
+                        title={`${s.label}: ${toneLabel(tone)}`}
+                        onClick={() => onSelect(cell.cellId)}
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${toneClass(tone)}`}
+                        />
+                        {tone === "ready"
+                          ? "ok"
+                          : tone === "running"
+                            ? "gen"
+                            : tone === "failed"
+                              ? "fail"
+                              : "—"}
+                      </button>
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {cells.length > 32 ? (
+        <p className="mt-1 text-[10px] text-ink-500">
+          +{cells.length - 32} more — use List or Advanced matrix
+        </p>
+      ) : null}
     </div>
   );
 }

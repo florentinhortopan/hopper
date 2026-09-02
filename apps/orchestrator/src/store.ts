@@ -405,7 +405,16 @@ export function getJob(id: string) {
 
 export function listJobs(campaignId?: string) {
   const all = [...jobs.values()];
-  return campaignId ? all.filter((j) => j.campaignId === campaignId) : all;
+  const filtered = campaignId
+    ? all.filter((j) => j.campaignId === campaignId)
+    : all;
+  // Natural enqueue order (oldest first) — matches chat / generate list order.
+  return filtered.sort((a, b) => {
+    const ta = Date.parse(a.createdAt) || 0;
+    const tb = Date.parse(b.createdAt) || 0;
+    if (ta !== tb) return ta - tb;
+    return a.id.localeCompare(b.id);
+  });
 }
 
 export function campaignOutputPath(

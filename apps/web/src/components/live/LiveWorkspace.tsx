@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Campaign,
+  Job,
   LiveColumnId,
   LiveConnection,
   LiveConnectionId,
@@ -86,6 +87,57 @@ export function LiveWorkspace({ campaignId }: Props) {
     setBriefDraft(c.brief?.prompt || "");
   }, [campaignId]);
 
+  const bumpColumnRefresh = useCallback(() => {
+    setCeltraTick((n) => n + 1);
+    setQueueTick((n) => n + 1);
+    void refresh().catch(() => undefined);
+  }, [refresh]);
+
+  const jobsTerminalSigRef = useRef<string>("");
+  const handleJobsChange = useCallback(
+    (jobs: Job[]) => {
+      const terminal = jobs
+        .filter(
+          (j) =>
+            j.status === "done" ||
+            j.status === "failed" ||
+            j.status === "cancelled",
+        )
+        .map((j) => `${j.id}:${j.status}`)
+        .sort()
+        .join(",");
+      if (terminal === jobsTerminalSigRef.current) return;
+      jobsTerminalSigRef.current = terminal;
+      if (terminal) bumpColumnRefresh();
+    },
+    [bumpColumnRefresh],
+  );
+
+  // While plates are generating, poll campaign so Hopper/Celtra update even if SSE drops.
+  useEffect(() => {
+    let cancelled = false;
+    const poll = () => {
+      void api
+        .jobs(campaignId)
+        .then((jobs) => {
+          if (cancelled) return;
+          const active = jobs.some(
+            (j) => j.status === "queued" || j.status === "running",
+          );
+          if (!active) return;
+          setCeltraTick((n) => n + 1);
+          setQueueTick((n) => n + 1);
+          void refresh().catch(() => undefined);
+        })
+        .catch(() => undefined);
+    };
+    const t = window.setInterval(poll, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, [campaignId, refresh]);
+
   const refreshConnections = useCallback(async () => {
     try {
       const res = await api.liveConnections(campaignId);
@@ -125,18 +177,11 @@ export function LiveWorkspace({ campaignId }: Props) {
       relevant.type === "comfy_publish"
     ) {
       const t = window.setTimeout(() => {
-        setCeltraTick((n) => n + 1);
-        if (
-          relevant.type === "job_update" ||
-          relevant.type === "magic_generate"
-        ) {
-          setQueueTick((n) => n + 1);
-        }
-        void refresh().catch(() => undefined);
-      }, 400);
+        bumpColumnRefresh();
+      }, 350);
       return () => window.clearTimeout(t);
     }
-  }, [events, refresh]);
+  }, [events, bumpColumnRefresh]);
 
   const offerChatPrompt = useCallback(
     (input: {
@@ -735,6 +780,7 @@ export function LiveWorkspace({ campaignId }: Props) {
                   <LiveQueuePreview
                     campaignId={campaignId}
                     refreshToken={queueTick}
+                    onJobsChange={handleJobsChange}
                   />
                 ) : null}
               </div>
