@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CeltraPreview } from "@attatta/shared";
 import {
-  LiveThumb,
   MediaLightbox,
+  SizeMediaFrame,
   cssAspect,
   type MediaLightboxState,
 } from "@/components/live/LiveThumb";
@@ -178,32 +178,34 @@ export function CeltraPreviewPanel({ campaignId, refreshToken }: Props) {
                                   : `${slot.aspect} · ${decisionLabel(slot.decision)}`
                             }
                           >
-                            <LiveThumb
-                              filePath={slot.platePath}
-                              rev={`${slot.sizeId}:${slot.platePath || ""}`}
-                              label={`${row.cellId} · ${slot.aspect}${
-                                slot.width && slot.height
-                                  ? ` (${slot.width}×${slot.height})`
-                                  : ""
-                              }`}
-                              emptyHint="—"
-                              className="!h-10"
-                              frameAspect={cssAspect(slot.aspect)}
-                              onOpenPreview={
-                                slot.platePath
-                                  ? (path) =>
-                                      setLightbox({
-                                        path,
-                                        rev: `${slot.sizeId}:${path}`,
-                                        label: `${row.cellId} · ${slot.aspect}`,
-                                        aspect: slot.aspect,
-                                        width: slot.width ?? undefined,
-                                        height: slot.height ?? undefined,
-                                        sizeId: slot.sizeId,
-                                      })
-                                  : undefined
-                              }
-                            />
+                            <div
+                              className="mx-auto h-12 overflow-hidden"
+                              style={{
+                                aspectRatio: cssAspect(slot.aspect) || "9 / 16",
+                              }}
+                            >
+                              <SizeMediaFrame
+                                path={slot.platePath}
+                                rev={`${slot.sizeId}:${slot.platePath || ""}`}
+                                aspect={slot.aspect}
+                                label={`${row.cellId} · ${slot.aspect}`}
+                                className="h-full w-full border-0"
+                                onOpen={
+                                  slot.platePath
+                                    ? () =>
+                                        setLightbox({
+                                          path: slot.platePath!,
+                                          rev: `${slot.sizeId}:${slot.platePath}`,
+                                          label: `${row.cellId} · ${slot.aspect}`,
+                                          aspect: slot.aspect,
+                                          width: slot.width ?? undefined,
+                                          height: slot.height ?? undefined,
+                                          sizeId: slot.sizeId,
+                                        })
+                                    : undefined
+                                }
+                              />
+                            </div>
                             <span
                               className={`text-[9px] ${
                                 killed

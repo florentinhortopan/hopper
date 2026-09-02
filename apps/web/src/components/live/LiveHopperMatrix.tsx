@@ -8,8 +8,8 @@ import type {
   ReviewEntry,
 } from "@attatta/shared";
 import {
-  LiveThumb,
   MediaLightbox,
+  SizeMediaFrame,
   cellMediaPath,
   cellMediaRev,
   cssAspect,
@@ -261,22 +261,30 @@ export function LiveHopperMatrix({
                   }
                 }}
               >
-                <LiveThumb
-                  filePath={cellMediaPath(
-                    cell,
+                {(() => {
+                  const listSizeId =
                     previewSizeId && selected?.cellId === cell.cellId
                       ? previewSizeId
-                      : firstReadySizeId(cell, sizes),
-                  )}
-                  rev={cellMediaRev(
-                    cell,
-                    previewSizeId && selected?.cellId === cell.cellId
-                      ? previewSizeId
-                      : firstReadySizeId(cell, sizes),
-                  )}
-                  label={cell.cellId}
-                  emptyHint="…"
-                />
+                      : firstReadySizeId(cell, sizes);
+                  const listAspect =
+                    sizes.find((s) => s.id === listSizeId)?.aspect || null;
+                  return (
+                    <div
+                      className="h-12 shrink-0 overflow-hidden rounded"
+                      style={{
+                        aspectRatio: cssAspect(listAspect) || "9 / 16",
+                      }}
+                    >
+                      <SizeMediaFrame
+                        path={cellMediaPath(cell, listSizeId)}
+                        rev={cellMediaRev(cell, listSizeId)}
+                        aspect={listAspect}
+                        label={cell.cellId}
+                        className="h-full w-full border-0"
+                      />
+                    </div>
+                  );
+                })()}
                 <div className="min-w-0 flex-1">
                   <p className="font-mono text-[10px] text-ink-500">
                     {cell.cellId}
@@ -306,23 +314,32 @@ export function LiveHopperMatrix({
 
       {selected ? (
         <div className="rounded-lg border border-ink-200 bg-white p-2">
-          <div className="flex items-start gap-2">
-            <LiveThumb
-              filePath={selectedPath}
-              rev={selectedRev}
-              label={
-                selectedSize
-                  ? `${selected.cellId} · ${selectedSize.aspect}`
-                  : selected.cellId
-              }
-              size="md"
-              frameAspect={cssAspect(selectedSize?.aspect)}
-              onOpenPreview={
-                selectedSize
-                  ? (path) => openSizePreview(selected, selectedSize, path)
-                  : undefined
-              }
-            />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+            <div className="shrink-0">
+              <SizeMediaFrame
+                path={selectedPath}
+                rev={selectedRev}
+                aspect={selectedSize?.aspect}
+                label={
+                  selectedSize
+                    ? `${selected.cellId} · ${selectedSize.aspect}`
+                    : selected.cellId
+                }
+                bay
+                onOpen={
+                  selectedPath && selectedSize
+                    ? () =>
+                        openSizePreview(selected, selectedSize, selectedPath)
+                    : undefined
+                }
+              />
+              {selectedSize ? (
+                <p className="mt-1 font-mono text-[9px] text-ink-500">
+                  {selectedSize.aspect} · {selectedSize.width}×
+                  {selectedSize.height}
+                </p>
+              ) : null}
+            </div>
             <div className="min-w-0 flex-1">
               <p className="font-mono text-[10px] text-ink-500">
                 {selected.cellId}
@@ -344,7 +361,8 @@ export function LiveHopperMatrix({
                   : ""}
               </p>
               <p className="mt-2 text-[9px] uppercase tracking-wide text-ink-500">
-                Sizes — tap thumb to preview · Keep/Kill per size for Celtra
+                Sizes — tap to preview that aspect · Keep/Kill per size for
+                Celtra
               </p>
               <div className="mt-1 flex flex-col gap-1">
                 {sizes.map((s) => {
@@ -362,17 +380,25 @@ export function LiveHopperMatrix({
                           : "border-ink-100"
                       }`}
                     >
-                      <LiveThumb
-                        filePath={path}
-                        rev={sizeAssetMediaRev(selected, s.id)}
-                        label={`${selected.cellId} · ${s.aspect} (${s.width}×${s.height})`}
-                        emptyHint={tone === "running" ? "…" : "—"}
-                        className="!h-9"
-                        frameAspect={cssAspect(s.aspect)}
-                        onOpenPreview={(path) =>
-                          openSizePreview(selected, s, path)
-                        }
-                      />
+                      <div
+                        className="h-10 shrink-0 overflow-hidden"
+                        style={{
+                          aspectRatio: cssAspect(s.aspect) || "9 / 16",
+                        }}
+                      >
+                        <SizeMediaFrame
+                          path={path}
+                          rev={sizeAssetMediaRev(selected, s.id)}
+                          aspect={s.aspect}
+                          label={`${selected.cellId} · ${s.aspect}`}
+                          className="h-full w-full border-0"
+                          onOpen={
+                            path
+                              ? () => openSizePreview(selected, s, path)
+                              : undefined
+                          }
+                        />
+                      </div>
                       <button
                         type="button"
                         className="min-w-0 flex-1 text-left text-[10px]"
@@ -723,12 +749,26 @@ function XyGrid({
                       onClick={() => onSelect(cell.cellId)}
                       title={`${cell.cellId}\n${cellComboLabel(cell)}`}
                     >
-                      <LiveThumb
-                        filePath={cellMediaPath(cell, thumbSize)}
-                        rev={cellMediaRev(cell, thumbSize)}
-                        label={cell.cellId}
-                        emptyHint="…"
-                      />
+                      <div
+                        className="h-14 w-auto overflow-hidden rounded"
+                        style={{
+                          aspectRatio: thumbSize
+                            ? cssAspect(
+                                sizes.find((s) => s.id === thumbSize)?.aspect,
+                              ) || "9 / 16"
+                            : "9 / 16",
+                        }}
+                      >
+                        <SizeMediaFrame
+                          path={cellMediaPath(cell, thumbSize)}
+                          rev={cellMediaRev(cell, thumbSize)}
+                          aspect={
+                            sizes.find((s) => s.id === thumbSize)?.aspect
+                          }
+                          label={cell.cellId}
+                          className="h-full w-full border-0"
+                        />
+                      </div>
                       <span
                         className={`font-mono text-[8px] ${
                           selected ? "text-white/80" : "text-ink-500"
