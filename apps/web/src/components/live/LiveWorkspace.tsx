@@ -8,6 +8,7 @@ import {
   EventFeed,
   useCampaignEventStream,
 } from "@/components/live/EventFeed";
+import { MagicColumnPanel } from "@/components/live/MagicColumnPanel";
 import { api } from "@/lib/api";
 
 type ColState = { open: boolean; flex: number };
@@ -66,9 +67,14 @@ export function LiveWorkspace({ campaignId }: Props) {
       relevant.type === "review_decision" ||
       relevant.type === "job_update" ||
       relevant.type === "celtra_package" ||
-      relevant.type === "magic_generate"
+      relevant.type === "magic_generate" ||
+      relevant.type === "magic_prepare" ||
+      relevant.type === "comfy_publish"
     ) {
-      const t = window.setTimeout(() => setCeltraTick((n) => n + 1), 400);
+      const t = window.setTimeout(() => {
+        setCeltraTick((n) => n + 1);
+        void refresh().catch(() => undefined);
+      }, 400);
       return () => window.clearTimeout(t);
     }
   }, [events]);
@@ -256,35 +262,16 @@ export function LiveWorkspace({ campaignId }: Props) {
               </div>
 
               {id === "magic" ? (
-                <div className="space-y-2 border-b border-ink-100 px-3 py-2 text-xs">
-                  <label className="block">
-                    <span className="text-ink-600">Brief</span>
-                    <textarea
-                      className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-xs"
-                      rows={2}
-                      value={briefDraft}
-                      onChange={(e) => setBriefDraft(e.target.value)}
-                    />
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="rounded bg-ink-900 px-2 py-1 text-white disabled:opacity-40"
-                      disabled={busy !== null}
-                      onClick={() => void runPrepare()}
-                    >
-                      {busy === "prepare" ? "Preparing…" : "Prepare"}
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded border border-ink-200 px-2 py-1 disabled:opacity-40"
-                      disabled={busy !== null || !cells.length}
-                      onClick={() => void runGenerate()}
-                    >
-                      {busy === "generate" ? "Generating…" : "Generate"}
-                    </button>
-                  </div>
-                </div>
+                <MagicColumnPanel
+                  campaignId={campaignId}
+                  campaign={campaign}
+                  briefDraft={briefDraft}
+                  onBriefChange={setBriefDraft}
+                  busy={busy}
+                  onPrepare={runPrepare}
+                  onGenerate={runGenerate}
+                  onImported={refresh}
+                />
               ) : null}
 
               {id === "hopper" ? (
