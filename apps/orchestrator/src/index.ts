@@ -1893,6 +1893,35 @@ app.get("/live/llm-status", async (_req, res) => {
   res.json(getLlmStatus());
 });
 
+app.get("/live/connections", async (req, res) => {
+  try {
+    const { getLiveConnections } = await import("./liveConnections.js");
+    const campaignId = (req.query.campaignId as string) || null;
+    res.json(await getLiveConnections(campaignId));
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.post("/live/connections/:connectionId/resync", async (req, res) => {
+  try {
+    const id = req.params.connectionId;
+    if (id !== "comfy" && id !== "hopper" && id !== "celtra") {
+      res.status(400).json({ error: "connectionId must be comfy|hopper|celtra" });
+      return;
+    }
+    const { resyncLiveConnection } = await import("./liveConnections.js");
+    const campaignId =
+      (req.body?.campaignId as string) ||
+      (req.query.campaignId as string) ||
+      null;
+    const result = await resyncLiveConnection(id, campaignId);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 app.post("/campaigns/:id/package", async (req, res) => {
   try {
     const result = await buildCeltraPackage(req.params.id);

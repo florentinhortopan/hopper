@@ -1,9 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Campaign, LiveColumnId, ReviewEntry } from "@attatta/shared";
+import type {
+  Campaign,
+  LiveColumnId,
+  LiveConnection,
+  LiveConnectionId,
+  ReviewEntry,
+} from "@attatta/shared";
+import { connectionIdForColumn } from "@attatta/shared";
 import { CeltraPreviewPanel } from "@/components/live/CeltraPreviewPanel";
 import { ColumnComposer } from "@/components/live/ColumnComposer";
+import { ColumnConnectionChip } from "@/components/live/ColumnConnectionChip";
 import {
   EventFeed,
   eventVisibleInColumn,
@@ -52,6 +60,9 @@ export function LiveWorkspace({ campaignId }: Props) {
   const [activityOpen, setActivityOpen] = useState<
     Partial<Record<LiveColumnId, boolean>>
   >({});
+  const [connections, setConnections] = useState<
+    Partial<Record<LiveConnectionId, LiveConnection>>
+  >({});
 
   const magicScrollRef = useRef<HTMLDivElement>(null);
   const hopperScrollRef = useRef<HTMLDivElement>(null);
@@ -74,6 +85,17 @@ export function LiveWorkspace({ campaignId }: Props) {
     setBriefDraft(c.brief?.prompt || "");
   }, [campaignId]);
 
+  const refreshConnections = useCallback(async () => {
+    try {
+      const res = await api.liveConnections(campaignId);
+      const map: Partial<Record<LiveConnectionId, LiveConnection>> = {};
+      for (const c of res.connections) map[c.id] = c;
+      setConnections(map);
+    } catch {
+      /* non-fatal */
+    }
+  }, [campaignId]);
+
   useEffect(() => {
     void refresh().catch((e) =>
       setError(e instanceof Error ? e.message : String(e)),
@@ -84,7 +106,10 @@ export function LiveWorkspace({ campaignId }: Props) {
     void api.liveOpen(campaignId).catch(() => undefined);
     offeredKeysRef.current = new Set();
     setChatPrompts([]);
-  }, [campaignId, refresh]);
+    void refreshConnections();
+    const t = window.setInterval(() => void refreshConnections(), 15000);
+    return () => window.clearInterval(t);
+  }, [campaignId, refresh, refreshConnections]);
 
   useEffect(() => {
     const relevant = events[0];
@@ -546,7 +571,29 @@ export function LiveWorkspace({ campaignId }: Props) {
               style={{ flex: state.flex * (openCount === 1 ? 1.2 : 1) }}
             >
               <div className="flex shrink-0 items-center justify-between gap-2 border-b border-ink-200 px-3 py-2">
-                <h2 className="text-sm font-medium">{label}</h2>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h2 className="text-sm font-medium">{label}</h2>
+                  <ColumnConnectionChip
+                    connectionId={connectionIdForColumn(id)}
+                    connection={
+                      connections[connectionIdForColumn(id)] ?? null
+                    }
+                    campaignId={campaignId}
+                    onResynced={(next) => {
+                      setConnections((prev) => ({
+                        ...prev,
+                        [next.id]: next,
+                      }));
+                      if (next.id === "celtra") {
+                        setCeltraTick((n) => n + 1);
+                      }
+                      if (next.id === "hopper" || next.id === "comfy") {
+                        setQueueTick((n) => n + 1);
+                        void refresh().catch(() => undefined);
+                      }
+                    }}
+                  />
+                </div>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"

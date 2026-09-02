@@ -22,6 +22,8 @@ ATTATTA is the **source of truth** for creative → review → delivery. The Liv
 Each column has **one scroll body** (header + composer fixed). Nested panel scrollers are avoided so the pointer always scrolls the column.  
 **Thumbnails:** ingredients, variant plates, Hopper review cells, Celtra matrix rows, and completed queue jobs show expandable previews when media exists.
 
+Each column header shows an **API chip** (dot + label): Magic→ComfyUI, Hopper→simulated review bus, Celtra→package/matrix (future ingest API). Tap to open status + **Resync**.
+
 Columns expand/collapse independently (at least one stays open).
 
 ## Realtime (MVP)

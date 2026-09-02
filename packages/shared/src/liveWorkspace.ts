@@ -57,3 +57,54 @@ export const CeltraPreviewSchema = z.object({
   updatedAt: z.string(),
 });
 export type CeltraPreview = z.infer<typeof CeltraPreviewSchema>;
+
+/** Live workspace API connection chips (column headers). */
+export const LiveConnectionIdSchema = z.enum(["comfy", "hopper", "celtra"]);
+export type LiveConnectionId = z.infer<typeof LiveConnectionIdSchema>;
+
+export const LiveConnectionStateSchema = z.enum([
+  "ok",
+  "degraded",
+  "down",
+  "simulated",
+]);
+export type LiveConnectionState = z.infer<typeof LiveConnectionStateSchema>;
+
+export const LiveConnectionSchema = z.object({
+  id: LiveConnectionIdSchema,
+  /** Short chip label */
+  label: z.string(),
+  state: LiveConnectionStateSchema,
+  detail: z.string(),
+  endpoint: z.string().default(""),
+  lastCheckedAt: z.string(),
+  lastSyncedAt: z.string().nullable().default(null),
+  /** Extra bullets for the popup */
+  notes: z.array(z.string()).default([]),
+});
+export type LiveConnection = z.infer<typeof LiveConnectionSchema>;
+
+export const LiveConnectionsResponseSchema = z.object({
+  connections: z.array(LiveConnectionSchema),
+  checkedAt: z.string(),
+});
+export type LiveConnectionsResponse = z.infer<
+  typeof LiveConnectionsResponseSchema
+>;
+
+export const LiveConnectionResyncResultSchema = z.object({
+  connection: LiveConnectionSchema,
+  message: z.string(),
+});
+export type LiveConnectionResyncResult = z.infer<
+  typeof LiveConnectionResyncResultSchema
+>;
+
+/** Map live column → connection chip. */
+export function connectionIdForColumn(
+  column: LiveColumnId,
+): LiveConnectionId {
+  if (column === "magic") return "comfy";
+  if (column === "hopper") return "hopper";
+  return "celtra";
+}

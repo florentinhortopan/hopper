@@ -376,6 +376,25 @@ export const api = {
     req<{ configured: boolean; baseUrl: string; model: string }>(
       "/live/llm-status",
     ),
+  liveConnections: (campaignId?: string) => {
+    const q = campaignId
+      ? `?campaignId=${encodeURIComponent(campaignId)}`
+      : "";
+    return req<import("@attatta/shared").LiveConnectionsResponse>(
+      `/live/connections${q}`,
+    );
+  },
+  liveConnectionResync: (
+    connectionId: "comfy" | "hopper" | "celtra",
+    campaignId?: string,
+  ) =>
+    req<import("@attatta/shared").LiveConnectionResyncResult>(
+      `/live/connections/${connectionId}/resync`,
+      {
+        method: "POST",
+        body: JSON.stringify(campaignId ? { campaignId } : {}),
+      },
+    ),
   /** Absolute URL for SSE (EventSource cannot use relative path with API host). */
   campaignEventsStreamUrl: (id: string, after?: string) => {
     const q = after ? `?after=${encodeURIComponent(after)}` : "";
