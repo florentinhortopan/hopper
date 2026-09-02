@@ -237,6 +237,26 @@ export function LiveWorkspace({ campaignId }: Props) {
     });
   }, [magicReady?.importReview, magicReady?.importId, offerChatPrompt]);
 
+  // After prepare / ingredients rebuild → pick combos in Hopper
+  useEffect(() => {
+    if (!campaign?.matrix.cells.length) return;
+    const prepareEv = events.find((e) => e.type === "magic_prepare");
+    const matrixEpoch =
+      prepareEv?.id ||
+      campaign.matrix.cells.map((c) => c.cellId).join(",");
+    const available = campaign.matrix.cells.length;
+    const selected = campaign.matrix.cells.filter(
+      (c) => c.selectedForGen !== false,
+    ).length;
+    offerChatPrompt({
+      column: "hopper",
+      key: `combos:${matrixEpoch}`,
+      summary: "Pick combinations in Hopper",
+      detail: `${available} combo(s) available · ${selected} selected for generate. Magic’s generation matrix mirrors Hopper.`,
+      primaryLabel: "Open Hopper",
+    });
+  }, [campaign?.matrix.cells, events, offerChatPrompt]);
+
   // Magic: prepare ready → generate (once per prepare epoch; not after generate)
   useEffect(() => {
     if (!magicReady?.ready || !campaign) return;
@@ -248,14 +268,18 @@ export function LiveWorkspace({ campaignId }: Props) {
         (!prepareAt || e.at >= prepareAt),
     );
     if (generatedAfter) return;
+    const selectedCells = campaign.matrix.cells.filter(
+      (c) => c.selectedForGen !== false,
+    );
+    if (!selectedCells.length) return;
     const sizes = campaign.outputSizes || [];
-    const missing = missingSizeSlotCount(campaign.matrix.cells, sizes);
+    const missing = missingSizeSlotCount(selectedCells, sizes);
     const sizeLabel = sizes.map((s) => s.aspect).join(", ") || "none";
     const key = `generate:${prepareEv?.id || `v${magicReady.variantCount}`}`;
     offerChatPrompt({
       column: "magic",
       key,
-      summary: "Checks look good — generate plates?",
+      summary: `Generate ${selectedCells.length} selected combo(s)?`,
       detail:
         missing > 0
           ? `${magicReady.detail}. Settings sizes (${sizeLabel}): ${missing} plate×size slot(s) still empty.`
@@ -514,6 +538,11 @@ export function LiveWorkspace({ campaignId }: Props) {
     }
     if (prompt.key.startsWith("package:")) {
       await runPackage();
+      return;
+    }
+    if (prompt.key.startsWith("combos:")) {
+      focusColumn("hopper");
+      closeChatPrompt(prompt.key, "acted");
       return;
     }
     if (

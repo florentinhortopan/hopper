@@ -189,6 +189,11 @@ export const MatrixCellSchema = z.object({
   copy: CopySchema,
   designTokenPackId: z.string(),
   needsGen: z.boolean().default(false),
+  /**
+   * Hopper combo select — Magic Generate only runs cells with this true.
+   * Full cartesian stays in the matrix; operators uncheck unwanted pairings.
+   */
+  selectedForGen: z.boolean().default(true),
   previewOk: z.boolean().default(false),
   /** @deprecated prefer sizeAssets — kept for single-size BC */
   outputPath: z.string().nullable().default(null),

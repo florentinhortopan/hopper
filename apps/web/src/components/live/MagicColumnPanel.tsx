@@ -92,17 +92,22 @@ export function MagicColumnPanel({
     );
   }, [loadPlanAndIngredients]);
 
+  // Hopper combo toggles refresh campaign — reload plan so generation matrix mirrors selection
+  const selectionKey = (campaign?.matrix.cells ?? [])
+    .map((c) => `${c.cellId}:${c.selectedForGen !== false ? 1 : 0}`)
+    .join(",");
   useEffect(() => {
-    void api
-      .outputSizes()
-      .then(setSizeCatalog)
-      .catch(() => undefined);
-  }, []);
+    if (!selectionKey) return;
+    void loadPlanAndIngredients().catch(() => undefined);
+  }, [selectionKey, coverageToken, loadPlanAndIngredients]);
 
   useEffect(() => {
     if (!onReadinessChange) return;
+    const available = campaign?.matrix.cells.length ?? 0;
     const variantCount =
-      plan?.variants.length ?? campaign?.matrix.cells.length ?? 0;
+      plan?.variants.length ??
+      campaign?.matrix.cells.filter((c) => c.selectedForGen !== false).length ??
+      0;
     const ready = Boolean(plan?.canContinue && variantCount > 0);
     const blocked = plan && !plan.canContinue
       ? plan.reasons[0] || "Checks incomplete"
@@ -111,7 +116,7 @@ export function MagicColumnPanel({
       ready,
       variantCount,
       detail: ready
-        ? `${variantCount} variant(s) ready to generate`
+        ? `${variantCount} selected · ${available} available — ready to generate`
         : blocked || "Run prepare until the checklist is green",
       importReview: importSession?.status === "review",
       importId: importSession?.status === "review" ? importSession.id : null,
@@ -120,11 +125,18 @@ export function MagicColumnPanel({
     plan?.canContinue,
     plan?.variants.length,
     plan?.reasons,
-    campaign?.matrix.cells.length,
+    campaign?.matrix.cells,
     importSession?.status,
     importSession?.id,
     onReadinessChange,
   ]);
+
+  useEffect(() => {
+    void api
+      .outputSizes()
+      .then(setSizeCatalog)
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!importSession) return;
@@ -510,7 +522,15 @@ export function MagicColumnPanel({
 
       <div>
         <h3 className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-500">
-          Variant plan ({plan?.variants.length ?? campaign?.matrix.cells.length ?? 0})
+          Generation matrix (
+          {plan?.variants.length ??
+            campaign?.matrix.cells.filter((c) => c.selectedForGen !== false)
+              .length ??
+            0}
+          {campaign?.matrix.cells.length
+            ? ` selected · ${campaign.matrix.cells.length} available`
+            : ""}
+          )
           {plan?.workflowSource ? (
             <span className="ml-1 normal-case tracking-normal text-ink-400">
               · workflow {plan.workflowSource}
@@ -519,7 +539,9 @@ export function MagicColumnPanel({
         </h3>
         {(plan?.variants.length ?? 0) === 0 ? (
           <p className="mt-1 text-[10px] text-ink-500">
-            Prepare builds the variant list from activations + brief.
+            {campaign?.matrix.cells.length
+              ? "No combos selected — check combinations in Hopper."
+              : "Prepare builds the combo grid from activations + brief."}
           </p>
         ) : (
           <ul className="mt-1 space-y-1">
@@ -548,7 +570,7 @@ export function MagicColumnPanel({
                       ) : null}
                     </p>
                     <p className="truncate text-ink-800">
-                      {cell ? cellComboLabel(cell) : v.label}
+                      {v.label || (cell ? cellComboLabel(cell) : v.cellId)}
                     </p>
                     {v.needsGen ? (
                       <span className="text-amber-800">Needs Comfy plate</span>
@@ -559,6 +581,11 @@ export function MagicColumnPanel({
                 </li>
               );
             })}
+            {(plan?.variants.length ?? 0) > 12 ? (
+              <li className="text-ink-500">
+                +{(plan?.variants.length ?? 0) - 12} more selected
+              </li>
+            ) : null}
           </ul>
         )}
       </div>
@@ -566,7 +593,7 @@ export function MagicColumnPanel({
       {campaign ? (
         <LiveMagicSizeCoverage
           campaignId={campaignId}
-          cells={campaign.matrix.cells}
+          cells={campaign.matrix.cells.filter((c) => c.selectedForGen !== false)}
           sizes={campaign.outputSizes || []}
           refreshToken={coverageToken}
         />

@@ -4,11 +4,14 @@ import {
   MagicWorkflowPackageSchema,
   comfyTemplateFromMagicPackage,
   assemblyRecipeFromMagicPackage,
+  comfyGraphSuggestsBriaBg,
   isMagicManifestFilename,
   isMagicWorkflowFilename,
   isMagicWorkflowUrlFilename,
   looksLikeComfyApiGraph,
+  looksLikeComfyUiWorkflow,
   magicOutputSizes,
+  magicPackageFromBriaComfyHint,
   MAGIC_COMFY_TEMPLATE,
   MAGIC_ASSEMBLY_RECIPE,
   normalizeComfyTemplate,
@@ -192,9 +195,21 @@ export async function detectMagicWorkflowFromImport(
     } catch {
       continue;
     }
-    if (looksLikeComfyApiGraph(data)) {
+    if (looksLikeComfyApiGraph(data) || looksLikeComfyUiWorkflow(data)) {
+      if (comfyGraphSuggestsBriaBg(data)) {
+        const pkg = magicPackageFromBriaComfyHint(name);
+        warnings.push(
+          `${name}: Bria BG-replace Comfy graph — mapped to talent_bg_video_v1 (raw nodes not executed; select combos in Hopper)`,
+        );
+        return {
+          source: "imported",
+          package: pkg,
+          detail: `Bria BG hint from ${name}`,
+          warnings,
+        };
+      }
       warnings.push(
-        `${name}: ComfyUI API graph detected — not executed in Magic MVP; using AI/preset template`,
+        `${name}: ComfyUI graph detected — not executed in Magic MVP; using AI/preset template`,
       );
       continue;
     }

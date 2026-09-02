@@ -347,6 +347,7 @@ async function main() {
         copy,
         designTokenPackId: DEFAULT_BRAND_TOKEN_ID,
         needsGen: false,
+        selectedForGen: true,
         previewOk: false,
         outputPath: null,
         previewPath: null,

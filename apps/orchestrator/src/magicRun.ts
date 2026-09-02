@@ -37,7 +37,7 @@ import {
   mergeBriefHint,
   parseMagicWorkflowJson,
 } from "./magicWorkflow.js";
-import { deriveRailFromActivations, evaluateCampaignPolicy } from "./policy.js";
+import { deriveRailFromActivations, evaluateCampaignPolicy, attireFanAxis } from "./policy.js";
 import {
   getCampaign,
   listLibrary,
@@ -330,11 +330,7 @@ export function buildMagicSparse(campaign: Campaign, lib: LibraryItem[]): Campai
     : [hero.handsId].filter(Boolean);
   if (!handsIds.length) handsIds.push("");
 
-  const attireIds: (string | null)[] = openKnobs.includes("attire")
-    ? rail.allowedAttireIds.length
-      ? rail.allowedAttireIds
-      : [hero.attireId]
-    : [hero.attireId];
+  const attireIds = attireFanAxis(rail);
   const backgroundIds: (string | null)[] = openKnobs.includes("background")
     ? rail.allowedBackgroundIds.length
       ? rail.allowedBackgroundIds
@@ -348,7 +344,6 @@ export function buildMagicSparse(campaign: Campaign, lib: LibraryItem[]): Campai
         : [null]
     : [null];
 
-  if (!attireIds.length) attireIds.push(null);
   if (!backgroundIds.length) backgroundIds.push(null);
   if (!propAxis.length) propAxis.push(null);
 
@@ -403,6 +398,7 @@ export function buildMagicSparse(campaign: Campaign, lib: LibraryItem[]): Campai
             copy: defaultCopy,
             designTokenPackId: campaign.designTokenPackId,
             needsGen,
+            selectedForGen: true,
             previewOk: false,
             outputPath: null,
             previewPath: null,
@@ -436,6 +432,7 @@ export function buildMagicSparse(campaign: Campaign, lib: LibraryItem[]): Campai
             draft.promptOverride = live.promptOverride ?? null;
             draft.negativeOverride = live.negativeOverride ?? null;
             draft.sceneTag = ensureSceneTag(live, campaign.assemblyRecipe);
+            draft.selectedForGen = live.selectedForGen !== false;
             draft.sizeAssets = sizes.map((s) => {
               const old = live.sizeAssets?.find((a) => a.sizeId === s.id);
               return {
@@ -977,18 +974,29 @@ function finalizeMagicPrepareResult(args: {
   ];
 
   const libById = new Map(lib.map((i) => [i.id, i]));
-  const variants: MagicVariantPlanRow[] = campaign.matrix.cells.map((cell) => {
+  const variants: MagicVariantPlanRow[] = campaign.matrix.cells
+    .filter((cell) => cell.selectedForGen !== false)
+    .map((cell) => {
     const fillNotes: string[] = [];
     const talentLabel =
       libById.get(cell.talentTakeId)?.label || cell.talentTakeId || "—";
+    const attireLabel = cell.attireId
+      ? libById.get(cell.attireId)?.label || cell.attireId
+      : "no attire";
+    const bgLabel = cell.backgroundId
+      ? libById.get(cell.backgroundId)?.label || cell.backgroundId
+      : null;
     const handsLabel = cell.handsId
       ? libById.get(cell.handsId)?.label || cell.handsId
-      : "(no hands)";
+      : null;
     if (!cell.handsId) fillNotes.push("No hands plate — workflow/AI prompt");
+    if (cell.attireId) {
+      fillNotes.push(`Attire ${attireLabel}`);
+    } else if (cell.backgroundId) {
+      fillNotes.push("BG-only (Bria path when video)");
+    }
     if (cell.backgroundId) {
-      fillNotes.push(
-        `BG ${libById.get(cell.backgroundId)?.label || cell.backgroundId}`,
-      );
+      fillNotes.push(`BG ${bgLabel}`);
     }
     if (copySource === "ai" || copySource === "preset") {
       fillNotes.push(`Copy ${copySource}-filled from brief`);
@@ -999,13 +1007,13 @@ function finalizeMagicPrepareResult(args: {
     if (cell.needsGen) fillNotes.push("Will run Comfy generate");
     else fillNotes.push("Assemble-only (no Comfy)");
 
+    const bits = [talentLabel, attireLabel];
+    if (bgLabel) bits.push(bgLabel);
+    if (handsLabel) bits.push(handsLabel);
+
     return {
       cellId: cell.cellId,
-      label: `${talentLabel} × ${handsLabel}${
-        cell.backgroundId
-          ? ` × ${libById.get(cell.backgroundId)?.label || "bg"}`
-          : ""
-      }`,
+      label: bits.join(" × "),
       talentTakeId: cell.talentTakeId,
       handsId: cell.handsId,
       attireId: cell.attireId,
@@ -1019,6 +1027,19 @@ function finalizeMagicPrepareResult(args: {
       fillNotes,
     };
   });
+
+  const selectedCount = variants.length;
+  const availableCount = campaign.matrix.cells.length;
+  // Patch variants checklist detail with selection math
+  const variantsGap = gapsFilled.find((g) => g.id === "variants");
+  if (variantsGap && availableCount > 0) {
+    variantsGap.detail = `${selectedCount} selected · ${availableCount} available · knobs: ${
+      campaign.rail.openKnobs.length
+        ? campaign.rail.openKnobs.join(", ")
+        : "none (hero only)"
+    }`;
+    variantsGap.ok = selectedCount > 0;
+  }
 
   const gate = magicCanContinue(gapsFilled);
   const result = {
@@ -1074,8 +1095,13 @@ export async function generateMagicCampaign(
     throw new Error("No matrix cells — run magic prepare first");
   }
   const cellIds = campaign.matrix.cells
-    .filter((c) => c.needsGen)
+    .filter((c) => c.needsGen && c.selectedForGen !== false)
     .map((c) => c.cellId);
+  if (!cellIds.length) {
+    throw new Error(
+      "No combos selected for generate — pick combinations in Hopper first",
+    );
+  }
   // Fill every campaign Settings size that is still missing (not only primary).
   const { enqueueMissingSizeVariantBatch } = await import("./jobs.js");
   const jobs = await enqueueMissingSizeVariantBatch(

@@ -117,6 +117,7 @@ import {
   publishComfyIngredient,
 } from "./comfyPublish.js";
 import {
+  attireFanAxis,
   deriveRailFromActivations,
   evaluateCampaignPolicy,
   pruneRailToActive,
@@ -1279,6 +1280,8 @@ app.patch("/campaigns/:id/cells/:cellId", async (req, res) => {
         negativeOverride: z.string().nullable().optional(),
         sceneSlots: z.array(SceneSlotSchema).optional(),
         sceneTag: z.string().nullable().optional(),
+        /** Hopper combo select — include in Magic Generate. */
+        selectedForGen: z.boolean().optional(),
       })
       .parse(req.body);
     const resolved = resolveMatrixCell(campaign, req.params.cellId);
@@ -1289,6 +1292,9 @@ app.patch("/campaigns/:id/cells/:cellId", async (req, res) => {
     const cell = resolved.cell;
     if (body.genOmitIds !== undefined) {
       cell.genOmitIds = [...new Set(body.genOmitIds.filter(Boolean))];
+    }
+    if (body.selectedForGen !== undefined) {
+      cell.selectedForGen = body.selectedForGen;
     }
     if (body.promptOverride !== undefined) {
       const t = (body.promptOverride ?? "").trim();
@@ -1346,11 +1352,7 @@ app.post("/campaigns/:id/matrix/build-sparse", async (req, res) => {
   const defaultCellCopy =
     rail.allowedCopy.length > 0 ? rail.allowedCopy[0]! : defaultCopy;
 
-  const attireIds: (string | null)[] = openKnobs.includes("attire")
-    ? rail.allowedAttireIds.length > 0
-      ? rail.allowedAttireIds
-      : [hero.attireId].filter(Boolean)
-    : [hero.attireId];
+  const attireIds = attireFanAxis(rail);
   const backgroundIds: (string | null)[] = openKnobs.includes("background")
     ? rail.allowedBackgroundIds.length > 0
       ? rail.allowedBackgroundIds
@@ -1364,7 +1366,6 @@ app.post("/campaigns/:id/matrix/build-sparse", async (req, res) => {
         : [null]
     : [null]; // closed: keep hero.propIds on each cell (not fanned)
 
-  if (attireIds.length === 0) attireIds.push(null);
   if (backgroundIds.length === 0) backgroundIds.push(null);
   if (propAxis.length === 0) propAxis.push(null);
 
@@ -1420,6 +1421,7 @@ app.post("/campaigns/:id/matrix/build-sparse", async (req, res) => {
             copy: defaultCellCopy,
             designTokenPackId: campaign.designTokenPackId,
             needsGen,
+            selectedForGen: true,
             previewOk: false,
             outputPath: null,
             previewPath: null,
@@ -1454,6 +1456,7 @@ app.post("/campaigns/:id/matrix/build-sparse", async (req, res) => {
             draft.promptOverride = live.promptOverride ?? null;
             draft.negativeOverride = live.negativeOverride ?? null;
             draft.sceneTag = ensureSceneTag(live, campaign.assemblyRecipe);
+            draft.selectedForGen = live.selectedForGen !== false;
             draft.sizeAssets = sizes.map((s) => {
               // Never inherit genPath from a different aspect
               const old = live.sizeAssets?.find((a) => a.sizeId === s.id);

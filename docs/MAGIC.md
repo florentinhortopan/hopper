@@ -14,10 +14,24 @@ Zip (or folder) may include:
 |------|---------|
 | Media (mp4/png/…) | Library ingredients (classified on import) |
 | `attatta.workflow.json` / `*.workflow.json` | ATTATTA workflow template |
-| `api.json` / `*.api.json` / Comfy API or canvas (`nodes`/`links`) graphs | Listed as **workflow** (not an ingredient kind). Sanity-checked (structure + optional live Comfy `/object_info` for API graphs). Not executed in Magic MVP — prepare uses AI/preset template |
+| `api.json` / `*.api.json` / Comfy API or canvas (`nodes`/`links`) graphs | Listed as **workflow** (not an ingredient kind). Sanity-checked. Raw graphs are **not executed** node-for-node. **BriaVideoReplaceBackground** graphs map to `talent_bg_video_v1` so BG-only combos use Bria; attire+BG still MiniMax |
 | `workflow.url` | Single HTTPS URL to a workflow JSON |
 | `manifest.json` / `attatta.manifest.json` | Optional `workflowUrl`, `brief`, template fields |
 | `brief.json` | Prefill brief |
+
+## Combos: Hopper select → Magic generate
+
+1. **Prepare** builds a **full cartesian** sparse matrix from active ingredients (e.g. `none|attire` × each background when both kinds are active).
+2. **Hopper** owns combo checkboxes (`selectedForGen`). Chat prompts you to pick combinations when ingredients/matrix land.
+3. **Magic** generation matrix lists **selected** combos only and updates when Hopper toggles.
+4. **Generate** queues only `needsGen && selectedForGen` cells (per Settings sizes).
+
+Odd pairings stay available unchecked; sensible pairings (baker×restaurant, swimsuit×beach) are operator-selected.
+
+Pipelines (unchanged picker):
+
+- BG-only cell → Bria (`talent_bg_video_v1`)
+- Attire / prop / hands on the cell → MiniMax blend (`talent_variant_video_v1`)
 
 ## Workflow JSON (ATTATTA-native)
 
@@ -45,13 +59,13 @@ Zip (or folder) may include:
 }
 ```
 
-Raw ComfyUI `api.json` graphs are **not** executed in Magic MVP — prepare falls back to AI/preset for workflow + copy.
+Raw ComfyUI graphs are **not** executed node-for-node. Bria BG-replace graphs map to `talent_bg_video_v1`; other graphs fall back to AI/preset for workflow + copy.
 
 ## If no workflow in the package
 
 `POST /campaigns/:id/magic/prepare` synthesizes `comfyTemplate` + copy + prompt hints from the brief (LLM when `ATTATTA_LLM_API_KEY` is set; otherwise `magic_att_v1` heuristics). Response includes:
 - `gapsFilled` — readiness checklist (brief, workflow, talent, hands, copy, tokens, connectors, variants)
-- `variants` — one row per sparse matrix cell (Generate list)
+- `variants` — selected sparse matrix cells (Generate list; Hopper `selectedForGen`)
 
 ## API
 

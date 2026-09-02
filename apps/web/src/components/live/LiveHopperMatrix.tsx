@@ -198,15 +198,62 @@ export function LiveHopperMatrix({
     }
   }
 
+  async function setSelectedForGen(cellId: string, selectedForGen: boolean) {
+    setBusyId(`sel:${cellId}`);
+    try {
+      await api.patchCell(campaignId, cellId, { selectedForGen });
+      await onChanged();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function setAllSelectedForGen(selectedForGen: boolean) {
+    setBusyId("sel:all");
+    try {
+      await Promise.all(
+        cells.map((c) =>
+          api.patchCell(campaignId, c.cellId, { selectedForGen }),
+        ),
+      );
+      await onChanged();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const selectedForGenCount = cells.filter(
+    (c) => c.selectedForGen !== false,
+  ).length;
+
   return (
     <div className="space-y-3 border-b border-ink-100 px-3 py-2 text-xs">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-500">
-          Matrix · review
+          Matrix · combos
         </h3>
         <span className="text-[10px] text-ink-500">
-          {cells.length} combo(s) · {sizes.length} size(s)
+          {selectedForGenCount} of {cells.length} selected for generate ·{" "}
+          {sizes.length} size(s)
         </span>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            className="rounded border border-ink-200 px-1.5 py-0.5 text-[9px] hover:bg-ink-50 disabled:opacity-40"
+            disabled={busyId === "sel:all" || !cells.length}
+            onClick={() => void setAllSelectedForGen(true)}
+          >
+            Select all
+          </button>
+          <button
+            type="button"
+            className="rounded border border-ink-200 px-1.5 py-0.5 text-[9px] hover:bg-ink-50 disabled:opacity-40"
+            disabled={busyId === "sel:all" || !cells.length}
+            onClick={() => void setAllSelectedForGen(false)}
+          >
+            Select none
+          </button>
+        </div>
         <div className="ml-auto flex gap-1">
           <button
             type="button"
@@ -240,6 +287,7 @@ export function LiveHopperMatrix({
       </div>
 
       <p className="text-[10px] text-ink-500">
+        Check combos to generate — Magic’s generation list mirrors this.{" "}
         <a className="underline" href={`/campaigns/${campaignId}/matrix`}>
           Advanced matrix
         </a>
@@ -268,6 +316,10 @@ export function LiveHopperMatrix({
           selectedId={selected?.cellId ?? null}
           previewSizeId={previewSizeId}
           onSelect={selectCell}
+          onToggleSelectedForGen={(cellId, on) =>
+            void setSelectedForGen(cellId, on)
+          }
+          selectBusy={busyId?.startsWith("sel:") ?? false}
         />
       ) : view === "xy" ? (
         <SizeCoverageGrid
@@ -278,11 +330,16 @@ export function LiveHopperMatrix({
           previewSizeId={previewSizeId}
           onSelect={selectCell}
           onOpenSize={openSizePreview}
+          onToggleSelectedForGen={(cellId, on) =>
+            void setSelectedForGen(cellId, on)
+          }
+          selectBusy={busyId?.startsWith("sel:") ?? false}
         />
       ) : (
         <ul className="space-y-1.5">
           {cells.map((cell) => {
             const open = expandedIds.has(cell.cellId);
+            const forGen = cell.selectedForGen !== false;
             const listSizeId =
               previewSizeId && selected?.cellId === cell.cellId
                 ? previewSizeId
@@ -293,74 +350,96 @@ export function LiveHopperMatrix({
               <li
                 key={cell.cellId}
                 className={`rounded border ${
-                  open
-                    ? "border-ink-900 bg-white"
-                    : selected?.cellId === cell.cellId
-                      ? "border-ink-300 bg-white"
-                      : "border-ink-100 bg-white/60"
+                  !forGen
+                    ? "border-ink-100 bg-ink-50/50 opacity-70"
+                    : open
+                      ? "border-ink-900 bg-white"
+                      : selected?.cellId === cell.cellId
+                        ? "border-ink-300 bg-white"
+                        : "border-ink-100 bg-white/60"
                 }`}
               >
-                <div
-                  role="button"
-                  tabIndex={0}
-                  className="flex w-full cursor-pointer items-start gap-2 px-1.5 py-1 text-left"
-                  aria-expanded={open}
-                  onClick={() => toggleExpand(cell.cellId)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      toggleExpand(cell.cellId);
-                    }
-                  }}
-                >
-                  <span
-                    className="mt-3 shrink-0 text-[10px] text-ink-500"
-                    aria-hidden
+                <div className="flex w-full items-start gap-2 px-1.5 py-1">
+                  <label
+                    className="mt-3 shrink-0"
+                    title="Include in Magic generate"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    {open ? "▾" : "▸"}
-                  </span>
+                    <input
+                      type="checkbox"
+                      className="accent-ink-900"
+                      checked={forGen}
+                      disabled={busyId === `sel:${cell.cellId}` || busyId === "sel:all"}
+                      onChange={(e) =>
+                        void setSelectedForGen(cell.cellId, e.target.checked)
+                      }
+                    />
+                  </label>
                   <div
-                    className="h-12 shrink-0 overflow-hidden rounded"
-                    style={{
-                      aspectRatio: cssAspect(listAspect) || "9 / 16",
+                    role="button"
+                    tabIndex={0}
+                    className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 text-left"
+                    aria-expanded={open}
+                    onClick={() => toggleExpand(cell.cellId)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleExpand(cell.cellId);
+                      }
                     }}
                   >
-                    <SizeMediaFrame
-                      path={cellMediaPath(cell, listSizeId)}
-                      rev={cellMediaRev(cell, listSizeId)}
-                      aspect={listAspect}
-                      label={cell.cellId}
-                      className="h-full w-full border-0"
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-mono text-[10px] text-ink-500">
-                      {cell.cellId}
-                      {cell.sceneTag ? ` · ${cell.sceneTag}` : ""}
-                    </p>
-                    <p className="truncate text-[11px] text-ink-800">
-                      {cellComboLabel(cell)}
-                    </p>
-                    <SizeDots
-                      cell={cell}
-                      sizes={sizes}
-                      jobs={jobs}
-                      activeSizeId={
-                        selected?.cellId === cell.cellId ? previewSizeId : null
-                      }
-                      onSizeTap={(size) => {
-                        if (!open) {
-                          setExpandedIds((prev) =>
-                            new Set(prev).add(cell.cellId),
-                          );
-                        }
-                        openSizePreview(cell, size);
+                    <span
+                      className="mt-3 shrink-0 text-[10px] text-ink-500"
+                      aria-hidden
+                    >
+                      {open ? "▾" : "▸"}
+                    </span>
+                    <div
+                      className="h-12 shrink-0 overflow-hidden rounded"
+                      style={{
+                        aspectRatio: cssAspect(listAspect) || "9 / 16",
                       }}
-                    />
-                    <p className="mt-0.5 text-[10px] text-ink-500">
-                      {reviewOf(reviews, cell.cellId)}
-                      {!open ? " · expand for sizes" : ""}
-                    </p>
+                    >
+                      <SizeMediaFrame
+                        path={cellMediaPath(cell, listSizeId)}
+                        rev={cellMediaRev(cell, listSizeId)}
+                        aspect={listAspect}
+                        label={cell.cellId}
+                        className="h-full w-full border-0"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-[10px] text-ink-500">
+                        {cell.cellId}
+                        {cell.sceneTag ? ` · ${cell.sceneTag}` : ""}
+                        {!forGen ? " · skipped" : ""}
+                      </p>
+                      <p className="truncate text-[11px] text-ink-800">
+                        {cellComboLabel(cell)}
+                      </p>
+                      <SizeDots
+                        cell={cell}
+                        sizes={sizes}
+                        jobs={jobs}
+                        activeSizeId={
+                          selected?.cellId === cell.cellId
+                            ? previewSizeId
+                            : null
+                        }
+                        onSizeTap={(size) => {
+                          if (!open) {
+                            setExpandedIds((prev) =>
+                              new Set(prev).add(cell.cellId),
+                            );
+                          }
+                          openSizePreview(cell, size);
+                        }}
+                      />
+                      <p className="mt-0.5 text-[10px] text-ink-500">
+                        {reviewOf(reviews, cell.cellId)}
+                        {!open ? " · expand for sizes" : ""}
+                      </p>
+                    </div>
                   </div>
                 </div>
                 {open ? (
@@ -694,6 +773,8 @@ function SizeCoverageGrid({
   previewSizeId,
   onSelect,
   onOpenSize,
+  onToggleSelectedForGen,
+  selectBusy,
 }: {
   cells: MatrixCell[];
   sizes: OutputSize[];
@@ -702,15 +783,18 @@ function SizeCoverageGrid({
   previewSizeId: string | null;
   onSelect: (id: string, sizeId?: string | null) => void;
   onOpenSize: (cell: MatrixCell, size: OutputSize) => void;
+  onToggleSelectedForGen?: (cellId: string, on: boolean) => void;
+  selectBusy?: boolean;
 }) {
   return (
     <div className="overflow-x-auto">
       <p className="mb-1 text-[10px] text-ink-500">
-        Variants × sizes — tap a size cell to preview
+        Check combo → Magic generate · tap a size cell to preview
       </p>
       <table className="w-full min-w-[16rem] border-collapse text-[10px]">
         <thead>
           <tr className="border-b border-ink-200 text-ink-500">
+            <th className="px-1 py-1 text-center font-medium">Gen</th>
             <th className="px-1 py-1 text-left font-medium">Variant</th>
             {sizes.map((s) => (
               <th
@@ -726,8 +810,24 @@ function SizeCoverageGrid({
         <tbody>
           {cells.slice(0, 32).map((cell) => {
             const selected = selectedId === cell.cellId;
+            const forGen = cell.selectedForGen !== false;
             return (
-              <tr key={cell.cellId} className="border-b border-ink-50">
+              <tr
+                key={cell.cellId}
+                className={`border-b border-ink-50 ${forGen ? "" : "opacity-60"}`}
+              >
+                <td className="px-1 py-1 text-center">
+                  <input
+                    type="checkbox"
+                    className="accent-ink-900"
+                    checked={forGen}
+                    disabled={selectBusy}
+                    title="Include in Magic generate"
+                    onChange={(e) =>
+                      onToggleSelectedForGen?.(cell.cellId, e.target.checked)
+                    }
+                  />
+                </td>
                 <td className="max-w-[9rem] px-1 py-0.5">
                   <button
                     type="button"
@@ -810,6 +910,8 @@ function XyGrid({
   selectedId,
   previewSizeId,
   onSelect,
+  onToggleSelectedForGen,
+  selectBusy,
 }: {
   cells: MatrixCell[];
   sizes: OutputSize[];
@@ -824,11 +926,13 @@ function XyGrid({
   selectedId: string | null;
   previewSizeId: string | null;
   onSelect: (id: string, sizeId?: string | null) => void;
+  onToggleSelectedForGen?: (cellId: string, on: boolean) => void;
+  selectBusy?: boolean;
 }) {
   return (
     <div className="overflow-x-auto">
       <p className="mb-1 text-[10px] text-ink-500">
-        {yLabel} × {xLabel}
+        {yLabel} × {xLabel} — check = include in Magic generate
       </p>
       <table className="w-full min-w-[16rem] border-collapse text-[10px]">
         <thead>
@@ -870,68 +974,87 @@ function XyGrid({
                 }
                 const decision = reviewOf(reviews, cell.cellId);
                 const selected = selectedId === cell.cellId;
+                const forGen = cell.selectedForGen !== false;
                 const thumbSize =
                   (selected && previewSizeId) ||
                   sizes.find((s) => sizeAssetMediaPath(cell, s.id))?.id ||
                   sizes[0]?.id ||
                   null;
                 return (
-                  <td key={xv} className="border border-ink-100 p-0.5">
-                    <button
-                      type="button"
-                      className={`flex w-full flex-col items-center gap-0.5 rounded px-0.5 py-1 ${
-                        selected
-                          ? "bg-ink-900 text-white"
-                          : decision === "approved"
-                            ? "bg-emerald-50"
-                            : decision === "rejected"
-                              ? "bg-ink-100 opacity-60"
-                              : "bg-white hover:bg-ink-50"
-                      }`}
-                      onClick={() => onSelect(cell.cellId)}
-                      title={`${cell.cellId}\n${cellComboLabel(cell)}`}
-                    >
-                      <div
-                        className="h-14 w-auto overflow-hidden rounded"
-                        style={{
-                          aspectRatio: thumbSize
-                            ? cssAspect(
-                                sizes.find((s) => s.id === thumbSize)?.aspect,
-                              ) || "9 / 16"
-                            : "9 / 16",
-                        }}
-                      >
-                        <SizeMediaFrame
-                          path={cellMediaPath(cell, thumbSize)}
-                          rev={cellMediaRev(cell, thumbSize)}
-                          aspect={
-                            sizes.find((s) => s.id === thumbSize)?.aspect
-                          }
-                          label={cell.cellId}
-                          className="h-full w-full border-0"
-                        />
-                      </div>
-                      <span
-                        className={`font-mono text-[8px] ${
-                          selected ? "text-white/80" : "text-ink-500"
+                  <td
+                    key={xv}
+                    className={`border border-ink-100 p-0.5 ${forGen ? "" : "opacity-55"}`}
+                  >
+                    <div className="flex flex-col items-center gap-0.5">
+                      <input
+                        type="checkbox"
+                        className="accent-ink-900"
+                        checked={forGen}
+                        disabled={selectBusy}
+                        title="Include in Magic generate"
+                        onChange={(e) =>
+                          onToggleSelectedForGen?.(
+                            cell.cellId,
+                            e.target.checked,
+                          )
+                        }
+                      />
+                      <button
+                        type="button"
+                        className={`flex w-full flex-col items-center gap-0.5 rounded px-0.5 py-1 ${
+                          selected
+                            ? "bg-ink-900 text-white"
+                            : decision === "approved"
+                              ? "bg-emerald-50"
+                              : decision === "rejected"
+                                ? "bg-ink-100 opacity-60"
+                                : "bg-white hover:bg-ink-50"
                         }`}
+                        onClick={() => onSelect(cell.cellId)}
+                        title={`${cell.cellId}\n${cellComboLabel(cell)}`}
                       >
-                        {axisValue(cell, "sceneTag") !== "—"
-                          ? shortId(cell.sceneTag, 6)
-                          : shortId(cell.cellId, 6)}
-                      </span>
-                      <div className="flex gap-0.5">
-                        {sizes.map((s) => (
-                          <span
-                            key={s.id}
-                            className={`h-1.5 w-1.5 rounded-full ${toneClass(
-                              sizeSlotTone(cell, s, jobs),
-                            )} ${selected && previewSizeId === s.id ? "ring-1 ring-ember-400" : selected ? "ring-1 ring-white/40" : ""}`}
-                            title={`${s.aspect}: ${toneLabel(sizeSlotTone(cell, s, jobs))}`}
+                        <div
+                          className="h-14 w-auto overflow-hidden rounded"
+                          style={{
+                            aspectRatio: thumbSize
+                              ? cssAspect(
+                                  sizes.find((s) => s.id === thumbSize)?.aspect,
+                                ) || "9 / 16"
+                              : "9 / 16",
+                          }}
+                        >
+                          <SizeMediaFrame
+                            path={cellMediaPath(cell, thumbSize)}
+                            rev={cellMediaRev(cell, thumbSize)}
+                            aspect={
+                              sizes.find((s) => s.id === thumbSize)?.aspect
+                            }
+                            label={cell.cellId}
+                            className="h-full w-full border-0"
                           />
-                        ))}
-                      </div>
-                    </button>
+                        </div>
+                        <span
+                          className={`font-mono text-[8px] ${
+                            selected ? "text-white/80" : "text-ink-500"
+                          }`}
+                        >
+                          {axisValue(cell, "sceneTag") !== "—"
+                            ? shortId(cell.sceneTag, 6)
+                            : shortId(cell.cellId, 6)}
+                        </span>
+                        <div className="flex gap-0.5">
+                          {sizes.map((s) => (
+                            <span
+                              key={s.id}
+                              className={`h-1.5 w-1.5 rounded-full ${toneClass(
+                                sizeSlotTone(cell, s, jobs),
+                              )} ${selected && previewSizeId === s.id ? "ring-1 ring-ember-400" : selected ? "ring-1 ring-white/40" : ""}`}
+                              title={`${s.aspect}: ${toneLabel(sizeSlotTone(cell, s, jobs))}`}
+                            />
+                          ))}
+                        </div>
+                      </button>
+                    </div>
                   </td>
                 );
               })}

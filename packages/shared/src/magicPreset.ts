@@ -208,6 +208,52 @@ export function looksLikeComfyUiWorkflow(obj: unknown): boolean {
   return true;
 }
 
+/** Detect Bria video background-replace graphs (API or canvas export). */
+export function comfyGraphSuggestsBriaBg(obj: unknown): boolean {
+  if (!obj || typeof obj !== "object") return false;
+  const o = obj as Record<string, unknown>;
+  const types: string[] = [];
+  if (Array.isArray(o.nodes)) {
+    for (const n of o.nodes) {
+      if (n && typeof n === "object" && !Array.isArray(n)) {
+        const t = (n as { type?: unknown }).type;
+        if (typeof t === "string") types.push(t);
+      }
+    }
+  } else {
+    for (const v of Object.values(o)) {
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        const ct = (v as { class_type?: unknown }).class_type;
+        if (typeof ct === "string") types.push(ct);
+      }
+    }
+  }
+  return types.some((t) => /bria.*replace.*background|replacebackground/i.test(t));
+}
+
+/**
+ * ATTATTA-native hint when a package ships a raw Bria BG-replace Comfy graph.
+ * Raw nodes are not executed; BG-only cells use talent_bg_video_v1 / Bria path.
+ */
+export function magicPackageFromBriaComfyHint(
+  filename: string,
+): MagicWorkflowPackage {
+  return {
+    version: 1,
+    baseWorkflowId: "talent_bg_video_v1",
+    campaignGuidelines: `Package graph (${filename}) is Bria video background replace. ATTATTA does not execute the raw Comfy canvas; BG-only combos use Bria (talent_bg_video_v1). Combos that also include attire/prop/hands use MiniMax blend (talent_variant_video_v1). Select combos in Hopper before Generate.`,
+    steps: [
+      {
+        id: "bg_replace",
+        label: "Background replace",
+        patchKey: "prompt",
+        prompt: "Replace talent background with the selected environment plate",
+        ingredientId: null,
+      },
+    ],
+  };
+}
+
 export function comfyTemplateFromMagicPackage(
   pkg: MagicWorkflowPackage,
 ): ComfyTemplate {

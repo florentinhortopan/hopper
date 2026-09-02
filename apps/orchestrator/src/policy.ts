@@ -227,6 +227,34 @@ export function pruneRailToActive(
   };
 }
 
+/**
+ * Attire axis for sparse rebuild.
+ * When attire is active alongside backgrounds/props, include `null` ("no attire")
+ * so BG-only Bria cells coexist with attire+BG MiniMax cells. Hopper then selects.
+ */
+export function attireFanAxis(rail: IngredientRail): (string | null)[] {
+  const { hero, openKnobs } = rail;
+  const base: (string | null)[] = openKnobs.includes("attire")
+    ? rail.allowedAttireIds.length > 0
+      ? [...rail.allowedAttireIds]
+      : [hero.attireId]
+    : [hero.attireId];
+  const ids = [
+    ...new Set(base.filter((id): id is string => Boolean(id?.trim()))),
+  ];
+  const hasOtherVisual =
+    Boolean(hero.backgroundId?.trim()) ||
+    rail.allowedBackgroundIds.length > 0 ||
+    openKnobs.includes("background") ||
+    (hero.propIds?.length ?? 0) > 0 ||
+    rail.allowedPropIds.length > 0 ||
+    openKnobs.includes("prop");
+  if (ids.length && hasOtherVisual) {
+    return [null, ...ids];
+  }
+  return ids.length ? ids : [null];
+}
+
 export function evaluateCampaignPolicy(
   campaign: Campaign,
   rail: IngredientRail,

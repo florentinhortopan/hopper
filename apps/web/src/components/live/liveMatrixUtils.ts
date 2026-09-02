@@ -26,7 +26,11 @@ export function shortId(id: string | null | undefined, n = 10): string {
 export function cellComboLabel(cell: MatrixCell): string {
   const bits = [
     cell.handsId ? `hands:${shortId(cell.handsId, 8)}` : null,
-    cell.attireId ? `attire:${shortId(cell.attireId, 8)}` : null,
+    cell.attireId
+      ? `attire:${shortId(cell.attireId, 8)}`
+      : cell.backgroundId || cell.propIds?.[0]
+        ? "attire:none"
+        : null,
     cell.backgroundId ? `bg:${shortId(cell.backgroundId, 8)}` : null,
     cell.propIds?.[0] ? `prop:${shortId(cell.propIds[0], 8)}` : null,
     cell.sceneTag ? `scene:${cell.sceneTag}` : null,

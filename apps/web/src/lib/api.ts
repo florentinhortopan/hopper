@@ -164,6 +164,7 @@ export const api = {
       promptOverride?: string | null;
       negativeOverride?: string | null;
       sceneTag?: string | null;
+      selectedForGen?: boolean;
       /** @deprecated use sceneTag */
       sceneSlots?: import("@attatta/shared").SceneSlot[];
     },
