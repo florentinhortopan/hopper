@@ -56,9 +56,12 @@ export function LiveHopperMatrix({
   onChanged,
 }: Props) {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [view, setView] = useState<"xy" | "list">("xy");
+  /** List with per-row expand is default — scales when many variants. */
+  const [view, setView] = useState<"xy" | "list">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewSizeId, setPreviewSizeId] = useState<string | null>(null);
+  /** Multiple rows may stay open so Keep/Kill stays next to each variant. */
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<MediaLightboxState | null>(null);
 
@@ -99,9 +102,33 @@ export function LiveHopperMatrix({
     });
   }, [selected?.cellId, selected, sizes]);
 
+  // Drop expand state for cells that left the matrix
+  useEffect(() => {
+    const ids = new Set(cells.map((c) => c.cellId));
+    setExpandedIds((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (ids.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [cells]);
+
   function selectCell(cellId: string, sizeId?: string | null) {
     setSelectedId(cellId);
     if (sizeId) setPreviewSizeId(sizeId);
+  }
+
+  function toggleExpand(cellId: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(cellId)) next.delete(cellId);
+      else next.add(cellId);
+      return next;
+    });
+    selectCell(cellId);
   }
 
   function openSizePreview(
@@ -122,6 +149,25 @@ export function LiveHopperMatrix({
       sizeId: size.id,
     });
   }
+
+  const lightboxGallery = useMemo((): MediaLightboxState[] => {
+    if (!lightbox || !selected) return [];
+    const out: MediaLightboxState[] = [];
+    for (const s of sizes) {
+      const path = sizeAssetMediaPath(selected, s.id);
+      if (!path) continue;
+      out.push({
+        path,
+        rev: sizeAssetMediaRev(selected, s.id) || `${s.id}:${path}`,
+        label: `${selected.cellId} · ${s.aspect}`,
+        aspect: s.aspect,
+        width: s.width,
+        height: s.height,
+        sizeId: s.id,
+      });
+    }
+    return out;
+  }, [lightbox, selected, sizes]);
 
   async function setDecision(
     cellId: string,
@@ -151,14 +197,6 @@ export function LiveHopperMatrix({
       setBusyId(null);
     }
   }
-
-  const selectedPath = selected
-    ? cellMediaPath(selected, previewSizeId)
-    : null;
-  const selectedRev = selected
-    ? cellMediaRev(selected, previewSizeId)
-    : null;
-  const selectedSize = sizes.find((s) => s.id === previewSizeId) || null;
 
   return (
     <div className="space-y-3 border-b border-ink-100 px-3 py-2 text-xs">
@@ -193,7 +231,7 @@ export function LiveHopperMatrix({
                 ? "border-ink-900 bg-ink-900 text-white"
                 : "border-ink-200 bg-white hover:bg-ink-50"
             }`}
-            title="Flat list"
+            title="Expandable rows — sizes & Keep/Kill inline"
             onClick={() => setView("list")}
           >
             List
@@ -243,260 +281,364 @@ export function LiveHopperMatrix({
         />
       ) : (
         <ul className="space-y-1.5">
-          {cells.map((cell) => (
-            <li key={cell.cellId}>
-              <div
-                role="button"
-                tabIndex={0}
-                className={`flex w-full cursor-pointer items-start gap-2 rounded border px-1.5 py-1 text-left ${
-                  selected?.cellId === cell.cellId
+          {cells.map((cell) => {
+            const open = expandedIds.has(cell.cellId);
+            const listSizeId =
+              previewSizeId && selected?.cellId === cell.cellId
+                ? previewSizeId
+                : firstReadySizeId(cell, sizes);
+            const listAspect =
+              sizes.find((s) => s.id === listSizeId)?.aspect || null;
+            return (
+              <li
+                key={cell.cellId}
+                className={`rounded border ${
+                  open
                     ? "border-ink-900 bg-white"
-                    : "border-ink-100 bg-white/60"
+                    : selected?.cellId === cell.cellId
+                      ? "border-ink-300 bg-white"
+                      : "border-ink-100 bg-white/60"
                 }`}
-                onClick={() => selectCell(cell.cellId)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    selectCell(cell.cellId);
-                  }
-                }}
               >
-                {(() => {
-                  const listSizeId =
-                    previewSizeId && selected?.cellId === cell.cellId
-                      ? previewSizeId
-                      : firstReadySizeId(cell, sizes);
-                  const listAspect =
-                    sizes.find((s) => s.id === listSizeId)?.aspect || null;
-                  return (
-                    <div
-                      className="h-12 shrink-0 overflow-hidden rounded"
-                      style={{
-                        aspectRatio: cssAspect(listAspect) || "9 / 16",
-                      }}
-                    >
-                      <SizeMediaFrame
-                        path={cellMediaPath(cell, listSizeId)}
-                        rev={cellMediaRev(cell, listSizeId)}
-                        aspect={listAspect}
-                        label={cell.cellId}
-                        className="h-full w-full border-0"
-                      />
-                    </div>
-                  );
-                })()}
-                <div className="min-w-0 flex-1">
-                  <p className="font-mono text-[10px] text-ink-500">
-                    {cell.cellId}
-                    {cell.sceneTag ? ` · ${cell.sceneTag}` : ""}
-                  </p>
-                  <p className="truncate text-[11px] text-ink-800">
-                    {cellComboLabel(cell)}
-                  </p>
-                  <SizeDots
-                    cell={cell}
-                    sizes={sizes}
-                    jobs={jobs}
-                    activeSizeId={
-                      selected?.cellId === cell.cellId ? previewSizeId : null
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="flex w-full cursor-pointer items-start gap-2 px-1.5 py-1 text-left"
+                  aria-expanded={open}
+                  onClick={() => toggleExpand(cell.cellId)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleExpand(cell.cellId);
                     }
-                    onSizeTap={(size) => openSizePreview(cell, size)}
-                  />
-                  <p className="mt-0.5 text-[10px] text-ink-500">
-                    {reviewOf(reviews, cell.cellId)}
-                  </p>
+                  }}
+                >
+                  <span
+                    className="mt-3 shrink-0 text-[10px] text-ink-500"
+                    aria-hidden
+                  >
+                    {open ? "▾" : "▸"}
+                  </span>
+                  <div
+                    className="h-12 shrink-0 overflow-hidden rounded"
+                    style={{
+                      aspectRatio: cssAspect(listAspect) || "9 / 16",
+                    }}
+                  >
+                    <SizeMediaFrame
+                      path={cellMediaPath(cell, listSizeId)}
+                      rev={cellMediaRev(cell, listSizeId)}
+                      aspect={listAspect}
+                      label={cell.cellId}
+                      className="h-full w-full border-0"
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-mono text-[10px] text-ink-500">
+                      {cell.cellId}
+                      {cell.sceneTag ? ` · ${cell.sceneTag}` : ""}
+                    </p>
+                    <p className="truncate text-[11px] text-ink-800">
+                      {cellComboLabel(cell)}
+                    </p>
+                    <SizeDots
+                      cell={cell}
+                      sizes={sizes}
+                      jobs={jobs}
+                      activeSizeId={
+                        selected?.cellId === cell.cellId ? previewSizeId : null
+                      }
+                      onSizeTap={(size) => {
+                        if (!open) {
+                          setExpandedIds((prev) =>
+                            new Set(prev).add(cell.cellId),
+                          );
+                        }
+                        openSizePreview(cell, size);
+                      }}
+                    />
+                    <p className="mt-0.5 text-[10px] text-ink-500">
+                      {reviewOf(reviews, cell.cellId)}
+                      {!open ? " · expand for sizes" : ""}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </li>
-          ))}
+                {open ? (
+                  <div className="border-t border-ink-100 px-2 pb-2 pt-2">
+                    <VariantSizeDetail
+                      cell={cell}
+                      sizes={sizes}
+                      jobs={jobs}
+                      reviews={reviews}
+                      previewSizeId={
+                        selected?.cellId === cell.cellId
+                          ? previewSizeId
+                          : firstReadySizeId(cell, sizes)
+                      }
+                      busyId={busyId}
+                      onPreviewSize={(sizeId) => {
+                        selectCell(cell.cellId, sizeId);
+                      }}
+                      onOpenSize={(size, path) =>
+                        openSizePreview(cell, size, path)
+                      }
+                      onDecision={(decision, sizeId) =>
+                        void setDecision(cell.cellId, decision, sizeId)
+                      }
+                    />
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       )}
 
-      {selected ? (
+      {/* XY views still use a shared detail bay; List expands each row inline. */}
+      {view === "xy" && selected ? (
         <div className="rounded-lg border border-ink-200 bg-white p-2">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-            <div className="shrink-0">
-              <SizeMediaFrame
-                path={selectedPath}
-                rev={selectedRev}
-                aspect={selectedSize?.aspect}
-                label={
-                  selectedSize
-                    ? `${selected.cellId} · ${selectedSize.aspect}`
-                    : selected.cellId
-                }
-                bay
-                onOpen={
-                  selectedPath && selectedSize
-                    ? () =>
-                        openSizePreview(selected, selectedSize, selectedPath)
-                    : undefined
-                }
-              />
-              {selectedSize ? (
-                <p className="mt-1 font-mono text-[9px] text-ink-500">
-                  {selectedSize.aspect} · {selectedSize.width}×
-                  {selectedSize.height}
-                </p>
-              ) : null}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-mono text-[10px] text-ink-500">
-                {selected.cellId}
-                {selectedSize ? ` · ${selectedSize.aspect}` : ""}
-              </p>
-              <p className="text-[11px] font-medium text-ink-900">
-                {cellComboLabel(selected)}
-              </p>
-              {selected.sceneTag ? (
-                <p className="text-[10px] text-ink-600">
-                  Scene / plate beat:{" "}
-                  <span className="font-mono">{selected.sceneTag}</span>
-                </p>
-              ) : null}
-              <p className="mt-1 line-clamp-2 text-[10px] text-ink-600">
-                {selected.copy?.setup || "—"}
-                {selected.copy?.punchline
-                  ? ` → ${selected.copy.punchline}`
-                  : ""}
-              </p>
-              <p className="mt-2 text-[9px] uppercase tracking-wide text-ink-500">
-                Sizes — tap to preview that aspect · Keep/Kill per size for
-                Celtra
-              </p>
-              <div className="mt-1 flex flex-col gap-1">
-                {sizes.map((s) => {
-                  const tone = sizeSlotTone(selected, s, jobs);
-                  const path = sizeAssetMediaPath(selected, s.id);
-                  const active = previewSizeId === s.id;
-                  const sizeDecision = reviewOf(reviews, selected.cellId, s.id);
-                  const busyKey = `${selected.cellId}:${s.id}`;
-                  return (
-                    <div
-                      key={s.id}
-                      className={`flex w-full items-center gap-2 rounded border px-1.5 py-1 ${
-                        active
-                          ? "border-ink-900 bg-ink-50"
-                          : "border-ink-100"
-                      }`}
-                    >
-                      <div
-                        className="h-10 shrink-0 overflow-hidden"
-                        style={{
-                          aspectRatio: cssAspect(s.aspect) || "9 / 16",
-                        }}
-                      >
-                        <SizeMediaFrame
-                          path={path}
-                          rev={sizeAssetMediaRev(selected, s.id)}
-                          aspect={s.aspect}
-                          label={`${selected.cellId} · ${s.aspect}`}
-                          className="h-full w-full border-0"
-                          onOpen={
-                            path
-                              ? () => openSizePreview(selected, s, path)
-                              : undefined
-                          }
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        className="min-w-0 flex-1 text-left text-[10px]"
-                        title={
-                          path
-                            ? `Preview ${s.aspect} (${s.width}×${s.height})`
-                            : `${s.label}: ${toneLabel(tone)}`
-                        }
-                        onClick={() => openSizePreview(selected, s, path)}
-                      >
-                        <span
-                          className={`mr-1 inline-block h-2 w-2 rounded-full ${toneClass(tone)}`}
-                        />
-                        <span className="font-medium">{s.aspect}</span>
-                        <span className="text-ink-500">
-                          {" "}
-                          {s.width}×{s.height} · {toneLabel(tone)}
-                          {sizeDecision !== "pending"
-                            ? ` · ${sizeDecision === "approved" ? "kept" : "killed"}`
-                            : ""}
-                        </span>
-                      </button>
-                      <div className="flex shrink-0 gap-0.5">
-                        <button
-                          type="button"
-                          className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[9px] disabled:opacity-40"
-                          disabled={busyId === busyKey || !path}
-                          title="Keep this size for Celtra zip"
-                          onClick={() =>
-                            void setDecision(selected.cellId, "approved", s.id)
-                          }
-                        >
-                          Keep
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[9px] disabled:opacity-40"
-                          disabled={busyId === busyKey}
-                          title="Kill this size — skip in zip"
-                          onClick={() =>
-                            void setDecision(selected.cellId, "rejected", s.id)
-                          }
-                        >
-                          Kill
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1">
-                <button
-                  type="button"
-                  className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] disabled:opacity-40"
-                  disabled={busyId === selected.cellId}
-                  onClick={() =>
-                    void setDecision(selected.cellId, "approved")
-                  }
-                >
-                  Keep all sizes
-                </button>
-                <button
-                  type="button"
-                  className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] disabled:opacity-40"
-                  disabled={busyId === selected.cellId}
-                  onClick={() =>
-                    void setDecision(selected.cellId, "rejected")
-                  }
-                >
-                  Kill all
-                </button>
-                <button
-                  type="button"
-                  className="rounded border border-ink-200 px-2 py-0.5 text-[10px] disabled:opacity-40"
-                  disabled={busyId === selected.cellId}
-                  onClick={() =>
-                    void setDecision(selected.cellId, "pending")
-                  }
-                >
-                  Reset all
-                </button>
-              </div>
-            </div>
-          </div>
+          <VariantSizeDetail
+            cell={selected}
+            sizes={sizes}
+            jobs={jobs}
+            reviews={reviews}
+            previewSizeId={previewSizeId}
+            busyId={busyId}
+            showHero
+            onPreviewSize={(sizeId) => selectCell(selected.cellId, sizeId)}
+            onOpenSize={(size, path) =>
+              openSizePreview(selected, size, path)
+            }
+            onDecision={(decision, sizeId) =>
+              void setDecision(selected.cellId, decision, sizeId)
+            }
+          />
         </div>
-      ) : (
+      ) : view === "xy" ? (
         <p className="text-[10px] text-ink-500">
           Prepare a matrix in Magic to review combinations here.
         </p>
-      )}
+      ) : cells.length === 0 ? (
+        <p className="text-[10px] text-ink-500">
+          Prepare a matrix in Magic to review combinations here.
+        </p>
+      ) : null}
 
       {lightbox ? (
         <MediaLightbox
-          key={`${lightbox.sizeId || ""}:${lightbox.path}:${lightbox.rev || ""}`}
+          key={lightbox.sizeId || lightbox.path}
           state={lightbox}
+          items={lightboxGallery}
           onClose={() => setLightbox(null)}
+          onSelect={(next) => {
+            setLightbox(next);
+            if (next.sizeId) setPreviewSizeId(next.sizeId);
+          }}
         />
       ) : null}
+    </div>
+  );
+}
+
+function VariantSizeDetail({
+  cell,
+  sizes,
+  jobs,
+  reviews,
+  previewSizeId,
+  busyId,
+  showHero = false,
+  onPreviewSize,
+  onOpenSize,
+  onDecision,
+}: {
+  cell: MatrixCell;
+  sizes: OutputSize[];
+  jobs: Job[];
+  reviews: ReviewEntry[];
+  previewSizeId: string | null;
+  busyId: string | null;
+  showHero?: boolean;
+  onPreviewSize: (sizeId: string) => void;
+  onOpenSize: (size: OutputSize, path: string | null) => void;
+  onDecision: (
+    decision: "approved" | "rejected" | "pending",
+    sizeId?: string | null,
+  ) => void;
+}) {
+  const selectedPath = cellMediaPath(cell, previewSizeId);
+  const selectedRev = cellMediaRev(cell, previewSizeId);
+  const selectedSize = sizes.find((s) => s.id === previewSizeId) || null;
+
+  return (
+    <div
+      className={
+        showHero
+          ? "flex flex-col gap-2 sm:flex-row sm:items-start"
+          : "space-y-2"
+      }
+    >
+      {showHero ? (
+        <div className="shrink-0">
+          <SizeMediaFrame
+            path={selectedPath}
+            rev={selectedRev}
+            aspect={selectedSize?.aspect}
+            label={
+              selectedSize
+                ? `${cell.cellId} · ${selectedSize.aspect}`
+                : cell.cellId
+            }
+            bay
+            onOpen={
+              selectedPath && selectedSize
+                ? () => onOpenSize(selectedSize, selectedPath)
+                : undefined
+            }
+          />
+          {selectedSize ? (
+            <p className="mt-1 font-mono text-[9px] text-ink-500">
+              {selectedSize.aspect} · {selectedSize.width}×
+              {selectedSize.height}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="min-w-0 flex-1">
+        {showHero ? (
+          <>
+            <p className="font-mono text-[10px] text-ink-500">
+              {cell.cellId}
+              {selectedSize ? ` · ${selectedSize.aspect}` : ""}
+            </p>
+            <p className="text-[11px] font-medium text-ink-900">
+              {cellComboLabel(cell)}
+            </p>
+            {cell.sceneTag ? (
+              <p className="text-[10px] text-ink-600">
+                Scene / plate beat:{" "}
+                <span className="font-mono">{cell.sceneTag}</span>
+              </p>
+            ) : null}
+            <p className="mt-1 line-clamp-2 text-[10px] text-ink-600">
+              {cell.copy?.setup || "—"}
+              {cell.copy?.punchline ? ` → ${cell.copy.punchline}` : ""}
+            </p>
+          </>
+        ) : (
+          <p className="line-clamp-2 text-[10px] text-ink-600">
+            {cell.copy?.setup || "—"}
+            {cell.copy?.punchline ? ` → ${cell.copy.punchline}` : ""}
+          </p>
+        )}
+        <p className="mt-2 text-[9px] uppercase tracking-wide text-ink-500">
+          Sizes — tap to preview · Keep/Kill per size for Celtra
+        </p>
+        <div className="mt-1 flex flex-col gap-1">
+          {sizes.map((s) => {
+            const tone = sizeSlotTone(cell, s, jobs);
+            const path = sizeAssetMediaPath(cell, s.id);
+            const active = previewSizeId === s.id;
+            const sizeDecision = reviewOf(reviews, cell.cellId, s.id);
+            const busyKey = `${cell.cellId}:${s.id}`;
+            return (
+              <div
+                key={s.id}
+                className={`flex w-full items-center gap-2 rounded border px-1.5 py-1 ${
+                  active ? "border-ink-900 bg-ink-50" : "border-ink-100"
+                }`}
+              >
+                <div
+                  className="h-10 shrink-0 overflow-hidden"
+                  style={{
+                    aspectRatio: cssAspect(s.aspect) || "9 / 16",
+                  }}
+                >
+                  <SizeMediaFrame
+                    path={path}
+                    rev={sizeAssetMediaRev(cell, s.id)}
+                    aspect={s.aspect}
+                    label={`${cell.cellId} · ${s.aspect}`}
+                    className="h-full w-full border-0"
+                    onOpen={path ? () => onOpenSize(s, path) : undefined}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="min-w-0 flex-1 text-left text-[10px]"
+                  title={
+                    path
+                      ? `Preview ${s.aspect} (${s.width}×${s.height})`
+                      : `${s.label}: ${toneLabel(tone)}`
+                  }
+                  onClick={() => {
+                    onPreviewSize(s.id);
+                    onOpenSize(s, path);
+                  }}
+                >
+                  <span
+                    className={`mr-1 inline-block h-2 w-2 rounded-full ${toneClass(tone)}`}
+                  />
+                  <span className="font-medium">{s.aspect}</span>
+                  <span className="text-ink-500">
+                    {" "}
+                    {s.width}×{s.height} · {toneLabel(tone)}
+                    {sizeDecision !== "pending"
+                      ? ` · ${sizeDecision === "approved" ? "kept" : "killed"}`
+                      : ""}
+                  </span>
+                </button>
+                <div className="flex shrink-0 gap-0.5">
+                  <button
+                    type="button"
+                    className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[9px] disabled:opacity-40"
+                    disabled={busyId === busyKey || !path}
+                    title="Keep this size for Celtra zip"
+                    onClick={() => onDecision("approved", s.id)}
+                  >
+                    Keep
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[9px] disabled:opacity-40"
+                    disabled={busyId === busyKey}
+                    title="Kill this size — skip in zip"
+                    onClick={() => onDecision("rejected", s.id)}
+                  >
+                    Kill
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1">
+          <button
+            type="button"
+            className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] disabled:opacity-40"
+            disabled={busyId === cell.cellId}
+            onClick={() => onDecision("approved")}
+          >
+            Keep all sizes
+          </button>
+          <button
+            type="button"
+            className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] disabled:opacity-40"
+            disabled={busyId === cell.cellId}
+            onClick={() => onDecision("rejected")}
+          >
+            Kill all
+          </button>
+          <button
+            type="button"
+            className="rounded border border-ink-200 px-2 py-0.5 text-[10px] disabled:opacity-40"
+            disabled={busyId === cell.cellId}
+            onClick={() => onDecision("pending")}
+          >
+            Reset all
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

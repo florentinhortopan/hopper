@@ -10,6 +10,9 @@ import {
   magicCanContinue,
   magicOutputSizes,
   normalizeComfyTemplate,
+  richerMatrixCell,
+  toLiveMatrixCell,
+  variantSignature,
   type Brief,
   type Campaign,
   type Job,
@@ -167,31 +170,39 @@ export async function ensureMagicCampaign(opts: {
 function pickMagicActivations(
   lib: LibraryItem[],
   opts?: {
-    /** When set, only activate plates from this import (+ extras like drafted copy). */
+    /** When set, activate import plates (+ extras / prior operator activations). */
     importIngredientIds?: string[];
     /** Extra ids to always include (e.g. copy drafted during prepare). */
     extraIds?: string[];
+    /**
+     * Activations already on the campaign (Ingredients uploads, Keep selections).
+     * Re-check / prepare must never wipe these — advanced matrix + workspace share them.
+     */
+    priorActiveIds?: string[];
   },
 ): {
   activeIds: string[];
   contractTalentId: string | null;
   scopedToImport: boolean;
 } {
+  const libById = new Map(lib.map((i) => [i.id, i]));
+  const prior = (opts?.priorActiveIds ?? []).filter((id) => libById.has(id));
+  const extra = new Set(opts?.extraIds ?? []);
   const importSet = opts?.importIngredientIds?.length
     ? new Set(opts.importIngredientIds)
     : null;
-  const extra = new Set(opts?.extraIds ?? []);
 
   if (importSet) {
-    const fromImport = lib.filter((i) => importSet.has(i.id));
-    const extras = lib.filter((i) => extra.has(i.id));
-    const scoped = [...fromImport, ...extras];
+    const fromImport = lib.filter((i) => importSet.has(i.id)).map((i) => i.id);
+    const fromExtra = [...extra].filter((id) => libById.has(id));
+    // Keep operator-activated uploads/plates across Confirm import & prepare
+    const activeIds = [...new Set([...fromImport, ...prior, ...fromExtra])];
     const talent =
-      scoped.find((i) => i.kind === "talent" && isPlateReady(i)) ||
-      scoped.find((i) => i.kind === "talent") ||
+      activeIds
+        .map((id) => libById.get(id)!)
+        .find((i) => i.kind === "talent" && isPlateReady(i)) ||
+      activeIds.map((id) => libById.get(id)!).find((i) => i.kind === "talent") ||
       null;
-    // Activate every imported plate — do NOT pull unrelated library hands/attire.
-    const activeIds = [...new Set(scoped.map((i) => i.id))];
     return {
       activeIds,
       contractTalentId: talent?.id ?? null,
@@ -199,7 +210,11 @@ function pickMagicActivations(
     };
   }
 
-  // No import package: keep activations conservative (1 talent + 1 of each kind).
+  // No import: preserve every prior activation; only fill empty kinds.
+  const activeIds = new Set(prior);
+  const hasKind = (kind: LibraryItem["kind"]) =>
+    [...activeIds].some((id) => libById.get(id)?.kind === kind);
+
   const talent =
     lib.find((i) => i.kind === "talent" && isPlateReady(i)) ||
     lib.find((i) => i.kind === "talent");
@@ -212,19 +227,28 @@ function pickMagicActivations(
   const copy = lib.filter((i) => i.kind === "copy");
   const motion = lib.filter((i) => i.kind === "motion");
 
-  const activeIds = new Set<string>();
-  if (talent) activeIds.add(talent.id);
-  if (hands[0]) activeIds.add(hands[0].id);
-  if (attire[0]) activeIds.add(attire[0].id);
-  if (backgrounds[0]) activeIds.add(backgrounds[0].id);
-  if (props[0]) activeIds.add(props[0].id);
-  if (copy[0]) activeIds.add(copy[0].id);
-  if (motion[0]) activeIds.add(motion[0].id);
-  for (const id of extra) activeIds.add(id);
+  if (!hasKind("talent") && talent) activeIds.add(talent.id);
+  if (!hasKind("hands") && hands[0]) activeIds.add(hands[0].id);
+  if (!hasKind("attire") && attire[0]) activeIds.add(attire[0].id);
+  if (!hasKind("background") && backgrounds[0]) activeIds.add(backgrounds[0].id);
+  if (!hasKind("prop") && props[0]) activeIds.add(props[0].id);
+  if (!hasKind("copy") && copy[0]) activeIds.add(copy[0].id);
+  if (!hasKind("motion") && motion[0]) activeIds.add(motion[0].id);
+  for (const id of extra) {
+    if (libById.has(id)) activeIds.add(id);
+  }
+
+  const contractTalent =
+    [...activeIds]
+      .map((id) => libById.get(id)!)
+      .find((i) => i.kind === "talent" && isPlateReady(i)) ||
+    [...activeIds].map((id) => libById.get(id)!).find((i) => i.kind === "talent") ||
+    talent ||
+    null;
 
   return {
     activeIds: [...activeIds],
-    contractTalentId: talent?.id ?? null,
+    contractTalentId: contractTalent?.id ?? null,
     scopedToImport: false,
   };
 }
@@ -330,6 +354,22 @@ function buildMagicSparse(campaign: Campaign, lib: LibraryItem[]): Campaign {
     ? campaign.outputSizes
     : magicOutputSizes();
 
+  // Same as Advanced matrix rebuild: revive media by visual signature; retire the rest.
+  const prevCells = campaign.matrix.cells ?? [];
+  const prevRetired = campaign.matrix.retired ?? [];
+  const prevBySig = new Map<string, MatrixCell | RetiredMatrixCell>();
+  for (const c of prevRetired) {
+    const sig = variantSignature(c);
+    const cur = prevBySig.get(sig);
+    prevBySig.set(sig, cur ? richerMatrixCell(cur, c) : c);
+  }
+  for (const c of prevCells) {
+    const sig = variantSignature(c);
+    const cur = prevBySig.get(sig);
+    prevBySig.set(sig, cur ? richerMatrixCell(cur, c) : c);
+  }
+  const usedPrev = new Set<string>();
+
   const cells: MatrixCell[] = [];
   let i = 1;
   outer: for (const handsId of handsIds) {
@@ -346,7 +386,7 @@ function buildMagicSparse(campaign: Campaign, lib: LibraryItem[]): Campaign {
               propIds.length > 0 ||
               Boolean(handsId && String(handsId).trim()),
           );
-          cells.push({
+          const draft: MatrixCell = {
             cellId: `${campaign.id}_${String(i).padStart(3, "0")}`,
             talentTakeId: hero.talentTakeId,
             handsId: handsId || "",
@@ -383,7 +423,41 @@ function buildMagicSparse(campaign: Campaign, lib: LibraryItem[]): Campaign {
             sceneSlots: [],
             status: "draft",
             error: null,
-          });
+          };
+          const sig = variantSignature(draft);
+          const prev = prevBySig.get(sig);
+          if (prev) {
+            usedPrev.add(sig);
+            const live = toLiveMatrixCell(prev);
+            draft.cellId = live.cellId;
+            draft.genOmitIds = [...(live.genOmitIds ?? [])];
+            draft.promptOverride = live.promptOverride ?? null;
+            draft.negativeOverride = live.negativeOverride ?? null;
+            draft.sceneTag = ensureSceneTag(live, campaign.assemblyRecipe);
+            draft.sizeAssets = sizes.map((s) => {
+              const old = live.sizeAssets?.find((a) => a.sizeId === s.id);
+              return {
+                sizeId: s.id,
+                width: s.width,
+                height: s.height,
+                aspect: s.aspect,
+                previewPath: old?.previewPath ?? null,
+                outputPath: old?.outputPath ?? null,
+                genPath: old?.genPath ?? null,
+                promptHash: old?.promptHash ?? null,
+                status: old?.status ?? ("pending" as const),
+                error: old?.error ?? null,
+              };
+            });
+            draft.previewPath = live.previewPath;
+            draft.outputPath = live.outputPath;
+            draft.previewOk = live.previewOk;
+            draft.status = live.status;
+            draft.error = live.error;
+            draft.copy = live.copy ?? draft.copy;
+            draft.needsGen = needsGen;
+          }
+          cells.push(draft);
           i += 1;
           if (cells.length >= campaign.matrix.cap) break outer;
         }
@@ -398,10 +472,27 @@ function buildMagicSparse(campaign: Campaign, lib: LibraryItem[]): Campaign {
     );
   }
 
+  const retiredAt = new Date().toISOString();
+  const newlyRetired: RetiredMatrixCell[] = prevCells
+    .filter((c) => !usedPrev.has(variantSignature(c)))
+    .map((c) => ({
+      ...c,
+      retiredAt,
+      reason: "rebuild",
+      archiveId: nanoid(10),
+    }));
+  const keptArchive: RetiredMatrixCell[] = prevRetired
+    .filter((c) => !usedPrev.has(variantSignature(c)))
+    .map((c) =>
+      c.archiveId?.trim() ? c : { ...c, archiveId: nanoid(10) },
+    );
+  const RETIRED_CAP = 40;
+  const retired = [...newlyRetired, ...keptArchive].slice(0, RETIRED_CAP);
+
   campaign.matrix = {
     ...campaign.matrix,
     cells,
-    retired: (campaign.matrix.retired ?? []) as RetiredMatrixCell[],
+    retired,
   };
   return campaign;
 }
@@ -608,10 +699,11 @@ export async function prepareMagicCampaign(
   const act = pickMagicActivations(lib, {
     importIngredientIds: hadImport ? importIngredientIds : undefined,
     extraIds: [...draftedCopyIds, ...priorActiveCopyIds],
+    priorActiveIds: campaign.ingredientSet?.activeIds ?? [],
   });
   if (act.scopedToImport) {
     warnings.push(
-      `Activations scoped to package (${act.activeIds.length} plate(s)) — not the full library`,
+      `Package plates active (${act.activeIds.length}) — kept your prior Ingredient activations too`,
     );
   }
   const priorHidden = campaign.ingredientSet?.hiddenIds ?? [];

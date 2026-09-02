@@ -29,6 +29,9 @@ export function CeltraPreviewPanel({ campaignId, refreshToken }: Props) {
   const [pkgBusy, setPkgBusy] = useState(false);
   const [lastZip, setLastZip] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<MediaLightboxState | null>(null);
+  const [lightboxRowCellId, setLightboxRowCellId] = useState<string | null>(
+    null,
+  );
 
   const load = useCallback(() => {
     void api
@@ -192,7 +195,8 @@ export function CeltraPreviewPanel({ campaignId, refreshToken }: Props) {
                                 className="h-full w-full border-0"
                                 onOpen={
                                   slot.platePath
-                                    ? () =>
+                                    ? () => {
+                                        setLightboxRowCellId(row.cellId);
                                         setLightbox({
                                           path: slot.platePath!,
                                           rev: `${slot.sizeId}:${slot.platePath}`,
@@ -201,7 +205,8 @@ export function CeltraPreviewPanel({ campaignId, refreshToken }: Props) {
                                           width: slot.width ?? undefined,
                                           height: slot.height ?? undefined,
                                           sizeId: slot.sizeId,
-                                        })
+                                        });
+                                      }
                                     : undefined
                                 }
                               />
@@ -250,9 +255,27 @@ export function CeltraPreviewPanel({ campaignId, refreshToken }: Props) {
       ) : null}
       {lightbox ? (
         <MediaLightbox
-          key={`${lightbox.sizeId || ""}:${lightbox.path}`}
+          key={lightbox.sizeId || lightbox.path}
           state={lightbox}
-          onClose={() => setLightbox(null)}
+          items={(
+            preview?.rows.find((r) => r.cellId === lightboxRowCellId)?.sizes ||
+            []
+          )
+            .filter((s) => s.platePath)
+            .map((s) => ({
+              path: s.platePath!,
+              rev: `${s.sizeId}:${s.platePath}`,
+              label: `${lightboxRowCellId} · ${s.aspect}`,
+              aspect: s.aspect,
+              width: s.width ?? undefined,
+              height: s.height ?? undefined,
+              sizeId: s.sizeId,
+            }))}
+          onClose={() => {
+            setLightbox(null);
+            setLightboxRowCellId(null);
+          }}
+          onSelect={(next) => setLightbox(next)}
         />
       ) : null}
     </div>

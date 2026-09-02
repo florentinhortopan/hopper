@@ -123,33 +123,105 @@ export type MediaLightboxState = {
   sizeId?: string;
 };
 
-/** Single lightbox owned by the parent — avoids per-thumb expand showing the wrong plate. */
+function aspectRatioNumber(aspect?: string | null, width?: number, height?: number): number | null {
+  if (width && height && height > 0) return width / height;
+  if (!aspect?.includes(":")) return null;
+  const [w, h] = aspect.split(":").map(Number);
+  if (!w || !h) return null;
+  return w / h;
+}
+
+function ratiosMatch(a: number, b: number, tol = 0.12): boolean {
+  return Math.abs(a - b) / Math.max(a, b) <= tol;
+}
+
+/** Size gallery lightbox — arrow keys + chevrons cycle delivery sizes. */
 export function MediaLightbox({
   state,
+  items,
   onClose,
+  onSelect,
 }: {
   state: MediaLightboxState;
+  /** All sizes for this variant (with media). Enables ←/→ and chevrons. */
+  items?: MediaLightboxState[];
   onClose: () => void;
+  onSelect?: (next: MediaLightboxState) => void;
 }) {
+  const gallery = items?.length ? items : [state];
+  const index = Math.max(
+    0,
+    gallery.findIndex(
+      (it) =>
+        (state.sizeId && it.sizeId === state.sizeId) ||
+        it.path === state.path,
+    ),
+  );
+  const current = gallery[index] || state;
   const cacheKey =
-    state.rev ??
-    `${state.sizeId || state.label}:${state.path}:${state.aspect || ""}`;
-  const url = api.fileUrl(state.path, cacheKey);
-  const image = looksLikeImage(state.path);
-  const dims =
-    state.aspect || state.width
-      ? [state.aspect, state.width && state.height ? `${state.width}×${state.height}` : null]
+    current.rev ??
+    `${current.sizeId || current.label}:${current.path}:${current.aspect || ""}`;
+  const url = api.fileUrl(current.path, cacheKey);
+  const image = looksLikeImage(current.path);
+  const claimed =
+    current.aspect || current.width
+      ? [current.aspect, current.width && current.height ? `${current.width}×${current.height}` : null]
           .filter(Boolean)
           .join(" · ")
       : null;
+  const [nativeDims, setNativeDims] = useState<string | null>(null);
+  const [aspectMismatch, setAspectMismatch] = useState(false);
+
+  useEffect(() => {
+    setNativeDims(null);
+    setAspectMismatch(false);
+  }, [current.path, current.sizeId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (!onSelect || gallery.length < 2) return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        const next = gallery[(index - 1 + gallery.length) % gallery.length]!;
+        onSelect(next);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        const next = gallery[(index + 1) % gallery.length]!;
+        onSelect(next);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, onSelect, gallery, index]);
+
+  function noteNativeSize(w: number, h: number) {
+    if (!w || !h) return;
+    setNativeDims(`${w}×${h}`);
+    const claimedR = aspectRatioNumber(current.aspect, current.width, current.height);
+    if (claimedR != null && !ratiosMatch(w / h, claimedR)) {
+      setAspectMismatch(true);
+    }
+  }
+
+  const frameStyle =
+    current.width && current.height
+      ? { aspectRatio: `${current.width} / ${current.height}`, maxHeight: "70vh" }
+      : current.aspect?.includes(":")
+        ? {
+            aspectRatio: current.aspect.replace(":", " / "),
+            maxHeight: "70vh",
+          }
+        : { maxHeight: "70vh" };
+
+  function go(delta: number) {
+    if (!onSelect || gallery.length < 2) return;
+    const next = gallery[(index + delta + gallery.length) % gallery.length]!;
+    onSelect(next);
+  }
 
   return (
     <div
@@ -158,6 +230,32 @@ export function MediaLightbox({
       aria-modal="true"
       onClick={onClose}
     >
+      {gallery.length > 1 ? (
+        <button
+          type="button"
+          className="absolute left-3 top-1/2 z-[81] -translate-y-1/2 rounded-full bg-black/60 px-3 py-2 text-lg text-white hover:bg-black/80"
+          aria-label="Previous size"
+          onClick={(e) => {
+            e.stopPropagation();
+            go(-1);
+          }}
+        >
+          ‹
+        </button>
+      ) : null}
+      {gallery.length > 1 ? (
+        <button
+          type="button"
+          className="absolute right-3 top-1/2 z-[81] -translate-y-1/2 rounded-full bg-black/60 px-3 py-2 text-lg text-white hover:bg-black/80"
+          aria-label="Next size"
+          onClick={(e) => {
+            e.stopPropagation();
+            go(1);
+          }}
+        >
+          ›
+        </button>
+      ) : null}
       <div
         className="relative max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-ink-950 shadow-xl"
         onClick={(e) => e.stopPropagation()}
@@ -169,48 +267,72 @@ export function MediaLightbox({
         >
           Close
         </button>
-        <div className="border-b border-white/10 px-3 py-2">
-          <p className="text-xs text-warm-paper">{state.label}</p>
-          {dims ? (
-            <p className="font-mono text-[10px] text-warm-paper/70">{dims}</p>
+        <div className="border-b border-white/10 px-3 py-2 pr-16">
+          <p className="text-xs text-warm-paper">{current.label}</p>
+          {claimed ? (
+            <p className="font-mono text-[10px] text-warm-paper/70">{claimed}</p>
           ) : null}
           <p className="truncate font-mono text-[9px] text-warm-paper/50">
-            {state.path.split("/").pop()}
+            {current.path.split("/").pop()}
+            {nativeDims ? ` · native ${nativeDims}` : ""}
           </p>
+          {gallery.length > 1 ? (
+            <p className="mt-0.5 text-[9px] text-warm-paper/50">
+              Size {index + 1}/{gallery.length} · ← → or chevrons
+            </p>
+          ) : null}
+          {aspectMismatch ? (
+            <p className="mt-1 rounded bg-amber-500/20 px-2 py-1 text-[10px] text-amber-100">
+              Plate pixels do not match {current.aspect}. Regenerate this size for a
+              true native frame (preview below is delivery-cropped like Variants).
+            </p>
+          ) : null}
         </div>
-        {image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={cacheKey}
-            src={url}
-            alt={state.label}
-            className="max-h-[75vh] w-full bg-ink-900 object-contain"
-          />
-        ) : (
-          <div
-            className="mx-auto w-full bg-ink-900"
-            style={
-              state.width && state.height
-                ? { aspectRatio: `${state.width} / ${state.height}`, maxHeight: "75vh" }
-                : state.aspect?.includes(":")
-                  ? {
-                      aspectRatio: state.aspect.replace(":", " / "),
-                      maxHeight: "75vh",
-                    }
-                  : undefined
-            }
-          >
+        <div className="mx-auto w-full max-w-xl bg-ink-900" style={frameStyle}>
+          {image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={cacheKey}
+              src={url}
+              alt={current.label}
+              className="h-full w-full object-cover"
+              onLoad={(e) =>
+                noteNativeSize(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)
+              }
+            />
+          ) : (
             <video
               key={cacheKey}
               src={url}
-              className="h-full max-h-[75vh] w-full object-contain"
+              className="h-full w-full object-cover"
               controls
               autoPlay
               playsInline
               preload="auto"
+              onLoadedMetadata={(e) =>
+                noteNativeSize(e.currentTarget.videoWidth, e.currentTarget.videoHeight)
+              }
             />
+          )}
+        </div>
+        {gallery.length > 1 ? (
+          <div className="flex flex-wrap justify-center gap-1 border-t border-white/10 px-3 py-2">
+            {gallery.map((it, i) => (
+              <button
+                key={it.sizeId || it.path}
+                type="button"
+                className={`rounded px-2 py-0.5 font-mono text-[10px] ${
+                  i === index
+                    ? "bg-white text-ink-900"
+                    : "bg-white/10 text-warm-paper hover:bg-white/20"
+                }`}
+                onClick={() => onSelect?.(it)}
+              >
+                {it.aspect || it.label}
+              </button>
+            ))}
           </div>
-        )}
+        ) : null}
         <div className="flex gap-3 border-t border-white/10 px-3 py-2 text-xs">
           <a className="text-warm-paper underline" href={url} download>
             Download
@@ -442,6 +564,7 @@ type SizeMediaProps = {
 /**
  * Size-accurate plate preview — same approach as Variants advanced:
  * aspect frame + object-cover + remount key on path/size.
+ * Hover overlay: Download / Open (library-style).
  */
 export function SizeMediaFrame({
   path,
@@ -466,7 +589,7 @@ export function SizeMediaFrame({
       ? { aspectRatio: cssAspect(aspect) || undefined }
       : undefined;
 
-  if (!mediaUrl) {
+  if (!mediaUrl || !url) {
     return (
       <div
         className={`flex items-center justify-center rounded border border-dashed border-ink-200 bg-ink-50 text-[9px] text-ink-400 ${
@@ -517,22 +640,63 @@ export function SizeMediaFrame({
     />
   );
 
-  const shell = (
+  return (
     <div
-      className={`relative overflow-hidden rounded border border-ink-200 bg-ink-900 ${
+      className={`group relative overflow-hidden rounded border border-ink-200 bg-ink-900 ${
         bay ? frame : ""
       } ${className}`}
       style={style}
       title={label}
     >
-      {media}
+      <div
+        className={`h-full w-full ${onOpen ? "cursor-zoom-in" : ""}`}
+        onClick={onOpen}
+        onKeyDown={
+          onOpen
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onOpen();
+                }
+              }
+            : undefined
+        }
+        role={onOpen ? "button" : undefined}
+        tabIndex={onOpen ? 0 : undefined}
+      >
+        {media}
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] flex translate-y-full items-center gap-2 bg-gradient-to-t from-black/80 to-transparent px-1.5 pb-1 pt-4 text-[9px] text-white opacity-0 transition group-hover:translate-y-0 group-hover:opacity-100">
+        <a
+          className="pointer-events-auto underline hover:text-warm-paper"
+          href={url}
+          download
+          onClick={(e) => e.stopPropagation()}
+        >
+          Download
+        </a>
+        <a
+          className="pointer-events-auto underline hover:text-warm-paper"
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+        >
+          Open
+        </a>
+        {onOpen ? (
+          <button
+            type="button"
+            className="pointer-events-auto underline hover:text-warm-paper"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen();
+            }}
+          >
+            Expand
+          </button>
+        ) : null}
+      </div>
     </div>
-  );
-
-  if (!onOpen) return shell;
-  return (
-    <button type="button" className="block text-left" onClick={onOpen}>
-      {shell}
-    </button>
   );
 }

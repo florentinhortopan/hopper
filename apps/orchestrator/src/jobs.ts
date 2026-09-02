@@ -1,4 +1,5 @@
 import { nanoid } from "nanoid";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import {
   DEFAULT_LIBRARY_ID,
@@ -518,6 +519,45 @@ function applyGenPathToSize(
   a.error = null;
 }
 
+function probeMediaDims(filePath: string): { w: number; h: number } | null {
+  const res = spawnSync(
+    "ffprobe",
+    [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=width,height",
+      "-of",
+      "csv=p=0",
+      filePath,
+    ],
+    { encoding: "utf8" },
+  );
+  if (res.status !== 0) return null;
+  const [w, h] = String(res.stdout || "")
+    .trim()
+    .split(/[x,]/)
+    .map((n) => Number(n));
+  if (!w || !h) return null;
+  return { w, h };
+}
+
+/** Refuse to lock in a plate whose pixels are the wrong aspect for this size. */
+function assertGenMatchesSize(assetPath: string, size: OutputSize): void {
+  const dims = probeMediaDims(assetPath);
+  if (!dims) return;
+  const target = genDimsForSize(size);
+  const actualR = dims.w / dims.h;
+  const targetR = target.width / target.height;
+  if (Math.abs(actualR - targetR) / targetR > 0.12) {
+    throw new Error(
+      `Comfy plate is ${dims.w}×${dims.h} but ${size.aspect} needs ~${target.width}×${target.height}. Re-generate this size (do not reuse another aspect).`,
+    );
+  }
+}
+
 /**
  * Persist genPath under the campaign lock (re-read from disk).
  * Parallel variant jobs must not saveCampaign() a stale in-memory snapshot —
@@ -626,6 +666,7 @@ async function runComfyForCellSize(
         ? (promptId) => setJobComfyPromptId(control.jobId!, promptId)
         : undefined,
     });
+    assertGenMatchesSize(gen.assetPath, size);
     await persistGenPath(
       campaign.id,
       cellId,
