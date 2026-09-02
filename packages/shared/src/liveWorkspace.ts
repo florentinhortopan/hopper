@@ -29,10 +29,20 @@ export const CampaignEventSchema = z.object({
 });
 export type CampaignEvent = z.infer<typeof CampaignEventSchema>;
 
+export const CeltraPreviewSizeSlotSchema = z.object({
+  sizeId: z.string(),
+  aspect: z.string(),
+  label: z.string(),
+  platePath: z.string().nullable().default(null),
+  ready: z.boolean().default(false),
+});
+export type CeltraPreviewSizeSlot = z.infer<typeof CeltraPreviewSizeSlotSchema>;
+
 export const CeltraPreviewRowSchema = z.object({
   order: z.number().int().positive(),
   cellId: z.string(),
   frame: z.string(),
+  /** Primary / first-ready plate (legacy thumb). */
   platePath: z.string().nullable(),
   setup: z.string().default(""),
   punchline: z.string().default(""),
@@ -42,6 +52,10 @@ export const CeltraPreviewRowSchema = z.object({
   hasPlate: z.boolean().default(false),
   /** Included in next zip if packaged now */
   packable: z.boolean().default(false),
+  /** One Celtra order row; Settings sizes live on the row (SIZE explode / native plates). */
+  sizes: z.array(CeltraPreviewSizeSlotSchema).default([]),
+  sizesReady: z.number().int().nonnegative().default(0),
+  sizesTotal: z.number().int().nonnegative().default(0),
   warnings: z.array(z.string()).default([]),
 });
 export type CeltraPreviewRow = z.infer<typeof CeltraPreviewRowSchema>;
@@ -52,6 +66,18 @@ export const CeltraPreviewSchema = z.object({
   rowCount: z.number().int().nonnegative(),
   approvedCount: z.number().int().nonnegative(),
   packableCount: z.number().int().nonnegative().default(0),
+  /** Campaign Settings sizes — columns on each content-matrix row. */
+  sizes: z
+    .array(
+      z.object({
+        id: z.string(),
+        aspect: z.string(),
+        label: z.string(),
+      }),
+    )
+    .default([]),
+  sizeSlotReady: z.number().int().nonnegative().default(0),
+  sizeSlotTotal: z.number().int().nonnegative().default(0),
   rows: z.array(CeltraPreviewRowSchema).default([]),
   warnings: z.array(z.string()).default([]),
   updatedAt: z.string(),

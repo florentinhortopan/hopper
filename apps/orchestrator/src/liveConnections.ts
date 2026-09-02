@@ -138,7 +138,7 @@ async function probeCeltra(
       id: "celtra",
       label: "Celtra",
       state: "simulated",
-      detail: `${preview.rowCount} row(s) · ${preview.packableCount} packable · ${campaign.celtraTemplateProfileId}`,
+      detail: `${preview.rowCount} order row(s) · ${preview.sizeSlotReady}/${preview.sizeSlotTotal || "—"} size plates · ${preview.packableCount} packable · ${campaign.celtraTemplateProfileId}`,
       endpoint: "attatta://celtra-package",
       lastCheckedAt: checkedAt,
       lastSyncedAt: lastSynced.get("celtra") ?? null,
@@ -214,11 +214,13 @@ export async function resyncLiveConnection(
       campaignId,
       column: "celtra",
       type: "celtra_preview",
-      summary: `Celtra matrix resync · ${preview.rowCount} row(s) · ${preview.packableCount} packable`,
+      summary: `Celtra matrix resync · ${preview.rowCount} order(s) · ${preview.sizeSlotReady}/${preview.sizeSlotTotal || "—"} sizes · ${preview.packableCount} packable`,
       payload: {
         connectionId: "celtra",
         rowCount: preview.rowCount,
         packableCount: preview.packableCount,
+        sizeSlotReady: preview.sizeSlotReady,
+        sizeSlotTotal: preview.sizeSlotTotal,
         futureApi:
           "When Celtra API lands, resync will push CSV/XLS and notify the designer",
       },

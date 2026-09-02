@@ -7,7 +7,7 @@ import type {
   OutputSize,
   ReviewEntry,
 } from "@attatta/shared";
-import { LiveThumb, cellMediaPath } from "@/components/live/LiveThumb";
+import { LiveThumb, cellMediaPath, cellMediaRev, sizeAssetMediaPath, sizeAssetMediaRev } from "@/components/live/LiveThumb";
 import {
   axisValue,
   cellComboLabel,
@@ -31,6 +31,13 @@ type Props = {
   onChanged: () => Promise<void> | void;
 };
 
+function firstReadySizeId(cell: MatrixCell, sizes: OutputSize[]): string | null {
+  for (const s of sizes) {
+    if (sizeAssetMediaPath(cell, s.id)) return s.id;
+  }
+  return sizes[0]?.id ?? null;
+}
+
 export function LiveHopperMatrix({
   campaignId,
   cells,
@@ -42,7 +49,13 @@ export function LiveHopperMatrix({
   const [jobs, setJobs] = useState<Job[]>([]);
   const [view, setView] = useState<"xy" | "list">("xy");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [previewSizeId, setPreviewSizeId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [sizeLightbox, setSizeLightbox] = useState<{
+    path: string;
+    rev: string | null;
+    label: string;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,6 +83,36 @@ export function LiveHopperMatrix({
   const selected =
     cells.find((c) => c.cellId === selectedId) || cells[0] || null;
 
+  useEffect(() => {
+    if (!selected) {
+      setPreviewSizeId(null);
+      return;
+    }
+    setPreviewSizeId((prev) => {
+      if (prev && sizeAssetMediaPath(selected, prev)) return prev;
+      return firstReadySizeId(selected, sizes);
+    });
+  }, [selected?.cellId, selected, sizes]);
+
+  function selectCell(cellId: string, sizeId?: string | null) {
+    setSelectedId(cellId);
+    if (sizeId) setPreviewSizeId(sizeId);
+  }
+
+  function openSizePreview(cell: MatrixCell, size: OutputSize) {
+    const path = sizeAssetMediaPath(cell, size.id);
+    if (!path) {
+      selectCell(cell.cellId, size.id);
+      return;
+    }
+    selectCell(cell.cellId, size.id);
+    setSizeLightbox({
+      path,
+      rev: sizeAssetMediaRev(cell, size.id),
+      label: `${cell.cellId} · ${size.aspect} ${size.label}`,
+    });
+  }
+
   async function setDecision(
     cellId: string,
     decision: "approved" | "rejected" | "pending",
@@ -82,6 +125,14 @@ export function LiveHopperMatrix({
       setBusyId(null);
     }
   }
+
+  const selectedPath = selected
+    ? cellMediaPath(selected, previewSizeId)
+    : null;
+  const selectedRev = selected
+    ? cellMediaRev(selected, previewSizeId)
+    : null;
+  const selectedSize = sizes.find((s) => s.id === previewSizeId) || null;
 
   return (
     <div className="space-y-3 border-b border-ink-100 px-3 py-2 text-xs">
@@ -151,7 +202,8 @@ export function LiveHopperMatrix({
           yLabel={yAxis.label}
           yValues={yAxis.values}
           selectedId={selected?.cellId ?? null}
-          onSelect={setSelectedId}
+          previewSizeId={previewSizeId}
+          onSelect={selectCell}
         />
       ) : view === "xy" ? (
         <SizeCoverageGrid
@@ -159,23 +211,43 @@ export function LiveHopperMatrix({
           sizes={sizes}
           jobs={jobs}
           selectedId={selected?.cellId ?? null}
-          onSelect={setSelectedId}
+          previewSizeId={previewSizeId}
+          onSelect={selectCell}
+          onOpenSize={openSizePreview}
         />
       ) : (
         <ul className="space-y-1.5">
           {cells.map((cell) => (
             <li key={cell.cellId}>
-              <button
-                type="button"
-                className={`flex w-full items-start gap-2 rounded border px-1.5 py-1 text-left ${
+              <div
+                role="button"
+                tabIndex={0}
+                className={`flex w-full cursor-pointer items-start gap-2 rounded border px-1.5 py-1 text-left ${
                   selected?.cellId === cell.cellId
                     ? "border-ink-900 bg-white"
                     : "border-ink-100 bg-white/60"
                 }`}
-                onClick={() => setSelectedId(cell.cellId)}
+                onClick={() => selectCell(cell.cellId)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    selectCell(cell.cellId);
+                  }
+                }}
               >
                 <LiveThumb
-                  filePath={cellMediaPath(cell)}
+                  filePath={cellMediaPath(
+                    cell,
+                    previewSizeId && selected?.cellId === cell.cellId
+                      ? previewSizeId
+                      : firstReadySizeId(cell, sizes),
+                  )}
+                  rev={cellMediaRev(
+                    cell,
+                    previewSizeId && selected?.cellId === cell.cellId
+                      ? previewSizeId
+                      : firstReadySizeId(cell, sizes),
+                  )}
                   label={cell.cellId}
                   emptyHint="…"
                 />
@@ -187,12 +259,20 @@ export function LiveHopperMatrix({
                   <p className="truncate text-[11px] text-ink-800">
                     {cellComboLabel(cell)}
                   </p>
-                  <SizeDots cell={cell} sizes={sizes} jobs={jobs} />
+                  <SizeDots
+                    cell={cell}
+                    sizes={sizes}
+                    jobs={jobs}
+                    activeSizeId={
+                      selected?.cellId === cell.cellId ? previewSizeId : null
+                    }
+                    onSizeTap={(size) => openSizePreview(cell, size)}
+                  />
                   <p className="mt-0.5 text-[10px] text-ink-500">
                     {reviewOf(reviews, cell.cellId)}
                   </p>
                 </div>
-              </button>
+              </div>
             </li>
           ))}
         </ul>
@@ -202,42 +282,82 @@ export function LiveHopperMatrix({
         <div className="rounded-lg border border-ink-200 bg-white p-2">
           <div className="flex items-start gap-2">
             <LiveThumb
-              filePath={cellMediaPath(selected)}
-              label={selected.cellId}
+              filePath={selectedPath}
+              rev={selectedRev}
+              label={
+                selectedSize
+                  ? `${selected.cellId} · ${selectedSize.aspect}`
+                  : selected.cellId
+              }
               size="md"
             />
             <div className="min-w-0 flex-1">
               <p className="font-mono text-[10px] text-ink-500">
                 {selected.cellId}
+                {selectedSize ? ` · ${selectedSize.aspect}` : ""}
               </p>
               <p className="text-[11px] font-medium text-ink-900">
                 {cellComboLabel(selected)}
               </p>
               {selected.sceneTag ? (
                 <p className="text-[10px] text-ink-600">
-                  Scene / plate beat: <span className="font-mono">{selected.sceneTag}</span>
+                  Scene / plate beat:{" "}
+                  <span className="font-mono">{selected.sceneTag}</span>
                 </p>
               ) : null}
-              <p className="mt-1 text-[10px] text-ink-600">
+              <p className="mt-1 line-clamp-2 text-[10px] text-ink-600">
                 {selected.copy?.setup || "—"}
                 {selected.copy?.punchline
                   ? ` → ${selected.copy.punchline}`
                   : ""}
               </p>
-              <div className="mt-2 space-y-1">
+              <p className="mt-2 text-[9px] uppercase tracking-wide text-ink-500">
+                Sizes — tap to preview
+              </p>
+              <div className="mt-1 flex flex-col gap-1">
                 {sizes.map((s) => {
                   const tone = sizeSlotTone(selected, s, jobs);
+                  const path = sizeAssetMediaPath(selected, s.id);
+                  const active = previewSizeId === s.id;
                   return (
                     <div
                       key={s.id}
-                      className="flex items-center gap-2 text-[10px]"
+                      role="button"
+                      tabIndex={0}
+                      className={`flex w-full cursor-pointer items-center gap-2 rounded border px-1.5 py-1 text-left ${
+                        active
+                          ? "border-ink-900 bg-ink-50"
+                          : "border-ink-100 hover:bg-ink-50"
+                      }`}
+                      title={
+                        path
+                          ? `Preview ${s.aspect}`
+                          : `${s.label}: ${toneLabel(tone)}`
+                      }
+                      onClick={() => openSizePreview(selected, s)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          openSizePreview(selected, s);
+                        }
+                      }}
                     >
-                      <span
-                        className={`h-2 w-2 rounded-full ${toneClass(tone)}`}
+                      <LiveThumb
+                        filePath={path}
+                        rev={sizeAssetMediaRev(selected, s.id)}
+                        label={`${selected.cellId} · ${s.aspect}`}
+                        emptyHint={tone === "running" ? "…" : "—"}
+                        className="!h-9 !w-7"
                       />
-                      <span className="font-medium">{s.aspect}</span>
-                      <span className="text-ink-500">
-                        {s.label} · {toneLabel(tone)}
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${toneClass(tone)}`}
+                      />
+                      <span className="min-w-0 flex-1 text-[10px]">
+                        <span className="font-medium">{s.aspect}</span>
+                        <span className="text-ink-500">
+                          {" "}
+                          {s.label} · {toneLabel(tone)}
+                        </span>
                       </span>
                     </div>
                   );
@@ -283,6 +403,20 @@ export function LiveHopperMatrix({
           Prepare a matrix in Magic to review combinations here.
         </p>
       )}
+
+      {sizeLightbox ? (
+        <LiveThumb
+          key={`${sizeLightbox.path}:${sizeLightbox.rev || ""}`}
+          filePath={sizeLightbox.path}
+          rev={sizeLightbox.rev}
+          label={sizeLightbox.label}
+          startExpanded
+          onExpandedChange={(open) => {
+            if (!open) setSizeLightbox(null);
+          }}
+          className="hidden"
+        />
+      ) : null}
     </div>
   );
 }
@@ -291,24 +425,38 @@ function SizeDots({
   cell,
   sizes,
   jobs,
+  activeSizeId,
+  onSizeTap,
 }: {
   cell: MatrixCell;
   sizes: OutputSize[];
   jobs: Job[];
+  activeSizeId?: string | null;
+  onSizeTap?: (size: OutputSize) => void;
 }) {
   return (
     <div className="mt-1 flex flex-wrap gap-1">
       {sizes.map((s) => {
         const tone = sizeSlotTone(cell, s, jobs);
+        const active = activeSizeId === s.id;
         return (
-          <span
+          <button
             key={s.id}
-            className="inline-flex items-center gap-1 rounded bg-ink-50 px-1 py-0.5 text-[9px] text-ink-600"
-            title={`${s.label}: ${toneLabel(tone)}`}
+            type="button"
+            className={`inline-flex items-center gap-1 rounded px-1 py-0.5 text-[9px] ${
+              active
+                ? "bg-ink-900 text-white"
+                : "bg-ink-50 text-ink-600 hover:bg-ink-100"
+            }`}
+            title={`${s.label}: ${toneLabel(tone)} — tap to preview`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSizeTap?.(s);
+            }}
           >
             <span className={`h-1.5 w-1.5 rounded-full ${toneClass(tone)}`} />
             {s.aspect}
-          </span>
+          </button>
         );
       })}
     </div>
@@ -321,17 +469,23 @@ function SizeCoverageGrid({
   sizes,
   jobs,
   selectedId,
+  previewSizeId,
   onSelect,
+  onOpenSize,
 }: {
   cells: MatrixCell[];
   sizes: OutputSize[];
   jobs: Job[];
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  previewSizeId: string | null;
+  onSelect: (id: string, sizeId?: string | null) => void;
+  onOpenSize: (cell: MatrixCell, size: OutputSize) => void;
 }) {
   return (
     <div className="overflow-x-auto">
-      <p className="mb-1 text-[10px] text-ink-500">Variants × sizes</p>
+      <p className="mb-1 text-[10px] text-ink-500">
+        Variants × sizes — tap a size cell to preview
+      </p>
       <table className="w-full min-w-[16rem] border-collapse text-[10px]">
         <thead>
           <tr className="border-b border-ink-200 text-ink-500">
@@ -373,11 +527,14 @@ function SizeCoverageGrid({
                 </td>
                 {sizes.map((s) => {
                   const tone = sizeSlotTone(cell, s, jobs);
+                  const active = selected && previewSizeId === s.id;
                   return (
                     <td key={s.id} className="px-1 py-1 text-center">
                       <button
                         type="button"
                         className={`inline-flex items-center gap-1 rounded px-1 py-0.5 ${
+                          active ? "ring-1 ring-ink-900 " : ""
+                        }${
                           tone === "ready"
                             ? "bg-emerald-50 text-emerald-900"
                             : tone === "running"
@@ -386,8 +543,8 @@ function SizeCoverageGrid({
                                 ? "bg-red-50 text-red-800"
                                 : "bg-ink-50 text-ink-500"
                         }`}
-                        title={`${s.label}: ${toneLabel(tone)}`}
-                        onClick={() => onSelect(cell.cellId)}
+                        title={`${s.label}: ${toneLabel(tone)} — tap to preview`}
+                        onClick={() => onOpenSize(cell, s)}
                       >
                         <span
                           className={`h-1.5 w-1.5 rounded-full ${toneClass(tone)}`}
@@ -429,6 +586,7 @@ function XyGrid({
   yLabel,
   yValues,
   selectedId,
+  previewSizeId,
   onSelect,
 }: {
   cells: MatrixCell[];
@@ -442,7 +600,8 @@ function XyGrid({
   yLabel: string;
   yValues: string[];
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  previewSizeId: string | null;
+  onSelect: (id: string, sizeId?: string | null) => void;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -489,6 +648,11 @@ function XyGrid({
                 }
                 const decision = reviewOf(reviews, cell.cellId);
                 const selected = selectedId === cell.cellId;
+                const thumbSize =
+                  (selected && previewSizeId) ||
+                  sizes.find((s) => sizeAssetMediaPath(cell, s.id))?.id ||
+                  sizes[0]?.id ||
+                  null;
                 return (
                   <td key={xv} className="border border-ink-100 p-0.5">
                     <button
@@ -506,7 +670,8 @@ function XyGrid({
                       title={`${cell.cellId}\n${cellComboLabel(cell)}`}
                     >
                       <LiveThumb
-                        filePath={cellMediaPath(cell)}
+                        filePath={cellMediaPath(cell, thumbSize)}
+                        rev={cellMediaRev(cell, thumbSize)}
                         label={cell.cellId}
                         emptyHint="…"
                       />
@@ -525,7 +690,7 @@ function XyGrid({
                             key={s.id}
                             className={`h-1.5 w-1.5 rounded-full ${toneClass(
                               sizeSlotTone(cell, s, jobs),
-                            )} ${selected ? "ring-1 ring-white/40" : ""}`}
+                            )} ${selected && previewSizeId === s.id ? "ring-1 ring-ember-400" : selected ? "ring-1 ring-white/40" : ""}`}
                             title={`${s.aspect}: ${toneLabel(sizeSlotTone(cell, s, jobs))}`}
                           />
                         ))}

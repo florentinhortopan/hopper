@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { LibraryItem, MatrixCell } from "@attatta/shared";
 import { isPlateReady } from "@/lib/plateStatus";
 import { api } from "@/lib/api";
@@ -9,9 +9,48 @@ function looksLikeImage(src: string) {
   return /\.(png|jpe?g|webp|gif)(\?|$)/i.test(src);
 }
 
-/** Prefer Comfy plate, then assemble masters. */
-export function cellMediaPath(cell: MatrixCell | undefined | null): string | null {
+/** Media path for one size slot (Comfy plate, then assemble masters). */
+export function sizeAssetMediaPath(
+  cell: MatrixCell | undefined | null,
+  sizeId: string | null | undefined,
+): string | null {
+  if (!cell || !sizeId) return null;
+  const asset = cell.sizeAssets?.find((a) => a.sizeId === sizeId);
+  return (
+    asset?.genPath?.trim() ||
+    asset?.outputPath?.trim() ||
+    asset?.previewPath?.trim() ||
+    null
+  );
+}
+
+/** Cache-bust token so thumbs refresh after re-gen (same path, new bytes). */
+export function sizeAssetMediaRev(
+  cell: MatrixCell | undefined | null,
+  sizeId: string | null | undefined,
+): string | null {
+  if (!cell || !sizeId) return null;
+  const asset = cell.sizeAssets?.find((a) => a.sizeId === sizeId);
+  if (!asset) return null;
+  return (
+    asset.promptHash?.trim() ||
+    asset.genPath?.trim() ||
+    asset.outputPath?.trim() ||
+    asset.previewPath?.trim() ||
+    null
+  );
+}
+
+/** Prefer first size with media; optional preferred sizeId. */
+export function cellMediaPath(
+  cell: MatrixCell | undefined | null,
+  preferredSizeId?: string | null,
+): string | null {
   if (!cell) return null;
+  if (preferredSizeId) {
+    const hit = sizeAssetMediaPath(cell, preferredSizeId);
+    if (hit) return hit;
+  }
   const asset =
     cell.sizeAssets?.find((a) => a.genPath?.trim()) ||
     cell.sizeAssets?.find((a) => a.outputPath?.trim() || a.previewPath?.trim()) ||
@@ -26,6 +65,37 @@ export function cellMediaPath(cell: MatrixCell | undefined | null): string | nul
   );
 }
 
+export function cellMediaRev(
+  cell: MatrixCell | undefined | null,
+  preferredSizeId?: string | null,
+): string | null {
+  if (!cell) return null;
+  if (preferredSizeId) {
+    const hit = sizeAssetMediaRev(cell, preferredSizeId);
+    if (hit) return hit;
+  }
+  const asset =
+    cell.sizeAssets?.find((a) => a.genPath?.trim()) ||
+    cell.sizeAssets?.find((a) => a.outputPath?.trim() || a.previewPath?.trim()) ||
+    cell.sizeAssets?.[0];
+  return (
+    asset?.promptHash?.trim() ||
+    asset?.genPath?.trim() ||
+    asset?.outputPath?.trim() ||
+    asset?.previewPath?.trim() ||
+    cell.outputPath?.trim() ||
+    cell.previewPath?.trim() ||
+    null
+  );
+}
+
+/** Video src that paints a real frame (avoids black first-frame thumbs). */
+export function videoThumbSrc(url: string): string {
+  if (!url || looksLikeImage(url)) return url;
+  if (url.includes("#")) return url;
+  return `${url}#t=0.1`;
+}
+
 type Size = "sm" | "md";
 
 type Props = {
@@ -33,10 +103,15 @@ type Props = {
   size?: Size;
   /** Absolute disk path → /files */
   filePath?: string | null;
+  /** Cache-bust / identity for filePath (promptHash etc.) */
+  rev?: string | number | null;
   /** Library ingredient → /library/media/:id */
   libraryItem?: LibraryItem | null;
   emptyHint?: string;
   className?: string;
+  /** Open expanded viewer immediately (e.g. size chip tap). */
+  startExpanded?: boolean;
+  onExpandedChange?: (open: boolean) => void;
 };
 
 /**
@@ -46,11 +121,33 @@ export function LiveThumb({
   label,
   size = "sm",
   filePath,
+  rev,
   libraryItem,
   emptyHint = "—",
   className = "",
+  startExpanded = false,
+  onExpandedChange,
 }: Props) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(startExpanded);
+  const [frameReady, setFrameReady] = useState(false);
+
+  useEffect(() => {
+    if (startExpanded) setExpanded(true);
+  }, [startExpanded]);
+
+  useEffect(() => {
+    setFrameReady(false);
+  }, [filePath, rev, libraryItem?.id, libraryItem?.path, libraryItem?.status]);
+
+  function openExpanded() {
+    setExpanded(true);
+    onExpandedChange?.(true);
+  }
+
+  function closeExpanded() {
+    setExpanded(false);
+    onExpandedChange?.(false);
+  }
 
   const libraryReady = libraryItem ? isPlateReady(libraryItem) : false;
   const copyOnly =
@@ -60,12 +157,12 @@ export function LiveThumb({
   let image = false;
 
   if (filePath?.trim()) {
-    url = api.fileUrl(filePath.trim());
+    url = api.fileUrl(filePath.trim(), rev ?? filePath.trim());
     image = looksLikeImage(filePath);
   } else if (libraryItem && libraryReady && !copyOnly && libraryItem.path) {
     url = api.libraryMediaUrl(
       libraryItem.id,
-      `${libraryItem.path}:${libraryItem.status}`,
+      rev ?? `${libraryItem.path}:${libraryItem.status}`,
     );
     image = libraryItem.mediaType === "image" || looksLikeImage(libraryItem.path);
   }
@@ -81,7 +178,7 @@ export function LiveThumb({
         type="button"
         title={label || libraryItem.label}
         className={`shrink-0 overflow-hidden rounded border border-ink-200 bg-white px-1 py-0.5 text-left ${box} ${className}`}
-        onClick={() => setExpanded(true)}
+        onClick={openExpanded}
       >
         <span className="line-clamp-3 text-[8px] leading-tight text-ink-700">
           {libraryItem.copy?.setup || libraryItem.label}
@@ -101,30 +198,64 @@ export function LiveThumb({
     );
   }
 
+  const mediaUrl = image ? url : videoThumbSrc(url);
+
+  function revealFrame(el: HTMLVideoElement) {
+    try {
+      if (el.currentTime < 0.05) el.currentTime = 0.1;
+    } catch {
+      /* ignore seek errors */
+    }
+    setFrameReady(true);
+  }
+
   return (
     <>
       <button
         type="button"
-        className={`shrink-0 overflow-hidden rounded border border-ink-200 bg-ink-900 ${box} ${className}`}
+        className={`relative shrink-0 overflow-hidden rounded border border-ink-200 bg-ink-100 ${box} ${className}`}
         title={label ? `${label} — expand` : "Expand preview"}
-        onClick={() => setExpanded(true)}
+        onClick={(e) => {
+          e.stopPropagation();
+          openExpanded();
+        }}
       >
+        {!frameReady && !image ? (
+          <span className="absolute inset-0 flex items-center justify-center text-[9px] text-ink-400">
+            …
+          </span>
+        ) : null}
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt={label || ""} className="h-full w-full object-cover" />
+          <img
+            key={mediaUrl}
+            src={mediaUrl}
+            alt={label || ""}
+            className="h-full w-full object-cover"
+            onLoad={() => setFrameReady(true)}
+          />
         ) : (
           <video
-            src={url}
-            className="h-full w-full object-cover"
+            key={mediaUrl}
+            src={mediaUrl}
+            className={`h-full w-full object-cover transition-opacity ${
+              frameReady ? "opacity-100" : "opacity-0"
+            }`}
             muted
             playsInline
-            preload="metadata"
+            preload="auto"
+            onLoadedData={(e) => revealFrame(e.currentTarget)}
+            onLoadedMetadata={(e) => revealFrame(e.currentTarget)}
             onMouseEnter={(e) => {
               void e.currentTarget.play().catch(() => undefined);
             }}
             onMouseLeave={(e) => {
               e.currentTarget.pause();
-              e.currentTarget.currentTime = 0;
+              try {
+                e.currentTarget.currentTime = 0.1;
+              } catch {
+                /* ignore */
+              }
             }}
           />
         )}
@@ -134,7 +265,7 @@ export function LiveThumb({
           className="fixed inset-0 z-[70] flex items-center justify-center bg-ink-900/80 p-4"
           role="dialog"
           aria-modal="true"
-          onClick={() => setExpanded(false)}
+          onClick={closeExpanded}
         >
           <div
             className="relative max-h-[90vh] w-full max-w-md overflow-hidden rounded-2xl bg-ink-950 shadow-xl"
@@ -143,7 +274,7 @@ export function LiveThumb({
             <button
               type="button"
               className="absolute right-3 top-3 z-10 rounded bg-black/50 px-2 py-1 text-xs text-white"
-              onClick={() => setExpanded(false)}
+              onClick={closeExpanded}
             >
               Close
             </button>
@@ -176,6 +307,7 @@ export function LiveThumb({
                 controls
                 autoPlay
                 playsInline
+                preload="auto"
               />
             )}
             {url && !copyOnly ? (

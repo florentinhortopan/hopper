@@ -33,34 +33,36 @@ type PackRow = {
 function pickPlateAbsPath(cell: MatrixCell): string | null {
   const assets = cell.sizeAssets ?? [];
   for (const a of assets) {
-    if (a.genPath?.trim()) {
-      const abs = resolveDataMediaPath(a.genPath);
-      if (existsSync(abs)) {
-        // Prefer original still for Celtra image columns when wrap left a sibling PNG/JPG
-        const ext = path.extname(abs).toLowerCase();
-        if (ext === ".mp4" || ext === ".webm" || ext === ".mov") {
-          for (const stillExt of [".png", ".jpg", ".jpeg", ".webp"]) {
-            const sibling = abs.slice(0, -ext.length) + stillExt;
-            if (existsSync(sibling)) return sibling;
-          }
-        }
-        return abs;
-      }
-    }
-  }
-  for (const a of assets) {
-    for (const p of [a.outputPath, a.previewPath]) {
-      if (p?.trim()) {
-        const abs = resolveDataMediaPath(p);
-        if (existsSync(abs)) return abs;
-      }
-    }
+    const hit = resolveSizePlateAbs(a);
+    if (hit) return hit;
   }
   for (const p of [cell.outputPath, cell.previewPath]) {
     if (p?.trim()) {
       const abs = resolveDataMediaPath(p);
       if (existsSync(abs)) return abs;
     }
+  }
+  return null;
+}
+
+/** Prefer still sibling when genPath is an MP4 wrap (Celtra image columns). */
+function resolveSizePlateAbs(asset: {
+  genPath?: string | null;
+  outputPath?: string | null;
+  previewPath?: string | null;
+}): string | null {
+  for (const p of [asset.genPath, asset.outputPath, asset.previewPath]) {
+    if (!p?.trim()) continue;
+    const abs = resolveDataMediaPath(p);
+    if (!existsSync(abs)) continue;
+    const ext = path.extname(abs).toLowerCase();
+    if (ext === ".mp4" || ext === ".webm" || ext === ".mov") {
+      for (const stillExt of [".png", ".jpg", ".jpeg", ".webp"]) {
+        const sibling = abs.slice(0, -ext.length) + stillExt;
+        if (existsSync(sibling)) return sibling;
+      }
+    }
+    return abs;
   }
   return null;
 }
@@ -209,7 +211,10 @@ export type CeltraPackageResult = {
   downloadPath: string;
 };
 
-/** Live Celtra matrix preview — all matrix cells (draft → kept). No zip write. */
+/** Live Celtra matrix preview — all matrix cells (draft → kept). No zip write.
+ * One row = one Celtra order (variant). Settings sizes are slots on that row
+ * (Asset Name `_SIZE_LENGTH` explode — not one spreadsheet row per aspect).
+ */
 export async function buildCeltraPreview(
   campaignId: string,
 ): Promise<CeltraPreview> {
@@ -222,8 +227,15 @@ export async function buildCeltraPreview(
   const profile = getCeltraTemplateProfile(campaign.celtraTemplateProfileId);
   const warnings: string[] = [];
   const rows: CeltraPreview["rows"] = [];
+  const sizes = (campaign.outputSizes || []).map((s) => ({
+    id: s.id,
+    aspect: s.aspect,
+    label: s.label,
+  }));
 
   let order = 1;
+  let sizeSlotReady = 0;
+  let sizeSlotTotal = 0;
   for (const cell of campaign.matrix.cells) {
     const plateAbs = pickPlateAbsPath(cell);
     const decisionRaw = decisionByCell.get(cell.cellId) || "pending";
@@ -246,21 +258,43 @@ export async function buildCeltraPreview(
       cell.copy.endcard || "",
       profile.charLimits["EC headline (max 77 char)"] ?? 77,
     );
+    const sizeSlots = sizes.map((s) => {
+      const asset = cell.sizeAssets?.find((a) => a.sizeId === s.id);
+      const path = asset ? resolveSizePlateAbs(asset) : null;
+      return {
+        sizeId: s.id,
+        aspect: s.aspect,
+        label: s.label,
+        platePath: path,
+        ready: Boolean(path),
+      };
+    });
+    const sizesReady = sizeSlots.filter((s) => s.ready).length;
+    const sizesTotal = sizeSlots.length || (plateAbs ? 1 : 0);
+    sizeSlotReady += sizesReady;
+    sizeSlotTotal += sizesTotal;
     const rowWarnings: string[] = [];
-    if (!plateAbs) rowWarnings.push("No plate yet");
+    if (!plateAbs && sizesReady === 0) rowWarnings.push("No plate yet");
+    if (sizesTotal > 0 && sizesReady < sizesTotal) {
+      rowWarnings.push(`${sizesReady}/${sizesTotal} sizes ready`);
+    }
     if (decision !== "approved") rowWarnings.push("Not kept — zip will skip");
-    const packable = decision === "approved" && Boolean(plateAbs);
+    const packable =
+      decision === "approved" && (Boolean(plateAbs) || sizesReady > 0);
     rows.push({
       order,
       cellId: cell.cellId,
       frame,
-      platePath: plateAbs,
+      platePath: plateAbs || sizeSlots.find((s) => s.platePath)?.platePath || null,
       setup,
       punchline,
       endcard,
       decision,
-      hasPlate: Boolean(plateAbs),
+      hasPlate: Boolean(plateAbs) || sizesReady > 0,
       packable,
+      sizes: sizeSlots,
+      sizesReady,
+      sizesTotal,
       warnings: rowWarnings,
     });
     order += 1;
@@ -276,6 +310,11 @@ export async function buildCeltraPreview(
       "Draft matrix live — Keep variants with plates to include them in the zip",
     );
   }
+  if (sizeSlotTotal > 0 && sizeSlotReady < sizeSlotTotal) {
+    warnings.push(
+      `Size coverage ${sizeSlotReady}/${sizeSlotTotal} — Celtra Asset Name uses _SIZE_LENGTH explode; native plates per aspect when present`,
+    );
+  }
 
   return {
     campaignId,
@@ -283,6 +322,9 @@ export async function buildCeltraPreview(
     rowCount: rows.length,
     approvedCount,
     packableCount,
+    sizes,
+    sizeSlotReady,
+    sizeSlotTotal,
     rows,
     warnings,
     updatedAt: new Date().toISOString(),

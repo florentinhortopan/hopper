@@ -675,8 +675,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  fileUrl: (absolutePath: string) =>
-    `${API}/files?path=${encodeURIComponent(absolutePath)}`,
+  fileUrl: (absolutePath: string, rev?: string | number) => {
+    const base = `${API}/files?path=${encodeURIComponent(absolutePath)}`;
+    if (rev == null || rev === "") return base;
+    return `${base}&v=${encodeURIComponent(String(rev))}`;
+  },
   /** `rev` busts browser cache after upload / re-generate (same path, new bytes). */
   libraryMediaUrl: (itemId: string, rev?: string | number) =>
     rev == null || rev === ""

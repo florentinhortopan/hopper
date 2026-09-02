@@ -87,6 +87,8 @@ Example: `ATTATTA_Bacherozzo_Celtra_v03_20260828-1703_2rows.zip`
 
 Scene tags map: `setup`→F1, `punchline`→F2, `endcard`→F3. Each approved cell becomes one Celtra order row with its plate in the tagged frame.
 
+**Sizes:** One content-matrix **row = one variant / Celtra order**, not one row per aspect. Campaign Settings sizes (e.g. 9:16 / 4:5 / 1:1) appear as **slots on that row**. Asset Name keeps `_SIZE_LENGTH` for Celtra’s size explode; live preview and the Celtra connection chip report `orders · size plates ready/total · packable`.
+
 ---
 
 ## 4. What Celtra still owns
