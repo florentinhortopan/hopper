@@ -1,5 +1,7 @@
 # ComfyUI integration — capabilities & limits
 
+**Related:** [LIVE-WORKSPACE.md](./LIVE-WORKSPACE.md) (live cockpit; Comfy publish events appear in Magic column)
+
 ATTATTA’s generative path has two layers:
 
 1. **Library plates** — upload or `POST /library/:id/generate` with `outputMode: "image" | "video"` (default **video**). Video uses the same Bria / MiniMax router as matrix when talent video is present; image is SD still. **One master @ primary campaign size** — do not fan out Comfy across every delivery size (Remotion scales).

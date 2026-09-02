@@ -371,11 +371,34 @@ function campaignSizes(campaign: Campaign): OutputSize[] {
 }
 
 function touchJob(job: Job, patch: Partial<Job>) {
-  return upsertJob({
+  const next = upsertJob({
     ...job,
     ...patch,
     updatedAt: new Date().toISOString(),
   });
+  if (
+    patch.status === "done" ||
+    patch.status === "failed" ||
+    patch.status === "cancelled" ||
+    patch.status === "running"
+  ) {
+    void import("./campaignEvents.js").then(({ emitCampaignEvent }) => {
+      emitCampaignEvent({
+        campaignId: next.campaignId,
+        column: "hopper",
+        type: "job_update",
+        summary: `Job ${next.id} ${next.status}${next.message ? ` — ${next.message}` : ""}`,
+        payload: {
+          jobId: next.id,
+          cellId: next.cellId,
+          status: next.status,
+          progress: next.progress,
+          message: next.message,
+        },
+      });
+    });
+  }
+  return next;
 }
 
 function markJobCancelledOrFailed(job: Job, err: unknown, signal?: AbortSignal) {

@@ -901,7 +901,7 @@ function finalizeMagicPrepareResult(args: {
   });
 
   const gate = magicCanContinue(gapsFilled);
-  return {
+  const result = {
     campaign,
     gapsFilled,
     variants,
@@ -911,6 +911,23 @@ function finalizeMagicPrepareResult(args: {
     workflowSource,
     warnings,
   };
+  void import("./campaignEvents.js").then(({ emitCampaignEvent }) => {
+    emitCampaignEvent({
+      campaignId: campaign.id,
+      column: "magic",
+      type: "magic_prepare",
+      summary: gate.ok
+        ? `Prepared · ${variants.length} variant(s) · workflow ${workflowSource}`
+        : `Prepared with gaps · ${gate.reasons.join("; ") || "blocked"}`,
+      payload: {
+        canContinue: gate.ok,
+        variantCount: variants.length,
+        workflowSource,
+        warnings,
+      },
+    });
+  });
+  return result;
 }
 
 export async function generateMagicCampaign(
@@ -928,5 +945,14 @@ export async function generateMagicCampaign(
     cellIds.length ? cellIds : undefined,
     { forceRegen: false },
   );
+  void import("./campaignEvents.js").then(({ emitCampaignEvent }) => {
+    emitCampaignEvent({
+      campaignId,
+      column: "magic",
+      type: "magic_generate",
+      summary: `Generate queued · ${jobs.length} job(s)`,
+      payload: { jobIds: jobs.map((j) => j.id), cellCount: cellIds.length },
+    });
+  });
   return { campaign: await getCampaign(campaignId), jobs };
 }

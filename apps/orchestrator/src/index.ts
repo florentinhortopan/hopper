@@ -1758,7 +1758,132 @@ app.post("/campaigns/:id/reviews/:cellId", async (req, res) => {
   if (idx >= 0) reviews[idx] = next;
   else reviews.push(next);
   await saveReviews(req.params.id, reviews);
+  const { emitCampaignEvent } = await import("./campaignEvents.js");
+  emitCampaignEvent({
+    campaignId: req.params.id,
+    column: "hopper",
+    type: "review_decision",
+    summary: `Review ${next.cellId} → ${next.decision}`,
+    payload: {
+      cellId: next.cellId,
+      decision: next.decision,
+      notes: next.notes,
+    },
+  });
   res.json(next);
+});
+
+app.get("/campaigns/:id/events", async (req, res) => {
+  try {
+    await getCampaign(req.params.id);
+    const { listCampaignEvents } = await import("./campaignEvents.js");
+    const result = listCampaignEvents(req.params.id, {
+      before: (req.query.before as string) || null,
+      after: (req.query.after as string) || null,
+      limit: req.query.limit ? Number(req.query.limit) : 40,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(404).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.get("/campaigns/:id/events/stream", async (req, res) => {
+  try {
+    await getCampaign(req.params.id);
+  } catch (err) {
+    res.status(404).json({ error: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+  const { listCampaignEvents, subscribeCampaignEvents } = await import(
+    "./campaignEvents.js"
+  );
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.flushHeaders?.();
+
+  const lastId = String(req.headers["last-event-id"] || req.query.after || "");
+  if (lastId) {
+    const missed = listCampaignEvents(req.params.id, {
+      after: lastId,
+      limit: 100,
+    });
+    // list returns newest-first; send oldest-first for replay
+    for (const ev of [...missed.events].reverse()) {
+      res.write(`id: ${ev.id}\ndata: ${JSON.stringify(ev)}\n\n`);
+    }
+  }
+
+  const unsub = subscribeCampaignEvents(req.params.id, (ev) => {
+    res.write(`id: ${ev.id}\ndata: ${JSON.stringify(ev)}\n\n`);
+  });
+  const ping = setInterval(() => {
+    res.write(`: ping\n\n`);
+  }, 15000);
+  req.on("close", () => {
+    clearInterval(ping);
+    unsub();
+  });
+});
+
+app.get("/campaigns/:id/celtra-preview", async (req, res) => {
+  try {
+    const { buildCeltraPreview } = await import("./packageExport.js");
+    const preview = await buildCeltraPreview(req.params.id);
+    res.json(preview);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.post("/campaigns/:id/live/note", async (req, res) => {
+  try {
+    await getCampaign(req.params.id);
+    const { emitCampaignEvent } = await import("./campaignEvents.js");
+    const column = req.body.column === "celtra" || req.body.column === "hopper"
+      ? req.body.column
+      : "magic";
+    const text = String(req.body.text || "").trim();
+    if (!text) {
+      res.status(400).json({ error: "text required" });
+      return;
+    }
+    const isCmd = text.startsWith("/");
+    const event = emitCampaignEvent({
+      campaignId: req.params.id,
+      column,
+      type: isCmd ? "user_command" : "user_note",
+      summary: text.slice(0, 200),
+      payload: { text, column },
+    });
+    res.json(event);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.post("/campaigns/:id/live/open", async (req, res) => {
+  try {
+    await getCampaign(req.params.id);
+    const { emitCampaignEvent } = await import("./campaignEvents.js");
+    const event = emitCampaignEvent({
+      campaignId: req.params.id,
+      column: "hopper",
+      type: "workspace_opened",
+      summary: "Live workspace opened",
+      payload: {},
+    });
+    res.json(event);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.get("/live/llm-status", async (_req, res) => {
+  const { getLlmStatus } = await import("./llmClient.js");
+  res.json(getLlmStatus());
 });
 
 app.post("/campaigns/:id/package", async (req, res) => {

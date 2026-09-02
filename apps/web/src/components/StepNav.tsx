@@ -61,8 +61,14 @@ export function StepNav({ campaignId, current }: { campaignId: string; current: 
         >
           Magic flow
         </button>
+        <a
+          href={`/campaigns/${campaignId}/live`}
+          className="rounded border border-ink-900 bg-ink-900 px-2.5 py-1 font-medium text-white no-underline"
+        >
+          Workspace
+        </a>
         <span className="text-ink-600">
-          Runs Magic on this campaign (does not create a new one).
+          Magic on this campaign · Workspace = live 3-column cockpit
         </span>
       </div>
       <ol className="mb-8 flex flex-wrap gap-2 text-[11px] font-medium uppercase tracking-[0.14em]">

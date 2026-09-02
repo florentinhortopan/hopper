@@ -1,7 +1,7 @@
 # ATTATTA ↔ Celtra — Boundary & content matrix
 
-**Updated:** 2026-08-26  
-**Related:** [PRD.md](./PRD.md) · golden sample lives locally at `celtra-matrix/` (gitignored — do not commit client matrices)
+**Updated:** 2026-09-02  
+**Related:** [PRD.md](./PRD.md) · [LIVE-WORKSPACE.md](./LIVE-WORKSPACE.md) · golden sample lives locally at `celtra-matrix/` (gitignored — do not commit client matrices)
 
 ---
 

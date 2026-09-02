@@ -341,6 +341,46 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
+  listCampaignEvents: (
+    id: string,
+    opts?: { before?: string; after?: string; limit?: number },
+  ) => {
+    const q = new URLSearchParams();
+    if (opts?.before) q.set("before", opts.before);
+    if (opts?.after) q.set("after", opts.after);
+    if (opts?.limit) q.set("limit", String(opts.limit));
+    const qs = q.toString();
+    return req<{
+      events: import("@attatta/shared").CampaignEvent[];
+      hasMore: boolean;
+    }>(`/campaigns/${id}/events${qs ? `?${qs}` : ""}`);
+  },
+  celtraPreview: (id: string) =>
+    req<import("@attatta/shared").CeltraPreview>(
+      `/campaigns/${id}/celtra-preview`,
+    ),
+  liveNote: (
+    id: string,
+    body: { column: "magic" | "hopper" | "celtra"; text: string },
+  ) =>
+    req<import("@attatta/shared").CampaignEvent>(
+      `/campaigns/${id}/live/note`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  liveOpen: (id: string) =>
+    req<import("@attatta/shared").CampaignEvent>(
+      `/campaigns/${id}/live/open`,
+      { method: "POST", body: "{}" },
+    ),
+  liveLlmStatus: () =>
+    req<{ configured: boolean; baseUrl: string; model: string }>(
+      "/live/llm-status",
+    ),
+  /** Absolute URL for SSE (EventSource cannot use relative path with API host). */
+  campaignEventsStreamUrl: (id: string, after?: string) => {
+    const q = after ? `?after=${encodeURIComponent(after)}` : "";
+    return `${API}/campaigns/${encodeURIComponent(id)}/events/stream${q}`;
+  },
   library: (kind?: string, libraryId?: string, opts?: { includeArchived?: boolean }) => {
     const q = new URLSearchParams();
     if (kind) q.set("kind", kind);

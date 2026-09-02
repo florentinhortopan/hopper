@@ -184,5 +184,21 @@ export async function publishComfyIngredient(
     kind: item.kind,
   };
   pushRecent(event);
+  if (campaignId) {
+    void import("./campaignEvents.js").then(({ emitCampaignEvent }) => {
+      emitCampaignEvent({
+        campaignId,
+        column: "magic",
+        type: "comfy_publish",
+        summary: `Comfy publish · ${item.kind} “${item.label}”${activated ? " (activated)" : ""}`,
+        payload: {
+          itemId: item.id,
+          kind: item.kind,
+          label: item.label,
+          activated,
+        },
+      });
+    });
+  }
   return event;
 }

@@ -1,4 +1,11 @@
+"use client";
+
+import { useState } from "react";
+import { WorkspacePickerModal } from "@/components/WorkspacePickerModal";
+
 export default function MainLayout({ children }: { children: React.ReactNode }) {
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+
   return (
     <div className="mx-auto flex min-h-screen max-w-[1440px] gap-10 px-5 py-8 md:px-10 lg:px-16">
       <aside className="hidden w-44 shrink-0 sm:block">
@@ -10,6 +17,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           <a href="/" className="text-ink-900 transition-colors hover:text-ember-500">
             Campaigns
           </a>
+          <button
+            type="button"
+            className="text-left text-ink-900 transition-colors hover:text-ember-500"
+            onClick={() => setWorkspaceOpen(true)}
+          >
+            Workspace
+          </button>
           <a href="/library" className="text-ink-900 transition-colors hover:text-ember-500">
             Library
           </a>
@@ -25,6 +39,10 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         </nav>
       </aside>
       <main className="min-w-0 flex-1">{children}</main>
+      <WorkspacePickerModal
+        open={workspaceOpen}
+        onClose={() => setWorkspaceOpen(false)}
+      />
     </div>
   );
 }

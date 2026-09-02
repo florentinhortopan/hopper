@@ -15,10 +15,12 @@ import {
   type Campaign,
   type CeltraFrameId,
   type CeltraMatrixRow,
+  type CeltraPreview,
   type CeltraTemplateProfile,
   type MatrixCell,
 } from "@attatta/shared";
 import { PATHS } from "./config.js";
+import { emitCampaignEvent } from "./campaignEvents.js";
 import { resolveDataMediaPath } from "./mediaPaths.js";
 import { getCampaign, getReviews, getTokens } from "./store.js";
 
@@ -206,6 +208,72 @@ export type CeltraPackageResult = {
   /** Path-style download URL ending in .zip (reliable for browsers). */
   downloadPath: string;
 };
+
+/** Live Celtra matrix preview — no zip write. */
+export async function buildCeltraPreview(
+  campaignId: string,
+): Promise<CeltraPreview> {
+  assertGuaranteeTranche3ProfileIntegrity();
+  const campaign = await getCampaign(campaignId);
+  const reviews = await getReviews(campaignId);
+  const approved = new Set(
+    reviews.filter((r) => r.decision === "approved").map((r) => r.cellId),
+  );
+  const profile = getCeltraTemplateProfile(campaign.celtraTemplateProfileId);
+  const packable = collectPackable(campaign, approved);
+  const warnings: string[] = [];
+  const rows: CeltraPreview["rows"] = [];
+
+  let order = 1;
+  for (const { cell, variantId } of packable) {
+    const plateAbs = pickPlateAbsPath(cell);
+    const frame =
+      sceneTagToCeltraFrame(profile, cell.sceneTag) ??
+      ("F2" as CeltraFrameId);
+    const setup = clip(
+      cell.copy.setup || "",
+      profile.charLimits["F1 Headline (max 35 char)"] ?? 35,
+    );
+    const punchline = clip(
+      cell.copy.punchline || "",
+      profile.charLimits["F2 Headline (max 35 char)"] ?? 35,
+    );
+    const endcard = clip(
+      cell.copy.endcard || "",
+      profile.charLimits["EC headline (max 77 char)"] ?? 77,
+    );
+    const rowWarnings: string[] = [];
+    if (!plateAbs) rowWarnings.push("Missing plate file on disk");
+    rows.push({
+      order,
+      cellId: variantId,
+      frame,
+      platePath: plateAbs,
+      setup,
+      punchline,
+      endcard,
+      warnings: rowWarnings,
+    });
+    warnings.push(...rowWarnings.map((w) => `${variantId}: ${w}`));
+    order += 1;
+  }
+
+  if (!packable.length) {
+    warnings.push(
+      "No approved cells with plate media — Keep variants with plates to populate Celtra",
+    );
+  }
+
+  return {
+    campaignId,
+    profileId: profile.id,
+    rowCount: rows.length,
+    approvedCount: approved.size,
+    rows,
+    warnings,
+    updatedAt: new Date().toISOString(),
+  };
+}
 
 export async function buildCeltraPackage(
   campaignId: string,
@@ -417,10 +485,18 @@ export async function buildCeltraPackage(
   });
 
   await readFile(zipPath);
-  return {
+  const result = {
     zipPath,
     fileName: zipName,
     rowCount: wideRows.length,
     downloadPath: `/packages/${encodeURIComponent(zipName)}`,
   };
+  emitCampaignEvent({
+    campaignId,
+    column: "celtra",
+    type: "celtra_package",
+    summary: `Celtra zip ${zipName} · ${wideRows.length} row(s)`,
+    payload: { fileName: zipName, rowCount: wideRows.length },
+  });
+  return result;
 }

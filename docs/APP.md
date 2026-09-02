@@ -1,11 +1,12 @@
 # ATTATTA App — Slice A runbook
 
 **Status:** Slice A + library/campaign hygiene  
-**Related:** [PRD.md](./PRD.md) · [UX-UI.md](./UX-UI.md) · [WORKFLOW-UX-INTEGRATION.md](./WORKFLOW-UX-INTEGRATION.md)
+**Related:** [PRD.md](./PRD.md) · [UX-UI.md](./UX-UI.md) · [WORKFLOW-UX-INTEGRATION.md](./WORKFLOW-UX-INTEGRATION.md) · [LIVE-WORKSPACE.md](./LIVE-WORKSPACE.md)
 
 ## What ships
 
 - Local Next.js cockpit + orchestrator API  
+- **Live Workspace** (`/campaigns/:id/live`) — 3-column Magic | Hopper | Celtra preview with SSE event bus (see [LIVE-WORKSPACE.md](./LIVE-WORKSPACE.md))  
 - Brief, design tokens, ingredient rail, sparse matrix  
 - Remotion preview/final for `paid-social-9x16-v1` (setup → punchline → end card)  
 - Review board (Keep / Kill / re-render)  

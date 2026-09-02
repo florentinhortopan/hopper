@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Campaign } from "@attatta/shared";
 import { MagicCampaignModal } from "@/components/MagicCampaignModal";
+import { WorkspacePickerModal } from "@/components/WorkspacePickerModal";
 import { api } from "@/lib/api";
 
 export default function HomePage() {
@@ -16,6 +17,7 @@ export default function HomePage() {
   const [magicOpen, setMagicOpen] = useState(false);
   const [magicCampaignId, setMagicCampaignId] = useState<string | null>(null);
   const [magicCreateNew, setMagicCreateNew] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
 
   async function refresh(includeArchived = showArchived) {
     setLoading(true);
@@ -139,6 +141,13 @@ export default function HomePage() {
         </button>
         <button
           type="button"
+          onClick={() => setWorkspaceOpen(true)}
+          className="rounded-md border border-ink-900 bg-ink-900 px-4 py-2 text-sm font-medium text-white"
+        >
+          Workspace
+        </button>
+        <button
+          type="button"
           onClick={() => void refresh(showArchived)}
           className="rounded-md border border-ink-200 px-4 py-2 text-sm"
         >
@@ -223,6 +232,12 @@ export default function HomePage() {
               >
                 Open Magic
               </button>
+              <a
+                href={`/campaigns/${c.id}/live`}
+                className="text-ink-900 underline"
+              >
+                Workspace
+              </a>
               <button
                 type="button"
                 className="text-ink-900 underline"
@@ -263,6 +278,10 @@ export default function HomePage() {
         createNew={magicCreateNew}
         defaultName={name.trim() || "Magic campaign"}
         onClose={closeMagic}
+      />
+      <WorkspacePickerModal
+        open={workspaceOpen}
+        onClose={() => setWorkspaceOpen(false)}
       />
     </div>
   );
