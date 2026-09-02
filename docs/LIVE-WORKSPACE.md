@@ -37,9 +37,8 @@ Comfy stays publish webhook + job poll. Celtra stays one-way zip (no Celtra clou
 
 ## Conversational UI
 
-Each column: bottom **composer** + one body scroll (brief/queue/matrix).  
-**Activity** is a header toggle (next to Collapse) that opens a log panel over the column — off by default so it doesn’t clutter the chat.  
-Magic: queue preview in-column; **Generate** CTA above the composer when checks pass.  
+Magic: ephemeral **chat suggestions** (confirm import, generate, open Hopper) appear when milestones hit and clear after act/dismiss — not a sticky Generate bar.  
+**Activity** is a header toggle (next to Collapse) that opens a log panel over the column — off by default.  
 LLM status shown when `ATTATTA_LLM_API_KEY` is set; rich agent behavior is deferred.
 
 ## Aspirational (not MVP)

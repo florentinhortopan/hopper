@@ -29,11 +29,13 @@ type Props = {
   onPrepare: () => Promise<void>;
   /** Called after import commit so parent can refresh campaign. */
   onImported?: () => Promise<void>;
-  /** Surfaced to Magic chat composer when generate should appear. */
+  /** Surfaced when prepare readiness / import review changes (for chat offers). */
   onReadinessChange?: (state: {
     ready: boolean;
     variantCount: number;
     detail: string;
+    importReview: boolean;
+    importId: string | null;
   }) => void;
 };
 
@@ -94,12 +96,16 @@ export function MagicColumnPanel({
       detail: ready
         ? `${variantCount} variant(s) ready to generate`
         : blocked || "Run prepare until the checklist is green",
+      importReview: importSession?.status === "review",
+      importId: importSession?.status === "review" ? importSession.id : null,
     });
   }, [
     plan?.canContinue,
     plan?.variants.length,
     plan?.reasons,
     campaign?.matrix.cells.length,
+    importSession?.status,
+    importSession?.id,
     onReadinessChange,
   ]);
 
@@ -300,7 +306,7 @@ export function MagicColumnPanel({
           {busy === "prepare" ? "Preparing…" : "Re-check / prepare"}
         </button>
         <p className="self-center text-[10px] text-ink-500">
-          Generate appears in the chat when checks pass.
+          Next steps appear as chat suggestions when ready.
         </p>
       </div>
 

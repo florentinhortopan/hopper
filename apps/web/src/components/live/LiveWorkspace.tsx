@@ -9,6 +9,10 @@ import {
   eventVisibleInColumn,
   useCampaignEventStream,
 } from "@/components/live/EventFeed";
+import {
+  LiveChatPromptBar,
+  type LiveChatPrompt,
+} from "@/components/live/LiveChatPromptBar";
 import { LiveQueuePreview } from "@/components/live/LiveQueuePreview";
 import { LiveThumb, cellMediaPath } from "@/components/live/LiveThumb";
 import { MagicColumnPanel } from "@/components/live/MagicColumnPanel";
@@ -40,7 +44,11 @@ export function LiveWorkspace({ campaignId }: Props) {
     ready: boolean;
     variantCount: number;
     detail: string;
+    importReview: boolean;
+    importId: string | null;
   } | null>(null);
+  const [chatPrompts, setChatPrompts] = useState<LiveChatPrompt[]>([]);
+  const offeredKeysRef = useRef(new Set<string>());
   const [activityOpen, setActivityOpen] = useState<
     Partial<Record<LiveColumnId, boolean>>
   >({});
@@ -74,6 +82,8 @@ export function LiveWorkspace({ campaignId }: Props) {
       .then((s) => setLlmOn(s.configured))
       .catch(() => setLlmOn(false));
     void api.liveOpen(campaignId).catch(() => undefined);
+    offeredKeysRef.current = new Set();
+    setChatPrompts([]);
   }, [campaignId, refresh]);
 
   useEffect(() => {
@@ -101,6 +111,165 @@ export function LiveWorkspace({ campaignId }: Props) {
       return () => window.clearTimeout(t);
     }
   }, [events, refresh]);
+
+  const offerChatPrompt = useCallback(
+    (input: {
+      column: LiveColumnId;
+      key: string;
+      summary: string;
+      detail: string;
+      primaryLabel: string;
+    }) => {
+      if (offeredKeysRef.current.has(input.key)) return;
+      offeredKeysRef.current.add(input.key);
+      const prompt: LiveChatPrompt = {
+        id: input.key,
+        column: input.column,
+        key: input.key,
+        summary: input.summary,
+        detail: input.detail,
+        primaryLabel: input.primaryLabel,
+        status: "open",
+        at: Date.now(),
+      };
+      setChatPrompts((prev) => {
+        const sameFamily = input.key.split(":")[0] || "";
+        const cleared =
+          sameFamily === "generate" || sameFamily === "import"
+            ? prev.map((p) =>
+                p.status === "open" && p.key.startsWith(`${sameFamily}:`)
+                  ? { ...p, status: "dismissed" as const }
+                  : p,
+              )
+            : prev;
+        return [...cleared.filter((p) => p.key !== input.key), prompt];
+      });
+    },
+    [],
+  );
+
+  const closeChatPrompt = useCallback((key: string, status: "acted" | "dismissed") => {
+    setChatPrompts((prev) =>
+      prev.map((p) => (p.key === key ? { ...p, status } : p)),
+    );
+  }, []);
+
+  // Magic: import ready → confirm & prepare
+  useEffect(() => {
+    if (!magicReady?.importReview || !magicReady.importId) return;
+    offerChatPrompt({
+      column: "magic",
+      key: `import:${magicReady.importId}`,
+      summary: "Package classified — confirm import?",
+      detail: "Commit plates into the library and run prepare.",
+      primaryLabel: "Confirm import & prepare",
+    });
+  }, [magicReady?.importReview, magicReady?.importId, offerChatPrompt]);
+
+  // Magic: prepare ready → generate (once per prepare epoch; not after generate)
+  useEffect(() => {
+    if (!magicReady?.ready) return;
+    const prepareEv = events.find((e) => e.type === "magic_prepare");
+    const prepareAt = prepareEv?.at || "";
+    const generatedAfter = events.some(
+      (e) =>
+        e.type === "magic_generate" &&
+        (!prepareAt || e.at >= prepareAt),
+    );
+    if (generatedAfter) return;
+    const key = `generate:${prepareEv?.id || `v${magicReady.variantCount}`}`;
+    offerChatPrompt({
+      column: "magic",
+      key,
+      summary: "Checks look good — generate plates?",
+      detail: magicReady.detail,
+      primaryLabel: "Generate",
+    });
+  }, [magicReady, events, offerChatPrompt]);
+
+  // After generate event → close open generate prompts
+  useEffect(() => {
+    const latest = events[0];
+    if (latest?.type !== "magic_generate") return;
+    setChatPrompts((prev) =>
+      prev.map((p) =>
+        p.column === "magic" &&
+        p.key.startsWith("generate:") &&
+        p.status === "open"
+          ? { ...p, status: "acted" }
+          : p,
+      ),
+    );
+  }, [events]);
+
+  // Hopper: plates finished → review
+  useEffect(() => {
+    const latest = events[0];
+    if (latest?.type !== "job_update") return;
+    const status = String(latest.payload?.status || "");
+    if (status !== "done" && status !== "failed" && status !== "cancelled") {
+      return;
+    }
+    let cancelled = false;
+    void api.jobs(campaignId).then((jobs) => {
+      if (cancelled) return;
+      const active = jobs.filter(
+        (j) => j.status === "queued" || j.status === "running",
+      );
+      const done = jobs.filter((j) => j.status === "done");
+      if (active.length || !done.length) return;
+      offerChatPrompt({
+        column: "hopper",
+        key: `review-batch:${done.map((j) => j.id).slice(0, 8).join(",")}`,
+        summary: "Plates ready — review in Hopper?",
+        detail: `${done.length} done. Keep or kill variants, then Celtra can package.`,
+        primaryLabel: "Open Hopper",
+      });
+      offerChatPrompt({
+        column: "magic",
+        key: `gen-done:${done.map((j) => j.id).slice(0, 8).join(",")}`,
+        summary: "Generation finished",
+        detail: "Review Keep/Kill in Hopper when you’re ready.",
+        primaryLabel: "Open Hopper",
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [events, campaignId, offerChatPrompt]);
+
+  // Celtra: packable rows → package
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .celtraPreview(campaignId)
+      .then((p) => {
+        if (cancelled || !p.packableCount) return;
+        offerChatPrompt({
+          column: "celtra",
+          key: `package:${campaignId}:${p.packableCount}:${p.approvedCount}`,
+          summary: "Packable rows ready — build Celtra zip?",
+          detail: `${p.packableCount} kept + plated row(s).`,
+          primaryLabel: "Package zip",
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [campaignId, celtraTick, offerChatPrompt]);
+
+  // Close package prompts after package event
+  useEffect(() => {
+    if (events[0]?.type !== "celtra_package") return;
+    setChatPrompts((prev) =>
+      prev.map((p) =>
+        p.key.startsWith("package:") && p.status === "open"
+          ? { ...p, status: "acted" }
+          : p,
+      ),
+    );
+  }, [events]);
 
   const openCount = useMemo(
     () => (Object.values(cols) as ColState[]).filter((c) => c.open).length,
@@ -150,11 +319,102 @@ export function LiveWorkspace({ campaignId }: Props) {
       await api.magicGenerate(campaignId);
       await refresh();
       setQueueTick((n) => n + 1);
+      setChatPrompts((prev) =>
+        prev.map((p) =>
+          p.key.startsWith("generate:") && p.status === "open"
+            ? { ...p, status: "acted" }
+            : p,
+        ),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
+  }
+
+  async function runConfirmImport(importId: string) {
+    if (!campaign) return;
+    setBusy("prepare");
+    setError(null);
+    try {
+      const session = await api.getImportSession(importId);
+      if (session.status === "review") {
+        await api.patchImportRows(
+          importId,
+          session.rows.map((r) => ({ id: r.id, status: "accepted" as const })),
+        );
+        await api.commitImport(importId);
+      }
+      await api.magicPrepare(campaignId, {
+        brief: {
+          ...campaign.brief,
+          prompt: briefDraft.trim() || campaign.brief.prompt || "New offer",
+        },
+        importId,
+      });
+      closeChatPrompt(`import:${importId}`, "acted");
+      await refresh();
+      setCeltraTick((n) => n + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runPackage() {
+    setBusy("package");
+    setError(null);
+    try {
+      const result = await api.package(campaignId);
+      const { triggerApiDownload } = await import("@/lib/download");
+      await triggerApiDownload(result.downloadUrl, result.fileName);
+      setCeltraTick((n) => n + 1);
+      setChatPrompts((prev) =>
+        prev.map((p) =>
+          p.key.startsWith("package:") && p.status === "open"
+            ? { ...p, status: "acted" }
+            : p,
+        ),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function focusColumn(id: LiveColumnId) {
+    setCols((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], open: true },
+    }));
+  }
+
+  async function handleChatAct(prompt: LiveChatPrompt) {
+    if (prompt.key.startsWith("import:")) {
+      const importId = prompt.key.slice("import:".length);
+      await runConfirmImport(importId);
+      return;
+    }
+    if (prompt.key.startsWith("generate:")) {
+      await runGenerate();
+      return;
+    }
+    if (prompt.key.startsWith("package:")) {
+      await runPackage();
+      return;
+    }
+    if (
+      prompt.key.startsWith("review-batch:") ||
+      prompt.key.startsWith("gen-done:")
+    ) {
+      focusColumn("hopper");
+      closeChatPrompt(prompt.key, "acted");
+      return;
+    }
+    closeChatPrompt(prompt.key, "acted");
   }
 
   async function handleComposer(column: LiveColumnId, text: string) {
@@ -465,21 +725,27 @@ export function LiveWorkspace({ campaignId }: Props) {
               </div>
 
               <div className="shrink-0">
+                <LiveChatPromptBar
+                  column={id}
+                  prompts={chatPrompts}
+                  disabled={busy !== null}
+                  busyLabel={
+                    busy === "generate"
+                      ? "Generating…"
+                      : busy === "prepare"
+                        ? "Preparing…"
+                        : busy === "package"
+                          ? "Packaging…"
+                          : null
+                  }
+                  onAct={handleChatAct}
+                  onDismiss={(p) => closeChatPrompt(p.key, "dismissed")}
+                />
                 <ColumnComposer
                   column={id}
                   llmOn={llmOn}
                   disabled={busy !== null}
                   onSubmit={(t) => handleComposer(id, t)}
-                  suggestedAction={
-                    id === "magic" && magicReady?.ready
-                      ? {
-                          label:
-                            busy === "generate" ? "Generating…" : "Generate",
-                          detail: magicReady.detail,
-                          onClick: runGenerate,
-                        }
-                      : null
-                  }
                 />
               </div>
             </section>
