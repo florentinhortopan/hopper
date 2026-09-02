@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type RefObject } from "react";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   CampaignEvent,
   CampaignEventType,
@@ -11,7 +10,7 @@ import { EventCard } from "@/components/live/EventCard";
 import { api } from "@/lib/api";
 
 /** Column tag is primary; also fan related types so Hopper/Celtra stay live during Magic work. */
-function eventVisibleInColumn(
+export function eventVisibleInColumn(
   e: CampaignEvent,
   column: LiveColumnId,
 ): boolean {
@@ -45,32 +44,23 @@ type Props = {
   events: CampaignEvent[];
   onLoadOlder: () => Promise<boolean>;
   hasMore: boolean;
-  /**
-   * Render inside the column’s single scroller (no nested overflow).
-   * Pass the column scroll element for load-older + stick-to-bottom.
-   */
-  scrollParentRef?: RefObject<HTMLElement | null>;
 };
 
+/** Standalone scroller for the header Activity panel (not the column body). */
 export function EventFeed({
   campaignId,
   column,
   events,
   onLoadOlder,
   hasMore,
-  scrollParentRef,
 }: Props) {
-  const localRef = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const filtered = events.filter((e) => eventVisibleInColumn(e, column));
   const loadingRef = useRef(false);
 
-  const getScroller = useCallback(() => {
-    return scrollParentRef?.current ?? localRef.current;
-  }, [scrollParentRef]);
-
   const tryLoadOlder = useCallback(() => {
-    const el = getScroller();
+    const el = scrollerRef.current;
     if (!el || loadingRef.current || !hasMore) return;
     if (el.scrollTop >= 80) return;
     loadingRef.current = true;
@@ -79,9 +69,9 @@ export function EventFeed({
     void onLoadOlder()
       .then(() => {
         requestAnimationFrame(() => {
-          const scroller = getScroller();
-          if (scroller) {
-            scroller.scrollTop = scroller.scrollHeight - prevHeight;
+          if (scrollerRef.current) {
+            scrollerRef.current.scrollTop =
+              scrollerRef.current.scrollHeight - prevHeight;
           }
         });
       })
@@ -89,46 +79,39 @@ export function EventFeed({
         loadingRef.current = false;
         setLoadingOlder(false);
       });
-  }, [getScroller, hasMore, onLoadOlder]);
+  }, [hasMore, onLoadOlder]);
 
   useEffect(() => {
-    const el = getScroller();
+    const el = scrollerRef.current;
     if (!el) return;
     const onScroll = () => tryLoadOlder();
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, [getScroller, tryLoadOlder, campaignId, column]);
+  }, [tryLoadOlder, campaignId, column]);
 
   useEffect(() => {
-    const el = getScroller();
+    const el = scrollerRef.current;
     if (!el) return;
     const nearBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+      el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     if (nearBottom) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [filtered.length, campaignId, column, getScroller]);
+  }, [filtered.length, campaignId, column]);
 
   return (
     <div
-      ref={scrollParentRef ? undefined : localRef}
-      className={
-        scrollParentRef
-          ? "space-y-2 px-3 py-2"
-          : "min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2"
-      }
+      ref={scrollerRef}
+      className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2"
     >
-      <h3 className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-500">
-        Activity
-      </h3>
       {hasMore || loadingOlder ? (
         <p className="text-center text-[10px] text-ink-500">
           {loadingOlder ? "Loading…" : "Scroll up for older"}
         </p>
       ) : null}
       {filtered.length === 0 ? (
-        <p className="py-4 text-center text-xs text-ink-500">
-          No events yet — actions in this column will appear here.
+        <p className="py-6 text-center text-xs text-ink-500">
+          No events yet — column actions will show up here.
         </p>
       ) : (
         [...filtered].reverse().map((ev) => (

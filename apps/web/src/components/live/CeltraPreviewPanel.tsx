@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { CeltraPreview } from "@attatta/shared";
+import { LiveThumb } from "@/components/live/LiveThumb";
 import { api } from "@/lib/api";
 import { triggerApiDownload } from "@/lib/download";
 
@@ -95,19 +96,19 @@ export function CeltraPreviewPanel({ campaignId, refreshToken }: Props) {
             <thead>
               <tr className="border-b border-ink-200 text-[10px] uppercase tracking-wide text-ink-500">
                 <th className="px-1 py-1 font-medium">#</th>
+                <th className="px-1 py-1 font-medium">Thumb</th>
                 <th className="px-1 py-1 font-medium">Frame</th>
                 <th className="px-1 py-1 font-medium">Status</th>
                 <th className="px-1 py-1 font-medium">Setup</th>
                 <th className="px-1 py-1 font-medium">Punchline</th>
                 <th className="px-1 py-1 font-medium">Endcard</th>
-                <th className="px-1 py-1 font-medium">Plate</th>
               </tr>
             </thead>
             <tbody>
               {preview.rows.map((row) => (
                 <tr
                   key={`${row.cellId}-${row.order}`}
-                  className={`border-b border-ink-100 align-top ${
+                  className={`border-b border-ink-100 align-middle ${
                     row.packable
                       ? "bg-emerald-50/60"
                       : row.decision === "rejected"
@@ -117,6 +118,13 @@ export function CeltraPreviewPanel({ campaignId, refreshToken }: Props) {
                 >
                   <td className="px-1 py-1.5 font-mono text-ink-500">
                     {row.order}
+                  </td>
+                  <td className="px-1 py-1.5">
+                    <LiveThumb
+                      filePath={row.platePath}
+                      label={`${row.cellId} · ${row.frame}`}
+                      emptyHint="…"
+                    />
                   </td>
                   <td className="px-1 py-1.5 font-mono">{row.frame}</td>
                   <td className="px-1 py-1.5">
@@ -150,12 +158,6 @@ export function CeltraPreviewPanel({ campaignId, refreshToken }: Props) {
                     title={row.endcard}
                   >
                     {row.endcard || "—"}
-                  </td>
-                  <td
-                    className="max-w-[6rem] truncate px-1 py-1.5 font-mono text-[10px] text-ink-500"
-                    title={row.platePath || undefined}
-                  >
-                    {row.hasPlate ? "yes" : "—"}
                   </td>
                 </tr>
               ))}

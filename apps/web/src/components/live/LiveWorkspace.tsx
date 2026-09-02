@@ -6,9 +6,11 @@ import { CeltraPreviewPanel } from "@/components/live/CeltraPreviewPanel";
 import { ColumnComposer } from "@/components/live/ColumnComposer";
 import {
   EventFeed,
+  eventVisibleInColumn,
   useCampaignEventStream,
 } from "@/components/live/EventFeed";
 import { LiveQueuePreview } from "@/components/live/LiveQueuePreview";
+import { LiveThumb, cellMediaPath } from "@/components/live/LiveThumb";
 import { MagicColumnPanel } from "@/components/live/MagicColumnPanel";
 import { api } from "@/lib/api";
 
@@ -39,6 +41,9 @@ export function LiveWorkspace({ campaignId }: Props) {
     variantCount: number;
     detail: string;
   } | null>(null);
+  const [activityOpen, setActivityOpen] = useState<
+    Partial<Record<LiveColumnId, boolean>>
+  >({});
 
   const magicScrollRef = useRef<HTMLDivElement>(null);
   const hopperScrollRef = useRef<HTMLDivElement>(null);
@@ -270,22 +275,72 @@ export function LiveWorkspace({ campaignId }: Props) {
             );
           }
           const scrollRef = scrollRefFor(id);
+          const activityCount = events.filter((e) =>
+            eventVisibleInColumn(e, id),
+          ).length;
+          const showActivity = Boolean(activityOpen[id]);
           return (
             <section
               key={id}
-              className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-ink-200 bg-warm-paper/90"
+              className="relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-ink-200 bg-warm-paper/90"
               style={{ flex: state.flex * (openCount === 1 ? 1.2 : 1) }}
             >
-              <div className="flex shrink-0 items-center justify-between border-b border-ink-200 px-3 py-2">
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-ink-200 px-3 py-2">
                 <h2 className="text-sm font-medium">{label}</h2>
-                <button
-                  type="button"
-                  className="text-[10px] text-ink-500 underline"
-                  onClick={() => toggleCol(id)}
-                >
-                  Collapse
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className={`rounded border px-2 py-0.5 text-[10px] ${
+                      showActivity
+                        ? "border-ink-900 bg-ink-900 text-white"
+                        : "border-ink-200 bg-white text-ink-600"
+                    }`}
+                    onClick={() =>
+                      setActivityOpen((prev) => ({
+                        ...prev,
+                        [id]: !prev[id],
+                      }))
+                    }
+                    title="Show column activity log"
+                  >
+                    Activity
+                    {activityCount > 0 ? ` · ${activityCount}` : ""}
+                  </button>
+                  <button
+                    type="button"
+                    className="text-[10px] text-ink-500 underline"
+                    onClick={() => toggleCol(id)}
+                  >
+                    Collapse
+                  </button>
+                </div>
               </div>
+
+              {showActivity ? (
+                <div className="absolute inset-x-0 top-10 z-20 flex max-h-[min(22rem,50%)] flex-col border-b border-ink-200 bg-warm-paper shadow-lg">
+                  <div className="flex shrink-0 items-center justify-between border-b border-ink-100 px-3 py-1.5">
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-ink-500">
+                      Activity
+                    </span>
+                    <button
+                      type="button"
+                      className="text-[10px] text-ink-500 underline"
+                      onClick={() =>
+                        setActivityOpen((prev) => ({ ...prev, [id]: false }))
+                      }
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <EventFeed
+                    campaignId={campaignId}
+                    column={id}
+                    events={events}
+                    hasMore={hasMore}
+                    onLoadOlder={loadOlder}
+                  />
+                </div>
+              ) : null}
 
               {/* One scroller for the whole column body */}
               <div
@@ -345,17 +400,24 @@ export function LiveWorkspace({ campaignId }: Props) {
                         return (
                           <li
                             key={cell.cellId}
-                            className="flex flex-wrap items-center gap-1 rounded border border-ink-100 px-1.5 py-1"
+                            className="flex flex-wrap items-center gap-2 rounded border border-ink-100 px-1.5 py-1"
                           >
-                            <span className="font-mono text-[10px]">
-                              {cell.cellId}
-                            </span>
-                            <span className="text-[10px] text-ink-500">
-                              {rev?.decision || "pending"}
-                            </span>
+                            <LiveThumb
+                              filePath={cellMediaPath(cell)}
+                              label={cell.cellId}
+                              emptyHint="…"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <span className="font-mono text-[10px]">
+                                {cell.cellId}
+                              </span>
+                              <span className="ml-1 text-[10px] text-ink-500">
+                                {rev?.decision || "pending"}
+                              </span>
+                            </div>
                             <button
                               type="button"
-                              className="ml-auto rounded border px-1 text-[10px]"
+                              className="rounded border px-1 text-[10px]"
                               onClick={() =>
                                 void api
                                   .setReview(campaignId, cell.cellId, {
@@ -400,15 +462,6 @@ export function LiveWorkspace({ campaignId }: Props) {
                     refreshToken={queueTick}
                   />
                 ) : null}
-
-                <EventFeed
-                  campaignId={campaignId}
-                  column={id}
-                  events={events}
-                  hasMore={hasMore}
-                  onLoadOlder={loadOlder}
-                  scrollParentRef={scrollRef}
-                />
               </div>
 
               <div className="shrink-0">

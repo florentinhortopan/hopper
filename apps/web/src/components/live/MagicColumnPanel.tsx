@@ -9,6 +9,7 @@ import type {
   MagicVariantPlanRow,
 } from "@attatta/shared";
 import { api } from "@/lib/api";
+import { LiveThumb, cellMediaPath } from "@/components/live/LiveThumb";
 
 type MagicPlan = {
   gapsFilled: MagicChecklistItem[];
@@ -364,11 +365,19 @@ export function MagicColumnPanel({
                 .map(([k, n]) => `${n} ${k}`)
                 .join(" · ")}
             </p>
-            <ul className="mt-1 space-y-0.5">
+            <ul className="mt-1 space-y-1">
               {activeIngredients.slice(0, 16).map((i) => (
-                <li key={i.id} className="truncate text-[10px]">
-                  <span className="font-mono text-ink-500">{i.kind}</span>{" "}
-                  {i.label}
+                <li
+                  key={i.id}
+                  className="flex items-center gap-2 rounded border border-ink-100 bg-white/60 px-1.5 py-1"
+                >
+                  <LiveThumb libraryItem={i} label={i.label} emptyHint="…" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[10px] font-medium text-ink-900">
+                      {i.label}
+                    </p>
+                    <p className="font-mono text-[9px] text-ink-500">{i.kind}</p>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -391,18 +400,35 @@ export function MagicColumnPanel({
           </p>
         ) : (
           <ul className="mt-1 space-y-1">
-            {plan!.variants.slice(0, 12).map((v) => (
-              <li
-                key={v.cellId}
-                className="rounded border border-ink-100 bg-white px-2 py-1 text-[10px]"
-              >
-                <span className="font-mono text-ink-500">{v.cellId}</span>
-                <span className="ml-1 text-ink-800">{v.label}</span>
-                {v.needsGen ? (
-                  <span className="ml-1 text-amber-800">· Comfy</span>
-                ) : null}
-              </li>
-            ))}
+            {plan!.variants.slice(0, 12).map((v) => {
+              const cell = campaign?.matrix.cells.find(
+                (c) => c.cellId === v.cellId,
+              );
+              const media = cellMediaPath(cell);
+              return (
+                <li
+                  key={v.cellId}
+                  className="flex items-center gap-2 rounded border border-ink-100 bg-white px-2 py-1 text-[10px]"
+                >
+                  <LiveThumb
+                    filePath={media}
+                    label={v.label || v.cellId}
+                    emptyHint={v.needsGen ? "gen" : "—"}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate">
+                      <span className="font-mono text-ink-500">{v.cellId}</span>
+                      <span className="ml-1 text-ink-800">{v.label}</span>
+                    </p>
+                    {v.needsGen ? (
+                      <span className="text-amber-800">Comfy plate</span>
+                    ) : media ? (
+                      <span className="text-emerald-800">Plate ready</span>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

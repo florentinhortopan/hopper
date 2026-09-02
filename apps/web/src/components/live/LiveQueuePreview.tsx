@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Job } from "@attatta/shared";
 import { JobProgressRow } from "@/components/JobProgressRow";
+import { LiveThumb } from "@/components/live/LiveThumb";
 import { api } from "@/lib/api";
 
 type Props = {
@@ -78,20 +79,31 @@ export function LiveQueuePreview({ campaignId, refreshToken = 0 }: Props) {
         </pre>
       ) : null}
       {jobs.length > 0 ? (
-        <ul className="space-y-2">
+        <div className="space-y-2">
           {jobs.slice(0, 24).map((job) => (
-            <JobProgressRow
-              key={job.id}
-              job={job}
-              onCancelled={load}
-            />
+            <div key={job.id} className="flex items-start gap-2">
+              <LiveThumb
+                filePath={
+                  job.status === "done" ? job.resultPath : null
+                }
+                label={job.cellId || job.id}
+                emptyHint={
+                  job.status === "running" || job.status === "queued"
+                    ? "…"
+                    : "—"
+                }
+              />
+              <ul className="min-w-0 flex-1">
+                <JobProgressRow job={job} onCancelled={load} />
+              </ul>
+            </div>
           ))}
           {jobs.length > 24 ? (
-            <li className="text-[10px] text-ink-500">
+            <p className="text-[10px] text-ink-500">
               +{jobs.length - 24} more — open Advanced → Queue for full list
-            </li>
+            </p>
           ) : null}
-        </ul>
+        </div>
       ) : null}
     </div>
   );

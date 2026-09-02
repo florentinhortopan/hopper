@@ -15,11 +15,12 @@ ATTATTA is the **source of truth** for creative → review → delivery. The Liv
 
 | Column | Role |
 |--------|------|
-| **Magic** | Brief, zip import, readiness, variant plan, prepare; **live queue preview**; event feed + composer. Generate CTA when checks pass |
-| **Hopper** | Keep/Kill, deep links; feed fans in prepare/generate/job/review events |
-| **Celtra** | **Live content matrix** (all matrix cells as draft/kept/killed + plate status); activity feed; **Package zip** only includes kept + plated rows |
+| **Magic** | Brief, zip import, readiness, variant plan, prepare; **live queue preview**; composer. Generate CTA when checks pass. Activity via header toggle |
+| **Hopper** | Keep/Kill, deep links; Activity via header toggle |
+| **Celtra** | **Live content matrix**; Package zip for kept+plated. Activity via header toggle |
 
-Each column has **one scroll body** (header + composer fixed). Nested panel scrollers are avoided so the pointer always scrolls the column.
+Each column has **one scroll body** (header + composer fixed). Nested panel scrollers are avoided so the pointer always scrolls the column.  
+**Thumbnails:** ingredients, variant plates, Hopper review cells, Celtra matrix rows, and completed queue jobs show expandable previews when media exists.
 
 Columns expand/collapse independently (at least one stays open).
 
@@ -36,9 +37,9 @@ Comfy stays publish webhook + job poll. Celtra stays one-way zip (no Celtra clou
 
 ## Conversational UI
 
-Each column: reverse-chron **event cards** + bottom **composer** in one scroll.  
-Magic: queue preview lives in the same column; when prepare checklist is green, a **Generate** CTA appears above the composer.  
-Celtra: matrix + activity in the same column scroll.  
+Each column: bottom **composer** + one body scroll (brief/queue/matrix).  
+**Activity** is a header toggle (next to Collapse) that opens a log panel over the column — off by default so it doesn’t clutter the chat.  
+Magic: queue preview in-column; **Generate** CTA above the composer when checks pass.  
 LLM status shown when `ATTATTA_LLM_API_KEY` is set; rich agent behavior is deferred.
 
 ## Aspirational (not MVP)
