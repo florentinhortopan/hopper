@@ -20,7 +20,6 @@ import {
   type RetiredMatrixCell,
 } from "@attatta/shared";
 import { DEFAULT_BRAND_TOKEN_ID } from "./defaultTokens.js";
-import { enqueueVariantBatch } from "./jobs.js";
 import { createLibraryIngredient, patchLibraryItem } from "./library.js";
 import {
   draftCopyFromBrief,
@@ -473,7 +472,9 @@ export async function prepareMagicCampaign(
         ...MAGIC_ASSEMBLY_RECIPE,
         scenes: [...MAGIC_ASSEMBLY_RECIPE.scenes],
       };
-      campaign.outputSizes = magicOutputSizes();
+      if (!campaign.outputSizes?.length) {
+        campaign.outputSizes = magicOutputSizes();
+      }
       workflowSource = syn.source === "ai" ? "ai" : "preset";
       workflowDetail = syn.rationale;
     } else {
@@ -956,7 +957,9 @@ export async function generateMagicCampaign(
   const cellIds = campaign.matrix.cells
     .filter((c) => c.needsGen)
     .map((c) => c.cellId);
-  const jobs = await enqueueVariantBatch(
+  // Fill every campaign Settings size that is still missing (not only primary).
+  const { enqueueMissingSizeVariantBatch } = await import("./jobs.js");
+  const jobs = await enqueueMissingSizeVariantBatch(
     campaignId,
     cellIds.length ? cellIds : undefined,
     { forceRegen: false },
@@ -966,8 +969,12 @@ export async function generateMagicCampaign(
       campaignId,
       column: "magic",
       type: "magic_generate",
-      summary: `Generate queued · ${jobs.length} job(s)`,
-      payload: { jobIds: jobs.map((j) => j.id), cellCount: cellIds.length },
+      summary: `Generate queued · ${jobs.length} job(s) across Settings sizes`,
+      payload: {
+        jobIds: jobs.map((j) => j.id),
+        cellCount: cellIds.length,
+        sizeIds: [...new Set(jobs.map((j) => j.sizeId).filter(Boolean))],
+      },
     });
     emitCampaignEvent({
       campaignId,

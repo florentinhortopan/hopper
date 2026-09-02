@@ -15,8 +15,8 @@ ATTATTA is the **source of truth** for creative → review → delivery. The Liv
 
 | Column | Role |
 |--------|------|
-| **Magic** | Brief, zip import, readiness, variant plan, prepare; **live queue preview**; composer. Generate CTA when checks pass. Activity via header toggle |
-| **Hopper** | Keep/Kill, deep links; Activity via header toggle |
+| **Magic** | Brief, **delivery size toggles** (defaults from Settings), import, readiness, variant plan, **size coverage XY**, queue; chat suggestions for missing sizes |
+| **Hopper** | **Matrix XY / list** of combinations with size dots, detail review Keep/Kill; Activity toggle |
 | **Celtra** | **Live content matrix**; Package zip for kept+plated. Activity via header toggle |
 
 Each column has **one scroll body** (header + composer fixed). Nested panel scrollers are avoided so the pointer always scrolls the column.  

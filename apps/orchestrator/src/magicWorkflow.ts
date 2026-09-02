@@ -295,7 +295,11 @@ export function applyMagicWorkflowToCampaign(
     }
     if (pkg.outputSizeIds?.length) {
       next.outputSizes = resolveOutputSizes(pkg.outputSizeIds);
-    } else if (source === "imported" || source === "url") {
+    } else if (
+      !next.outputSizes?.length &&
+      (source === "imported" || source === "url")
+    ) {
+      // Only default Magic sizes when the campaign has none from Settings yet
       next.outputSizes = magicOutputSizes();
     }
     if (pkg.brief) {
@@ -315,7 +319,9 @@ export function applyMagicWorkflowToCampaign(
       ...MAGIC_ASSEMBLY_RECIPE,
       scenes: [...MAGIC_ASSEMBLY_RECIPE.scenes],
     };
-    next.outputSizes = magicOutputSizes();
+    if (!next.outputSizes?.length) {
+      next.outputSizes = magicOutputSizes();
+    }
   }
   return next;
 }

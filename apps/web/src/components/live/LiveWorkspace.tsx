@@ -21,8 +21,9 @@ import {
   LiveChatPromptBar,
   type LiveChatPrompt,
 } from "@/components/live/LiveChatPromptBar";
+import { LiveHopperMatrix } from "@/components/live/LiveHopperMatrix";
 import { LiveQueuePreview } from "@/components/live/LiveQueuePreview";
-import { LiveThumb, cellMediaPath } from "@/components/live/LiveThumb";
+import { missingSizeSlotCount } from "@/components/live/liveMatrixUtils";
 import { MagicColumnPanel } from "@/components/live/MagicColumnPanel";
 import { api } from "@/lib/api";
 
@@ -193,7 +194,7 @@ export function LiveWorkspace({ campaignId }: Props) {
 
   // Magic: prepare ready → generate (once per prepare epoch; not after generate)
   useEffect(() => {
-    if (!magicReady?.ready) return;
+    if (!magicReady?.ready || !campaign) return;
     const prepareEv = events.find((e) => e.type === "magic_prepare");
     const prepareAt = prepareEv?.at || "";
     const generatedAfter = events.some(
@@ -202,15 +203,53 @@ export function LiveWorkspace({ campaignId }: Props) {
         (!prepareAt || e.at >= prepareAt),
     );
     if (generatedAfter) return;
+    const sizes = campaign.outputSizes || [];
+    const missing = missingSizeSlotCount(campaign.matrix.cells, sizes);
+    const sizeLabel = sizes.map((s) => s.aspect).join(", ") || "none";
     const key = `generate:${prepareEv?.id || `v${magicReady.variantCount}`}`;
     offerChatPrompt({
       column: "magic",
       key,
       summary: "Checks look good — generate plates?",
-      detail: magicReady.detail,
-      primaryLabel: "Generate",
+      detail:
+        missing > 0
+          ? `${magicReady.detail}. Settings sizes (${sizeLabel}): ${missing} plate×size slot(s) still empty.`
+          : magicReady.detail,
+      primaryLabel:
+        missing > 0 ? "Generate missing sizes" : "Generate",
     });
-  }, [magicReady, events, offerChatPrompt]);
+  }, [magicReady, events, offerChatPrompt, campaign]);
+
+  // After jobs settle, nudge if Settings sizes still incomplete
+  useEffect(() => {
+    const latest = events[0];
+    if (latest?.type !== "job_update" && latest?.type !== "magic_generate") {
+      return;
+    }
+    if (!campaign?.matrix.cells.length || !campaign.outputSizes?.length) return;
+    const status = String(latest.payload?.status || "");
+    if (
+      latest.type === "job_update" &&
+      status !== "done" &&
+      status !== "failed" &&
+      status !== "cancelled"
+    ) {
+      return;
+    }
+    const missing = missingSizeSlotCount(
+      campaign.matrix.cells,
+      campaign.outputSizes,
+    );
+    if (missing <= 0) return;
+    const sizeKey = campaign.outputSizes.map((s) => s.id).join(",");
+    offerChatPrompt({
+      column: "magic",
+      key: `fill-sizes:${sizeKey}:${missing}`,
+      summary: `${missing} Settings size slot(s) still missing`,
+      detail: `Active sizes: ${campaign.outputSizes.map((s) => s.aspect).join(", ")}. Generate remaining plates to match Settings.`,
+      primaryLabel: "Generate missing sizes",
+    });
+  }, [events, campaign, offerChatPrompt]);
 
   // After generate event → close open generate prompts
   useEffect(() => {
@@ -346,7 +385,8 @@ export function LiveWorkspace({ campaignId }: Props) {
       setQueueTick((n) => n + 1);
       setChatPrompts((prev) =>
         prev.map((p) =>
-          p.key.startsWith("generate:") && p.status === "open"
+          (p.key.startsWith("generate:") || p.key.startsWith("fill-sizes:")) &&
+          p.status === "open"
             ? { ...p, status: "acted" }
             : p,
         ),
@@ -423,7 +463,7 @@ export function LiveWorkspace({ campaignId }: Props) {
       await runConfirmImport(importId);
       return;
     }
-    if (prompt.key.startsWith("generate:")) {
+    if (prompt.key.startsWith("generate:") || prompt.key.startsWith("fill-sizes:")) {
       await runGenerate();
       return;
     }
@@ -478,7 +518,6 @@ export function LiveWorkspace({ campaignId }: Props) {
   }
 
   const cells = campaign?.matrix?.cells ?? [];
-  const kept = reviews.filter((r) => r.decision === "approved").length;
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-[#f3efe6] text-ink-900">
@@ -663,6 +702,7 @@ export function LiveWorkspace({ campaignId }: Props) {
                     busy={busy}
                     onPrepare={runPrepare}
                     onReadinessChange={setMagicReady}
+                    coverageToken={queueTick + celtraTick}
                     onImported={async () => {
                       await refresh();
                       setCeltraTick((n) => n + 1);
@@ -671,89 +711,17 @@ export function LiveWorkspace({ campaignId }: Props) {
                 ) : null}
 
                 {id === "hopper" ? (
-                  <div className="border-b border-ink-100 px-3 py-2 text-xs">
-                    <p className="text-ink-600">
-                      {cells.length} cells · {kept} kept · deep links
-                    </p>
-                    <div className="mt-1 flex flex-wrap gap-2">
-                      <a
-                        className="underline"
-                        href={`/campaigns/${campaignId}/ingredients`}
-                      >
-                        Ingredients
-                      </a>
-                      <a
-                        className="underline"
-                        href={`/campaigns/${campaignId}/matrix`}
-                      >
-                        Matrix
-                      </a>
-                      <a
-                        className="underline"
-                        href={`/campaigns/${campaignId}/variants`}
-                      >
-                        Variants
-                      </a>
-                      <a
-                        className="underline"
-                        href={`/campaigns/${campaignId}/review`}
-                      >
-                        Assemble
-                      </a>
-                    </div>
-                    <ul className="mt-2 space-y-1">
-                      {cells.slice(0, 12).map((cell) => {
-                        const rev = reviews.find((r) => r.cellId === cell.cellId);
-                        return (
-                          <li
-                            key={cell.cellId}
-                            className="flex flex-wrap items-center gap-2 rounded border border-ink-100 px-1.5 py-1"
-                          >
-                            <LiveThumb
-                              filePath={cellMediaPath(cell)}
-                              label={cell.cellId}
-                              emptyHint="…"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <span className="font-mono text-[10px]">
-                                {cell.cellId}
-                              </span>
-                              <span className="ml-1 text-[10px] text-ink-500">
-                                {rev?.decision || "pending"}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              className="rounded border px-1 text-[10px]"
-                              onClick={() =>
-                                void api
-                                  .setReview(campaignId, cell.cellId, {
-                                    decision: "approved",
-                                  })
-                                  .then(() => refresh())
-                                  .then(() => setCeltraTick((n) => n + 1))
-                              }
-                            >
-                              Keep
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded border px-1 text-[10px]"
-                              onClick={() =>
-                                void api
-                                  .setReview(campaignId, cell.cellId, {
-                                    decision: "rejected",
-                                  })
-                                  .then(() => refresh())
-                              }
-                            >
-                              Kill
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
+                  <LiveHopperMatrix
+                    campaignId={campaignId}
+                    cells={cells}
+                    sizes={campaign?.outputSizes || []}
+                    reviews={reviews}
+                    refreshToken={queueTick}
+                    onChanged={async () => {
+                      await refresh();
+                      setCeltraTick((n) => n + 1);
+                    }}
+                  />
                 ) : null}
 
                 {id === "celtra" ? (

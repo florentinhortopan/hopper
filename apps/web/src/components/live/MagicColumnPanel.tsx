@@ -7,9 +7,12 @@ import type {
   LibraryItem,
   MagicChecklistItem,
   MagicVariantPlanRow,
+  OutputSize,
 } from "@attatta/shared";
 import { api } from "@/lib/api";
+import { LiveMagicSizeCoverage } from "@/components/live/LiveMagicSizeCoverage";
 import { LiveThumb, cellMediaPath } from "@/components/live/LiveThumb";
+import { cellComboLabel } from "@/components/live/liveMatrixUtils";
 
 type MagicPlan = {
   gapsFilled: MagicChecklistItem[];
@@ -37,6 +40,8 @@ type Props = {
     importReview: boolean;
     importId: string | null;
   }) => void;
+  /** Bump when jobs/matrix change so size coverage refreshes. */
+  coverageToken?: number;
 };
 
 export function MagicColumnPanel({
@@ -48,6 +53,7 @@ export function MagicColumnPanel({
   onPrepare,
   onImported,
   onReadinessChange,
+  coverageToken = 0,
 }: Props) {
   const [plan, setPlan] = useState<MagicPlan | null>(null);
   const [ingredients, setIngredients] = useState<LibraryItem[]>([]);
@@ -56,6 +62,8 @@ export function MagicColumnPanel({
   );
   const [localError, setLocalError] = useState<string | null>(null);
   const [importBusy, setImportBusy] = useState(false);
+  const [sizeCatalog, setSizeCatalog] = useState<OutputSize[]>([]);
+  const [sizeBusy, setSizeBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadPlanAndIngredients = useCallback(async () => {
@@ -81,6 +89,13 @@ export function MagicColumnPanel({
       setLocalError(e instanceof Error ? e.message : String(e)),
     );
   }, [loadPlanAndIngredients]);
+
+  useEffect(() => {
+    void api
+      .outputSizes()
+      .then(setSizeCatalog)
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!onReadinessChange) return;
@@ -197,7 +212,37 @@ export function MagicColumnPanel({
     await loadPlanAndIngredients();
   }
 
+  async function toggleOutputSize(sizeId: string) {
+    if (!campaign || sizeBusy) return;
+    const current = (campaign.outputSizes || []).map((s) => s.id);
+    const next = current.includes(sizeId)
+      ? current.filter((id) => id !== sizeId)
+      : [...current, sizeId];
+    if (!next.length) {
+      setLocalError("Keep at least one delivery size active");
+      return;
+    }
+    setSizeBusy(true);
+    setLocalError(null);
+    try {
+      await api.putCampaignSizes(campaignId, { sizeIds: next });
+      await onImported?.();
+      await loadPlanAndIngredients();
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSizeBusy(false);
+    }
+  }
+
   const activeIds = new Set(campaign?.ingredientSet?.activeIds ?? []);
+  const activeSizeIds = new Set(
+    (campaign?.outputSizes || []).map((s) => s.id),
+  );
+  const sizeChoices =
+    sizeCatalog.length > 0
+      ? sizeCatalog
+      : campaign?.outputSizes || [];
   const activeIngredients = ingredients.filter(
     (i) =>
       ("active" in i && (i as { active?: boolean }).active) ||
@@ -231,6 +276,56 @@ export function MagicColumnPanel({
           onChange={(e) => onBriefChange(e.target.value)}
         />
       </label>
+
+      <div className="rounded-lg border border-ink-100 bg-white/70 p-2">
+        <div className="flex flex-wrap items-baseline gap-2">
+          <span className="font-medium text-ink-800">Delivery sizes</span>
+          <span className="text-[10px] text-ink-500">
+            Defaults from Settings — uncheck to skip for this campaign
+          </span>
+        </div>
+        <ul className="mt-2 space-y-1">
+          {sizeChoices.map((s) => {
+            const on = activeSizeIds.has(s.id);
+            return (
+              <li key={s.id}>
+                <label className="flex cursor-pointer items-start gap-2 rounded border border-ink-100 px-2 py-1.5 hover:bg-ink-50/80">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={on}
+                    disabled={sizeBusy || busy !== null || importBusy}
+                    onChange={() => void toggleOutputSize(s.id)}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="text-[11px] font-medium text-ink-900">
+                      {s.aspect}
+                      <span className="ml-1 font-normal text-ink-600">
+                        {s.label}
+                      </span>
+                    </span>
+                    <span className="block text-[10px] text-ink-500">
+                      {s.width}×{s.height}
+                      {s.placements ? ` · ${s.placements}` : ""}
+                      {s.recommended ? " · Meta recommended" : ""}
+                    </span>
+                  </span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+        {!activeSizeIds.size ? (
+          <p className="mt-1 text-[10px] text-amber-900">
+            No sizes active — pick at least one before prepare / generate.
+          </p>
+        ) : (
+          <p className="mt-1 text-[10px] text-ink-500">
+            Generate fills missing plates for every active size (not only
+            primary).
+          </p>
+        )}
+      </div>
 
       <div className="rounded-lg border border-ink-100 bg-white/70 p-2">
         <div className="flex flex-wrap items-center gap-2">
@@ -424,10 +519,17 @@ export function MagicColumnPanel({
                   <div className="min-w-0 flex-1">
                     <p className="truncate">
                       <span className="font-mono text-ink-500">{v.cellId}</span>
-                      <span className="ml-1 text-ink-800">{v.label}</span>
+                      {v.sceneTag || cell?.sceneTag ? (
+                        <span className="ml-1 text-ink-500">
+                          · scene {v.sceneTag || cell?.sceneTag}
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="truncate text-ink-800">
+                      {cell ? cellComboLabel(cell) : v.label}
                     </p>
                     {v.needsGen ? (
-                      <span className="text-amber-800">Comfy plate</span>
+                      <span className="text-amber-800">Needs Comfy plate</span>
                     ) : media ? (
                       <span className="text-emerald-800">Plate ready</span>
                     ) : null}
@@ -438,6 +540,15 @@ export function MagicColumnPanel({
           </ul>
         )}
       </div>
+
+      {campaign ? (
+        <LiveMagicSizeCoverage
+          campaignId={campaignId}
+          cells={campaign.matrix.cells}
+          sizes={campaign.outputSizes || []}
+          refreshToken={coverageToken}
+        />
+      ) : null}
     </div>
   );
 }
