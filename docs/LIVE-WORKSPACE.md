@@ -35,6 +35,7 @@ Comfy stays publish webhook + job poll. Celtra stays one-way zip (no Celtra clou
 ## Conversational UI
 
 Each column: reverse-chron **event cards** + bottom **composer**.  
+Magic: when prepare checklist is green and variants exist, a **Generate** CTA appears above the composer (conversational, not a top-panel button).  
 Celtra: matrix table on top, compact event strip below.  
 LLM status shown when `ATTATTA_LLM_API_KEY` is set; rich agent behavior is deferred.
 

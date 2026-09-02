@@ -26,9 +26,14 @@ type Props = {
   onBriefChange: (v: string) => void;
   busy: string | null;
   onPrepare: () => Promise<void>;
-  onGenerate: () => Promise<void>;
   /** Called after import commit so parent can refresh campaign. */
   onImported?: () => Promise<void>;
+  /** Surfaced to Magic chat composer when generate should appear. */
+  onReadinessChange?: (state: {
+    ready: boolean;
+    variantCount: number;
+    detail: string;
+  }) => void;
 };
 
 export function MagicColumnPanel({
@@ -38,8 +43,8 @@ export function MagicColumnPanel({
   onBriefChange,
   busy,
   onPrepare,
-  onGenerate,
   onImported,
+  onReadinessChange,
 }: Props) {
   const [plan, setPlan] = useState<MagicPlan | null>(null);
   const [ingredients, setIngredients] = useState<LibraryItem[]>([]);
@@ -73,6 +78,29 @@ export function MagicColumnPanel({
       setLocalError(e instanceof Error ? e.message : String(e)),
     );
   }, [loadPlanAndIngredients]);
+
+  useEffect(() => {
+    if (!onReadinessChange) return;
+    const variantCount =
+      plan?.variants.length ?? campaign?.matrix.cells.length ?? 0;
+    const ready = Boolean(plan?.canContinue && variantCount > 0);
+    const blocked = plan && !plan.canContinue
+      ? plan.reasons[0] || "Checks incomplete"
+      : "";
+    onReadinessChange({
+      ready,
+      variantCount,
+      detail: ready
+        ? `${variantCount} variant(s) ready to generate`
+        : blocked || "Run prepare until the checklist is green",
+    });
+  }, [
+    plan?.canContinue,
+    plan?.variants.length,
+    plan?.reasons,
+    campaign?.matrix.cells.length,
+    onReadinessChange,
+  ]);
 
   useEffect(() => {
     if (!importSession) return;
@@ -159,11 +187,6 @@ export function MagicColumnPanel({
 
   async function handlePrepare() {
     await onPrepare();
-    await loadPlanAndIngredients();
-  }
-
-  async function handleGenerate() {
-    await onGenerate();
     await loadPlanAndIngredients();
   }
 
@@ -275,16 +298,9 @@ export function MagicColumnPanel({
         >
           {busy === "prepare" ? "Preparing…" : "Re-check / prepare"}
         </button>
-        <button
-          type="button"
-          className="rounded border border-ink-200 px-2 py-1 disabled:opacity-40"
-          disabled={
-            busy !== null || importBusy || !(plan?.variants.length || campaign?.matrix.cells.length)
-          }
-          onClick={() => void handleGenerate()}
-        >
-          {busy === "generate" ? "Generating…" : "Generate"}
-        </button>
+        <p className="self-center text-[10px] text-ink-500">
+          Generate appears in the chat when checks pass.
+        </p>
       </div>
 
       <div>

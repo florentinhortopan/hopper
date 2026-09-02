@@ -32,6 +32,11 @@ export function LiveWorkspace({ campaignId }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [celtraTick, setCeltraTick] = useState(0);
   const [briefDraft, setBriefDraft] = useState("");
+  const [magicReady, setMagicReady] = useState<{
+    ready: boolean;
+    variantCount: number;
+    detail: string;
+  } | null>(null);
 
   const {
     events,
@@ -270,7 +275,7 @@ export function LiveWorkspace({ campaignId }: Props) {
                   onBriefChange={setBriefDraft}
                   busy={busy}
                   onPrepare={runPrepare}
-                  onGenerate={runGenerate}
+                  onReadinessChange={setMagicReady}
                   onImported={async () => {
                     await refresh();
                     setCeltraTick((n) => n + 1);
@@ -387,6 +392,16 @@ export function LiveWorkspace({ campaignId }: Props) {
                 llmOn={llmOn}
                 disabled={busy !== null}
                 onSubmit={(t) => handleComposer(id, t)}
+                suggestedAction={
+                  id === "magic" && magicReady?.ready
+                    ? {
+                        label:
+                          busy === "generate" ? "Generating…" : "Generate",
+                        detail: magicReady.detail,
+                        onClick: runGenerate,
+                      }
+                    : null
+                }
               />
             </section>
           );
