@@ -252,7 +252,7 @@ export function LiveWorkspace({ campaignId }: Props) {
       column: "hopper",
       key: `combos:${matrixEpoch}`,
       summary: "Pick combinations in Hopper",
-      detail: `${available} combo(s) available · ${selected} selected for generate. Magic’s generation matrix mirrors Hopper.`,
+      detail: `${available} combo(s) in the Pick combinations table · ${selected} selected. Scroll Hopper to check rows; Magic updates to match.`,
       primaryLabel: "Open Hopper",
     });
   }, [campaign?.matrix.cells, events, offerChatPrompt]);

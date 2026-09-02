@@ -30,6 +30,7 @@ import {
   type ComboAxisKey,
 } from "@/components/live/liveMatrixUtils";
 import { api } from "@/lib/api";
+import { HopperComboStep } from "@/components/live/HopperComboStep";
 
 type Props = {
   campaignId: string;
@@ -83,13 +84,22 @@ export function LiveHopperMatrix({
     };
   }, [campaignId, refreshToken]);
 
-  const axes = useMemo(() => detectComboAxes(cells), [cells]);
+  const selectedForGenCount = cells.filter(
+    (c) => c.selectedForGen !== false,
+  ).length;
+  const reviewCells = useMemo(
+    () => cells.filter((c) => c.selectedForGen !== false),
+    [cells],
+  );
+  const axes = useMemo(() => detectComboAxes(reviewCells), [reviewCells]);
   const xAxis = axes[0];
   const yAxis = axes[1] || null;
   const canComboXy = Boolean(xAxis && yAxis && xAxis.key !== yAxis.key);
 
   const selected =
-    cells.find((c) => c.cellId === selectedId) || cells[0] || null;
+    reviewCells.find((c) => c.cellId === selectedId) ||
+    reviewCells[0] ||
+    null;
 
   useEffect(() => {
     if (!selected) {
@@ -222,38 +232,26 @@ export function LiveHopperMatrix({
     }
   }
 
-  const selectedForGenCount = cells.filter(
-    (c) => c.selectedForGen !== false,
-  ).length;
-
   return (
-    <div className="space-y-3 border-b border-ink-100 px-3 py-2 text-xs">
+    <div className="text-xs">
+      <HopperComboStep
+        campaignId={campaignId}
+        cells={cells}
+        busyId={busyId}
+        onToggle={(cellId, on) => void setSelectedForGen(cellId, on)}
+        onSelectAll={(on) => void setAllSelectedForGen(on)}
+      />
+
+      <section className="space-y-3 border-b border-ink-100 px-3 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-500">
-          Matrix · combos
+          Step · Review plates
         </h3>
         <span className="text-[10px] text-ink-500">
-          {selectedForGenCount} of {cells.length} selected for generate ·{" "}
-          {sizes.length} size(s)
+          {selectedForGenCount
+            ? `${selectedForGenCount} selected · Keep/Kill sizes for Celtra`
+            : "Select combos above to review plates"}
         </span>
-        <div className="flex gap-1">
-          <button
-            type="button"
-            className="rounded border border-ink-200 px-1.5 py-0.5 text-[9px] hover:bg-ink-50 disabled:opacity-40"
-            disabled={busyId === "sel:all" || !cells.length}
-            onClick={() => void setAllSelectedForGen(true)}
-          >
-            Select all
-          </button>
-          <button
-            type="button"
-            className="rounded border border-ink-200 px-1.5 py-0.5 text-[9px] hover:bg-ink-50 disabled:opacity-40"
-            disabled={busyId === "sel:all" || !cells.length}
-            onClick={() => void setAllSelectedForGen(false)}
-          >
-            Select none
-          </button>
-        </div>
         <div className="ml-auto flex gap-1">
           <button
             type="button"
@@ -287,7 +285,8 @@ export function LiveHopperMatrix({
       </div>
 
       <p className="text-[10px] text-ink-500">
-        Check combos to generate — Magic’s generation list mirrors this.{" "}
+        Expand a selected combo to preview sizes and Keep/Kill. Combo pick is
+        above.{" "}
         <a className="underline" href={`/campaigns/${campaignId}/matrix`}>
           Advanced matrix
         </a>
@@ -301,9 +300,15 @@ export function LiveHopperMatrix({
         </a>
       </p>
 
-      {view === "xy" && canComboXy && xAxis && yAxis ? (
+      {!reviewCells.length ? (
+        <p className="rounded border border-dashed border-ink-200 bg-white/60 px-2 py-3 text-[10px] text-ink-500">
+          No combos selected yet — check rows in{" "}
+          <span className="font-medium text-ink-700">Pick combinations</span>{" "}
+          above, then review plates here.
+        </p>
+      ) : view === "xy" && canComboXy && xAxis && yAxis ? (
         <XyGrid
-          cells={cells}
+          cells={reviewCells}
           sizes={sizes}
           jobs={jobs}
           reviews={reviews}
@@ -316,30 +321,21 @@ export function LiveHopperMatrix({
           selectedId={selected?.cellId ?? null}
           previewSizeId={previewSizeId}
           onSelect={selectCell}
-          onToggleSelectedForGen={(cellId, on) =>
-            void setSelectedForGen(cellId, on)
-          }
-          selectBusy={busyId?.startsWith("sel:") ?? false}
         />
       ) : view === "xy" ? (
         <SizeCoverageGrid
-          cells={cells}
+          cells={reviewCells}
           sizes={sizes}
           jobs={jobs}
           selectedId={selected?.cellId ?? null}
           previewSizeId={previewSizeId}
           onSelect={selectCell}
           onOpenSize={openSizePreview}
-          onToggleSelectedForGen={(cellId, on) =>
-            void setSelectedForGen(cellId, on)
-          }
-          selectBusy={busyId?.startsWith("sel:") ?? false}
         />
       ) : (
         <ul className="space-y-1.5">
-          {cells.map((cell) => {
+          {reviewCells.map((cell) => {
             const open = expandedIds.has(cell.cellId);
-            const forGen = cell.selectedForGen !== false;
             const listSizeId =
               previewSizeId && selected?.cellId === cell.cellId
                 ? previewSizeId
@@ -350,96 +346,76 @@ export function LiveHopperMatrix({
               <li
                 key={cell.cellId}
                 className={`rounded border ${
-                  !forGen
-                    ? "border-ink-100 bg-ink-50/50 opacity-70"
-                    : open
-                      ? "border-ink-900 bg-white"
-                      : selected?.cellId === cell.cellId
-                        ? "border-ink-300 bg-white"
-                        : "border-ink-100 bg-white/60"
+                  open
+                    ? "border-ink-900 bg-white"
+                    : selected?.cellId === cell.cellId
+                      ? "border-ink-300 bg-white"
+                      : "border-ink-100 bg-white/60"
                 }`}
               >
-                <div className="flex w-full items-start gap-2 px-1.5 py-1">
-                  <label
-                    className="mt-3 shrink-0"
-                    title="Include in Magic generate"
-                    onClick={(e) => e.stopPropagation()}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="flex w-full cursor-pointer items-start gap-2 px-1.5 py-1 text-left"
+                  aria-expanded={open}
+                  onClick={() => toggleExpand(cell.cellId)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleExpand(cell.cellId);
+                    }
+                  }}
+                >
+                  <span
+                    className="mt-3 shrink-0 text-[10px] text-ink-500"
+                    aria-hidden
                   >
-                    <input
-                      type="checkbox"
-                      className="accent-ink-900"
-                      checked={forGen}
-                      disabled={busyId === `sel:${cell.cellId}` || busyId === "sel:all"}
-                      onChange={(e) =>
-                        void setSelectedForGen(cell.cellId, e.target.checked)
-                      }
-                    />
-                  </label>
+                    {open ? "▾" : "▸"}
+                  </span>
                   <div
-                    role="button"
-                    tabIndex={0}
-                    className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 text-left"
-                    aria-expanded={open}
-                    onClick={() => toggleExpand(cell.cellId)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        toggleExpand(cell.cellId);
-                      }
+                    className="h-12 shrink-0 overflow-hidden rounded"
+                    style={{
+                      aspectRatio: cssAspect(listAspect) || "9 / 16",
                     }}
                   >
-                    <span
-                      className="mt-3 shrink-0 text-[10px] text-ink-500"
-                      aria-hidden
-                    >
-                      {open ? "▾" : "▸"}
-                    </span>
-                    <div
-                      className="h-12 shrink-0 overflow-hidden rounded"
-                      style={{
-                        aspectRatio: cssAspect(listAspect) || "9 / 16",
-                      }}
-                    >
-                      <SizeMediaFrame
-                        path={cellMediaPath(cell, listSizeId)}
-                        rev={cellMediaRev(cell, listSizeId)}
-                        aspect={listAspect}
-                        label={cell.cellId}
-                        className="h-full w-full border-0"
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-mono text-[10px] text-ink-500">
-                        {cell.cellId}
-                        {cell.sceneTag ? ` · ${cell.sceneTag}` : ""}
-                        {!forGen ? " · skipped" : ""}
-                      </p>
-                      <p className="truncate text-[11px] text-ink-800">
-                        {cellComboLabel(cell)}
-                      </p>
-                      <SizeDots
-                        cell={cell}
-                        sizes={sizes}
-                        jobs={jobs}
-                        activeSizeId={
-                          selected?.cellId === cell.cellId
-                            ? previewSizeId
-                            : null
+                    <SizeMediaFrame
+                      path={cellMediaPath(cell, listSizeId)}
+                      rev={cellMediaRev(cell, listSizeId)}
+                      aspect={listAspect}
+                      label={cell.cellId}
+                      className="h-full w-full border-0"
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-mono text-[10px] text-ink-500">
+                      {cell.cellId}
+                      {cell.sceneTag ? ` · ${cell.sceneTag}` : ""}
+                    </p>
+                    <p className="truncate text-[11px] text-ink-800">
+                      {cellComboLabel(cell)}
+                    </p>
+                    <SizeDots
+                      cell={cell}
+                      sizes={sizes}
+                      jobs={jobs}
+                      activeSizeId={
+                        selected?.cellId === cell.cellId
+                          ? previewSizeId
+                          : null
+                      }
+                      onSizeTap={(size) => {
+                        if (!open) {
+                          setExpandedIds((prev) =>
+                            new Set(prev).add(cell.cellId),
+                          );
                         }
-                        onSizeTap={(size) => {
-                          if (!open) {
-                            setExpandedIds((prev) =>
-                              new Set(prev).add(cell.cellId),
-                            );
-                          }
-                          openSizePreview(cell, size);
-                        }}
-                      />
-                      <p className="mt-0.5 text-[10px] text-ink-500">
-                        {reviewOf(reviews, cell.cellId)}
-                        {!open ? " · expand for sizes" : ""}
-                      </p>
-                    </div>
+                        openSizePreview(cell, size);
+                      }}
+                    />
+                    <p className="mt-0.5 text-[10px] text-ink-500">
+                      {reviewOf(reviews, cell.cellId)}
+                      {!open ? " · expand for sizes" : ""}
+                    </p>
                   </div>
                 </div>
                 {open ? (
@@ -502,6 +478,7 @@ export function LiveHopperMatrix({
           Prepare a matrix in Magic to review combinations here.
         </p>
       ) : null}
+      </section>
 
       {lightbox ? (
         <MediaLightbox
@@ -773,8 +750,6 @@ function SizeCoverageGrid({
   previewSizeId,
   onSelect,
   onOpenSize,
-  onToggleSelectedForGen,
-  selectBusy,
 }: {
   cells: MatrixCell[];
   sizes: OutputSize[];
@@ -783,18 +758,15 @@ function SizeCoverageGrid({
   previewSizeId: string | null;
   onSelect: (id: string, sizeId?: string | null) => void;
   onOpenSize: (cell: MatrixCell, size: OutputSize) => void;
-  onToggleSelectedForGen?: (cellId: string, on: boolean) => void;
-  selectBusy?: boolean;
 }) {
   return (
     <div className="overflow-x-auto">
       <p className="mb-1 text-[10px] text-ink-500">
-        Check combo → Magic generate · tap a size cell to preview
+        Selected combos × sizes — tap a size cell to preview
       </p>
       <table className="w-full min-w-[16rem] border-collapse text-[10px]">
         <thead>
           <tr className="border-b border-ink-200 text-ink-500">
-            <th className="px-1 py-1 text-center font-medium">Gen</th>
             <th className="px-1 py-1 text-left font-medium">Variant</th>
             {sizes.map((s) => (
               <th
@@ -810,24 +782,8 @@ function SizeCoverageGrid({
         <tbody>
           {cells.slice(0, 32).map((cell) => {
             const selected = selectedId === cell.cellId;
-            const forGen = cell.selectedForGen !== false;
             return (
-              <tr
-                key={cell.cellId}
-                className={`border-b border-ink-50 ${forGen ? "" : "opacity-60"}`}
-              >
-                <td className="px-1 py-1 text-center">
-                  <input
-                    type="checkbox"
-                    className="accent-ink-900"
-                    checked={forGen}
-                    disabled={selectBusy}
-                    title="Include in Magic generate"
-                    onChange={(e) =>
-                      onToggleSelectedForGen?.(cell.cellId, e.target.checked)
-                    }
-                  />
-                </td>
+              <tr key={cell.cellId} className="border-b border-ink-50">
                 <td className="max-w-[9rem] px-1 py-0.5">
                   <button
                     type="button"
@@ -910,8 +866,6 @@ function XyGrid({
   selectedId,
   previewSizeId,
   onSelect,
-  onToggleSelectedForGen,
-  selectBusy,
 }: {
   cells: MatrixCell[];
   sizes: OutputSize[];
@@ -926,13 +880,11 @@ function XyGrid({
   selectedId: string | null;
   previewSizeId: string | null;
   onSelect: (id: string, sizeId?: string | null) => void;
-  onToggleSelectedForGen?: (cellId: string, on: boolean) => void;
-  selectBusy?: boolean;
 }) {
   return (
     <div className="overflow-x-auto">
       <p className="mb-1 text-[10px] text-ink-500">
-        {yLabel} × {xLabel} — check = include in Magic generate
+        {yLabel} × {xLabel} — selected combos only
       </p>
       <table className="w-full min-w-[16rem] border-collapse text-[10px]">
         <thead>
@@ -974,31 +926,13 @@ function XyGrid({
                 }
                 const decision = reviewOf(reviews, cell.cellId);
                 const selected = selectedId === cell.cellId;
-                const forGen = cell.selectedForGen !== false;
                 const thumbSize =
                   (selected && previewSizeId) ||
                   sizes.find((s) => sizeAssetMediaPath(cell, s.id))?.id ||
                   sizes[0]?.id ||
                   null;
                 return (
-                  <td
-                    key={xv}
-                    className={`border border-ink-100 p-0.5 ${forGen ? "" : "opacity-55"}`}
-                  >
-                    <div className="flex flex-col items-center gap-0.5">
-                      <input
-                        type="checkbox"
-                        className="accent-ink-900"
-                        checked={forGen}
-                        disabled={selectBusy}
-                        title="Include in Magic generate"
-                        onChange={(e) =>
-                          onToggleSelectedForGen?.(
-                            cell.cellId,
-                            e.target.checked,
-                          )
-                        }
-                      />
+                  <td key={xv} className="border border-ink-100 p-0.5">
                       <button
                         type="button"
                         className={`flex w-full flex-col items-center gap-0.5 rounded px-0.5 py-1 ${
@@ -1054,7 +988,6 @@ function XyGrid({
                           ))}
                         </div>
                       </button>
-                    </div>
                   </td>
                 );
               })}
