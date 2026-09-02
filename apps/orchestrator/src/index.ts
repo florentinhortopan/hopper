@@ -49,6 +49,7 @@ import {
 import { PORT, PUBLIC_BASE, PATHS, REPO_ROOT } from "./config.js";
 import { DEFAULT_BRAND_TOKEN_ID } from "./defaultTokens.js";
 import {
+  buildMagicSparse,
   ensureMagicCampaign,
   generateMagicCampaign,
   magicPlanSnapshot,
@@ -1182,9 +1183,26 @@ app.put("/campaigns/:id/ingredients", async (req, res) => {
       hiddenIds: [...hidden],
     };
     const lib = await listLibrary(undefined, campaign.libraryId || DEFAULT_LIBRARY_ID);
-    // Rail is derived from activations (Rail step dissolved)
+    // Drop stale ids that no longer exist in the library
+    const known = new Set(lib.map((i) => i.id));
+    campaign.ingredientSet.activeIds = campaign.ingredientSet.activeIds.filter(
+      (id) => known.has(id),
+    );
+    if (
+      campaign.ingredientSet.contractTalentId &&
+      !known.has(campaign.ingredientSet.contractTalentId)
+    ) {
+      campaign.ingredientSet.contractTalentId = null;
+    }
+    // Rail + sparse matrix must track activations (live workspace / Magic generate)
     campaign.rail = deriveRailFromActivations(campaign, lib, campaign.rail);
-    res.json(await saveCampaign(campaign));
+    try {
+      const rebuilt = buildMagicSparse(campaign, lib);
+      res.json(await saveCampaign(rebuilt));
+    } catch {
+      // Persist activations even if policy blocks a full rebuild
+      res.json(await saveCampaign(campaign));
+    }
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
   }

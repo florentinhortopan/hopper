@@ -176,7 +176,7 @@ function pickMagicActivations(
     extraIds?: string[];
     /**
      * Activations already on the campaign (Ingredients uploads, Keep selections).
-     * Re-check / prepare must never wipe these — advanced matrix + workspace share them.
+     * Re-check must never wipe these — and must never re-open the whole library.
      */
     priorActiveIds?: string[];
   },
@@ -187,22 +187,23 @@ function pickMagicActivations(
 } {
   const libById = new Map(lib.map((i) => [i.id, i]));
   const prior = (opts?.priorActiveIds ?? []).filter((id) => libById.has(id));
-  const extra = new Set(opts?.extraIds ?? []);
+  const extra = [...(opts?.extraIds ?? [])].filter((id) => libById.has(id));
   const importSet = opts?.importIngredientIds?.length
     ? new Set(opts.importIngredientIds)
     : null;
 
+  const pickTalent = (ids: string[]) =>
+    ids
+      .map((id) => libById.get(id)!)
+      .find((i) => i.kind === "talent" && isPlateReady(i)) ||
+    ids.map((id) => libById.get(id)!).find((i) => i.kind === "talent") ||
+    null;
+
   if (importSet) {
     const fromImport = lib.filter((i) => importSet.has(i.id)).map((i) => i.id);
-    const fromExtra = [...extra].filter((id) => libById.has(id));
     // Keep operator-activated uploads/plates across Confirm import & prepare
-    const activeIds = [...new Set([...fromImport, ...prior, ...fromExtra])];
-    const talent =
-      activeIds
-        .map((id) => libById.get(id)!)
-        .find((i) => i.kind === "talent" && isPlateReady(i)) ||
-      activeIds.map((id) => libById.get(id)!).find((i) => i.kind === "talent") ||
-      null;
+    const activeIds = [...new Set([...fromImport, ...prior, ...extra])];
+    const talent = pickTalent(activeIds);
     return {
       activeIds,
       contractTalentId: talent?.id ?? null,
@@ -210,11 +211,20 @@ function pickMagicActivations(
     };
   }
 
-  // No import: preserve every prior activation; only fill empty kinds.
-  const activeIds = new Set(prior);
-  const hasKind = (kind: LibraryItem["kind"]) =>
-    [...activeIds].some((id) => libById.get(id)?.kind === kind);
+  // Recheck / prepare with existing activations: trust the operator.
+  // Do NOT pull one-of-each from the full library (that ballooned actives every press).
+  if (prior.length > 0) {
+    const activeIds = [...new Set([...prior, ...extra])];
+    const talent = pickTalent(activeIds);
+    return {
+      activeIds,
+      contractTalentId: talent?.id ?? null,
+      scopedToImport: false,
+    };
+  }
 
+  // First prepare (nothing active yet): conservative one plate per kind.
+  const activeIds = new Set<string>(extra);
   const talent =
     lib.find((i) => i.kind === "talent" && isPlateReady(i)) ||
     lib.find((i) => i.kind === "talent");
@@ -227,24 +237,15 @@ function pickMagicActivations(
   const copy = lib.filter((i) => i.kind === "copy");
   const motion = lib.filter((i) => i.kind === "motion");
 
-  if (!hasKind("talent") && talent) activeIds.add(talent.id);
-  if (!hasKind("hands") && hands[0]) activeIds.add(hands[0].id);
-  if (!hasKind("attire") && attire[0]) activeIds.add(attire[0].id);
-  if (!hasKind("background") && backgrounds[0]) activeIds.add(backgrounds[0].id);
-  if (!hasKind("prop") && props[0]) activeIds.add(props[0].id);
-  if (!hasKind("copy") && copy[0]) activeIds.add(copy[0].id);
-  if (!hasKind("motion") && motion[0]) activeIds.add(motion[0].id);
-  for (const id of extra) {
-    if (libById.has(id)) activeIds.add(id);
-  }
+  if (talent) activeIds.add(talent.id);
+  if (hands[0]) activeIds.add(hands[0].id);
+  if (attire[0]) activeIds.add(attire[0].id);
+  if (backgrounds[0]) activeIds.add(backgrounds[0].id);
+  if (props[0]) activeIds.add(props[0].id);
+  if (copy[0]) activeIds.add(copy[0].id);
+  if (motion[0]) activeIds.add(motion[0].id);
 
-  const contractTalent =
-    [...activeIds]
-      .map((id) => libById.get(id)!)
-      .find((i) => i.kind === "talent" && isPlateReady(i)) ||
-    [...activeIds].map((id) => libById.get(id)!).find((i) => i.kind === "talent") ||
-    talent ||
-    null;
+  const contractTalent = pickTalent([...activeIds]) || talent || null;
 
   return {
     activeIds: [...activeIds],
@@ -309,7 +310,8 @@ function classifyActiveCopySource(
   };
 }
 
-function buildMagicSparse(campaign: Campaign, lib: LibraryItem[]): Campaign {
+/** Rebuild sparse matrix from current rail/activations (Magic + live workspace). */
+export function buildMagicSparse(campaign: Campaign, lib: LibraryItem[]): Campaign {
   campaign.rail = deriveRailFromActivations(campaign, lib, campaign.rail);
   const rail = campaign.rail;
   const { hero, openKnobs } = rail;
@@ -599,8 +601,9 @@ export async function prepareMagicCampaign(
     );
   }
 
-  // Copy plates — package, AI (LLM on), or operator-activated on Ingredients.
+  // Copy plates — package, already-active, reuse prior Magic AI drafts, or draft once.
   // Do NOT invent heuristic copy ingredients when LLM is unavailable.
+  // Do NOT create a new "Magic copy N" on every Re-check.
   const importSet = hadImport ? new Set(importIngredientIds) : null;
   const priorActiveCopyIds = (campaign.ingredientSet?.activeIds ?? []).filter(
     (id) => lib.find((i) => i.id === id)?.kind === "copy",
@@ -613,6 +616,9 @@ export async function prepareMagicCampaign(
           !i.tags?.includes(MAGIC_PRESET_ID),
       )
     : [];
+  const existingMagicCopy = lib.filter(
+    (i) => i.kind === "copy" && i.tags?.includes(MAGIC_PRESET_ID),
+  );
   let copySource: MagicChecklistItem["source"] = packageCopy.length
     ? "imported"
     : "missing";
@@ -620,7 +626,26 @@ export async function prepareMagicCampaign(
     ? `${packageCopy.length} copy plate(s) from package`
     : "Skipped — add & activate copy on Ingredients, then Re-check";
   const draftedCopyIds: string[] = [];
-  if (!packageCopy.length && campaign.brief.prompt?.trim() && llm.configured) {
+  const priorActive = campaign.ingredientSet?.activeIds ?? [];
+  if (packageCopy.length) {
+    // keep imported
+  } else if (priorActiveCopyIds.length) {
+    copySource = "preset";
+    copyDetail = `${priorActiveCopyIds.length} activated on Ingredients`;
+  } else if (existingMagicCopy.length && priorActive.length === 0) {
+    // First prepare only — reuse prior AI drafts, don't force them after operator cleanup
+    draftedCopyIds.push(...existingMagicCopy.map((i) => i.id));
+    copySource = "ai";
+    copyDetail = `Reusing ${existingMagicCopy.length} Magic copy plate(s) — not redrafting`;
+  } else if (existingMagicCopy.length && priorActive.length > 0) {
+    copySource = "missing";
+    copyDetail = `${existingMagicCopy.length} Magic copy plate(s) in library — activate on Ingredients if needed`;
+  } else if (priorActive.length > 0) {
+    // Recheck with operator activations: never invent / force-activate copy.
+    copySource = "missing";
+    copyDetail =
+      "No copy activated — add & activate on Ingredients if needed (matrix uses brief copy)";
+  } else if (campaign.brief.prompt?.trim() && llm.configured) {
     const drafted = await draftCopyFromBrief(campaign.brief);
     if (drafted.source === "ai" && drafted.copies.length) {
       let n = 0;
@@ -634,6 +659,7 @@ export async function prepareMagicCampaign(
           promptHint: copy.setup,
           libraryId: campaign.libraryId,
           allowNoMedia: true,
+          dedupe: "label",
         });
         draftedCopyIds.push(item.id);
         n += 1;
@@ -641,19 +667,13 @@ export async function prepareMagicCampaign(
       copySource = "ai";
       copyDetail = `${drafted.copies.length} AI-filled from brief — ${drafted.rationale}`;
       lib = await listLibrary(undefined, campaign.libraryId || DEFAULT_LIBRARY_ID);
-    } else if (priorActiveCopyIds.length) {
-      copySource = "preset";
-      copyDetail = `${priorActiveCopyIds.length} activated on Ingredients`;
     } else {
       copySource = "missing";
       copyDetail =
         "LLM did not return copy — Edit → add & activate on Ingredients, then Re-check";
       warnings.push(copyDetail);
     }
-  } else if (!packageCopy.length && priorActiveCopyIds.length) {
-    copySource = "preset";
-    copyDetail = `${priorActiveCopyIds.length} activated on Ingredients`;
-  } else if (!packageCopy.length && !llm.configured) {
+  } else if (!llm.configured) {
     copySource = "missing";
     copyDetail =
       "LLM unavailable — skipped. Edit → add & activate copy on Ingredients, then Re-check";
@@ -696,9 +716,11 @@ export async function prepareMagicCampaign(
     lib = await listLibrary(undefined, campaign.libraryId || DEFAULT_LIBRARY_ID);
   }
 
+  // Only attach newly drafted copy when there is no operator selection yet,
+  // or when drafting ran this turn (ids just created / reused for empty prior).
   const act = pickMagicActivations(lib, {
     importIngredientIds: hadImport ? importIngredientIds : undefined,
-    extraIds: [...draftedCopyIds, ...priorActiveCopyIds],
+    extraIds: draftedCopyIds,
     priorActiveIds: campaign.ingredientSet?.activeIds ?? [],
   });
   if (act.scopedToImport) {
@@ -708,12 +730,17 @@ export async function prepareMagicCampaign(
   }
   const priorHidden = campaign.ingredientSet?.hiddenIds ?? [];
   const hiddenSet = new Set(priorHidden);
+  const knownLib = new Set(lib.map((i) => i.id));
   campaign.ingredientSet = {
-    activeIds: act.activeIds.filter((id) => !hiddenSet.has(id)),
+    activeIds: act.activeIds.filter(
+      (id) => !hiddenSet.has(id) && knownLib.has(id),
+    ),
     hiddenIds: priorHidden,
     requireReadyMedia: false,
     contractTalentId:
-      act.contractTalentId && !hiddenSet.has(act.contractTalentId)
+      act.contractTalentId &&
+      !hiddenSet.has(act.contractTalentId) &&
+      knownLib.has(act.contractTalentId)
         ? act.contractTalentId
         : null,
   };

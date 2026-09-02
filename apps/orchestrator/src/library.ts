@@ -295,7 +295,7 @@ export async function createLibraryIngredientDetailed(opts: {
     opts.dedupe ??
     (opts.buffer && opts.filename ? "content" : "off");
 
-  if (opts.buffer && opts.filename && dedupe !== "off") {
+  if (dedupe !== "off") {
     const existing = await findLibraryDuplicate({
       kind: opts.kind,
       libraryId,
@@ -305,7 +305,7 @@ export async function createLibraryIngredientDetailed(opts: {
     });
     if (existing) {
       let item = existing;
-      if (opts.kind !== "copy" && opts.kind !== "motion") {
+      if (opts.buffer && opts.filename && opts.kind !== "copy" && opts.kind !== "motion") {
         item = await replaceLibraryMedia(
           existing.id,
           opts.filename,
@@ -324,6 +324,7 @@ export async function createLibraryIngredientDetailed(opts: {
             opts.negativeHint !== undefined
               ? opts.negativeHint
               : item.negativeHint,
+          ...(opts.copy ? { copy: opts.copy } : {}),
           archived: false,
         },
         libraryId,

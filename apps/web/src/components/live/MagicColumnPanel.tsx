@@ -245,11 +245,8 @@ export function MagicColumnPanel({
     sizeCatalog.length > 0
       ? sizeCatalog
       : campaign?.outputSizes || [];
-  const activeIngredients = ingredients.filter(
-    (i) =>
-      ("active" in i && (i as { active?: boolean }).active) ||
-      activeIds.has(i.id),
-  );
+  // Match Advanced Ingredients: only campaign activeIds (not "active" legacy-all).
+  const activeIngredients = ingredients.filter((i) => activeIds.has(i.id));
   const listedIngredients = recentOnly
     ? activeIngredients.filter((i) => isRecentLibraryItem(i))
     : activeIngredients;
