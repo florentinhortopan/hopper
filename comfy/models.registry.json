@@ -21,7 +21,7 @@
         "height": 1024
       },
       "vramHintGb": 6,
-      "strengths": ["free", "fast on cloud", "ATTATTA default for live gen"]
+      "strengths": ["free", "fast on cloud", "SCOTTY default for live gen"]
     },
     "z_image_turbo": {
       "id": "z_image_turbo",

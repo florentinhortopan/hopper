@@ -82,7 +82,7 @@ export function parseMagicWorkflowJson(
     if (!loose.success) {
       return {
         pkg: null,
-        warnings: [`${label}: not a valid ATTATTA workflow package`],
+        warnings: [`${label}: not a valid SCOTTY workflow package`],
       };
     }
     return { pkg: loose.data, warnings };
@@ -182,7 +182,7 @@ export async function detectMagicWorkflowFromImport(
     }
   }
 
-  // 2) *.workflow.json / named workflow files / any ATTATTA package JSON
+  // 2) *.workflow.json / named workflow files / any SCOTTY package JSON
   for (const abs of files) {
     const name = rel(abs);
     const base = path.basename(name).toLowerCase();

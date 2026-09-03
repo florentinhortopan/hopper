@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BRAND_NAME } from "./brand.js";
 import {
   AssemblyRecipeSchema,
   ComfyTemplateStepSchema,
@@ -20,7 +21,7 @@ export const MAGIC_PRESET_ID = "magic_att_v1";
 export const CampaignModeSchema = z.enum(["standard", "magic"]);
 export type CampaignMode = z.infer<typeof CampaignModeSchema>;
 
-/** ATTATTA-native workflow package (not raw Comfy api.json). */
+/** SCOTTY-native workflow package (not raw Comfy api.json). File format id stays attatta-compatible. */
 export const MagicWorkflowPackageSchema = z.object({
   version: z.number().int().positive().default(1),
   baseWorkflowId: z.string().nullable().optional(),
@@ -232,7 +233,7 @@ export function comfyGraphSuggestsBriaBg(obj: unknown): boolean {
 }
 
 /**
- * ATTATTA-native hint when a package ships a raw Bria BG-replace Comfy graph.
+ * SCOTTY-native hint when a package ships a raw Bria BG-replace Comfy graph.
  * Raw nodes are not executed; BG-only cells use talent_bg_video_v1 / Bria path.
  */
 export function magicPackageFromBriaComfyHint(
@@ -241,7 +242,7 @@ export function magicPackageFromBriaComfyHint(
   return {
     version: 1,
     baseWorkflowId: "talent_bg_video_v1",
-    campaignGuidelines: `Package graph (${filename}) is Bria video background replace. ATTATTA does not execute the raw Comfy canvas; BG-only combos use Bria (talent_bg_video_v1). Combos that also include attire/prop/hands use MiniMax blend (talent_variant_video_v1). Select combos in Hopper before Generate.`,
+    campaignGuidelines: `Package graph (${filename}) is Bria video background replace. ${BRAND_NAME} does not execute the raw Comfy canvas; BG-only combos use Bria (talent_bg_video_v1). Combos that also include attire/prop/hands use MiniMax blend (talent_variant_video_v1). Select combos in Hopper before Generate.`,
     steps: [
       {
         id: "bg_replace",

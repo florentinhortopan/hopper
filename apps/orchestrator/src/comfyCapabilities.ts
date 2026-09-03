@@ -25,7 +25,7 @@ export type ComfyCapabilities = {
   defaultModelProfile: string;
   fallbackModelProfile: string;
   health: Awaited<ReturnType<typeof comfyHealth>>;
-  /** What ATTATTA can actually do today */
+  /** What SCOTTY can actually do today */
   pipeline: {
     stillDiffusion: boolean;
     stillToMp4Wrap: boolean;
@@ -51,7 +51,7 @@ export type ComfyCapabilities = {
     local: { method: string; path: string; purpose: string }[];
     cloud: { method: string; path: string; purpose: string }[];
   };
-  /** ATTATTA orchestrator endpoints that touch Comfy */
+  /** SCOTTY orchestrator endpoints that touch Comfy */
   attattaEndpoints: {
     method: string;
     path: string;

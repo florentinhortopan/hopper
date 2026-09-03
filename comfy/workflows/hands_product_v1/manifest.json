@@ -17,5 +17,5 @@
     "prompt",
     "negative_prompt"
   ],
-  "notes": "Author z_image_turbo.api.json first (primary). Prompt packs are English natural language from ATTATTA; SDXL also gets negative_prompt."
+  "notes": "Author z_image_turbo.api.json first (primary). Prompt packs are English natural language from SCOTTY; SDXL also gets negative_prompt."
 }

@@ -754,7 +754,7 @@ export function MagicCampaignModal({
                   className="mt-1 w-full rounded-md border border-ink-200 px-3 py-2 font-mono text-xs"
                   value={workflowUrl}
                   onChange={(e) => setWorkflowUrl(e.target.value)}
-                  placeholder="https://…/attatta.workflow.json"
+                  placeholder="https://…/scotty.workflow.json"
                 />
               </label>
 
@@ -814,13 +814,16 @@ export function MagicCampaignModal({
                                   ? "sanity warn"
                                   : sanity?.status === "fail"
                                     ? "sanity fail"
-                                    : w.kind}
+                                    : w.kind === "attatta"
+                                      ? "SCOTTY"
+                                      : w.kind}
                               {sanity?.nodeCount
                                 ? ` · ${sanity.nodeCount}n`
                                 : ""}
                             </span>
                             <span className="w-28 truncate text-ink-600">
-                              {w.label || w.kind}
+                              {w.label ||
+                                (w.kind === "attatta" ? "SCOTTY" : w.kind)}
                             </span>
                           </li>
                         );

@@ -114,7 +114,7 @@ async function collectMediaFiles(
       } else if (isMediaFilename(name)) {
         out.push({ abs, rel, name });
       } else if (path.extname(name).toLowerCase() === ".json") {
-        // Content-sniff: Comfy / ATTATTA graphs must not become plates
+        // Content-sniff: Comfy / SCOTTY graphs must not become plates
         try {
           const raw = JSON.parse(await readFile(abs, "utf8"));
           if (
@@ -284,7 +284,7 @@ export async function detectImportWorkflowSidecars(
           file: rel,
           kind: "attatta",
           label: sidecarLabel(rel),
-          detail: formatSanityDetail("ATTATTA workflow package", sanity),
+          detail: formatSanityDetail("SCOTTY workflow package", sanity),
           sanity,
         });
         continue;
@@ -296,7 +296,7 @@ export async function detectImportWorkflowSidecars(
           file: rel,
           kind: "unknown_json",
           label: sidecarLabel(rel),
-          detail: "Named workflow sidecar (not a valid Comfy/ATTATTA graph)",
+          detail: "Named workflow sidecar (not a valid Comfy/SCOTTY graph)",
           sanity: {
             ok: false,
             status: "fail",
