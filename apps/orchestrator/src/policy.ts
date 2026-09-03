@@ -229,8 +229,9 @@ export function pruneRailToActive(
 
 /**
  * Attire axis for sparse rebuild.
- * When attire is active alongside backgrounds/props, include `null` ("no attire")
- * so BG-only Bria cells coexist with attire+BG MiniMax cells. Hopper then selects.
+ * When attire is active alongside backgrounds/props, include `null` ("original" /
+ * as-filmed look) so BG-only Bria cells coexist with attire+BG MiniMax cells.
+ * Hopper then selects.
  */
 export function attireFanAxis(rail: IngredientRail): (string | null)[] {
   const { hero, openKnobs } = rail;

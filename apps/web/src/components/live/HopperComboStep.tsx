@@ -45,6 +45,8 @@ export function HopperComboStep({
   const [libById, setLibById] = useState<Map<string, LibraryItem>>(
     () => new Map(),
   );
+  /** Optimistic Gen flags — prevents cross-row flicker while a PATCH is in flight. */
+  const [localSel, setLocalSel] = useState<Record<string, boolean>>({});
 
   const ingredientIdsKey = useMemo(() => {
     const ids = new Set<string>();
@@ -73,6 +75,30 @@ export function HopperComboStep({
     };
   }, [campaignId, ingredientIdsKey]);
 
+  // Drop optimistic overrides once server state matches
+  useEffect(() => {
+    setLocalSel((prev) => {
+      const keys = Object.keys(prev);
+      if (!keys.length) return prev;
+      const next = { ...prev };
+      let changed = false;
+      for (const id of keys) {
+        const cell = cells.find((c) => c.cellId === id);
+        if (!cell) {
+          delete next[id];
+          changed = true;
+          continue;
+        }
+        const server = cell.selectedForGen !== false;
+        if (server === next[id]) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [cells]);
+
   const axes = useMemo(() => {
     return AXIS_ORDER.filter((axis) => {
       if (axis === "attire") {
@@ -91,15 +117,35 @@ export function HopperComboStep({
     });
   }, [cells]);
 
-  const selectedCount = cells.filter((c) => c.selectedForGen !== false).length;
-  const selectBusy = busyId === "sel:all" || Boolean(busyId?.startsWith("sel:"));
+  function isForGen(cell: MatrixCell): boolean {
+    if (Object.prototype.hasOwnProperty.call(localSel, cell.cellId)) {
+      return localSel[cell.cellId]!;
+    }
+    return cell.selectedForGen !== false;
+  }
+
+  const selectedCount = cells.filter((c) => isForGen(c)).length;
+  const selectAllBusy = busyId === "sel:all";
 
   function plateLabel(id: string | null, axis: AxisKey): string {
     if (!id) {
-      if (axis === "attire") return "none";
+      // null attire = keep talent take as filmed (Bria BG-only path)
+      if (axis === "attire") return "original";
       return "—";
     }
     return libById.get(id)?.label || id;
+  }
+
+  function toggleRow(cellId: string, on: boolean) {
+    setLocalSel((prev) => ({ ...prev, [cellId]: on }));
+    onToggle(cellId, on);
+  }
+
+  function selectAll(on: boolean) {
+    const next: Record<string, boolean> = {};
+    for (const c of cells) next[c.cellId] = on;
+    setLocalSel(next);
+    onSelectAll(on);
   }
 
   if (!cells.length) {
@@ -129,24 +175,27 @@ export function HopperComboStep({
           <button
             type="button"
             className="rounded border border-ink-200 px-1.5 py-0.5 text-[9px] hover:bg-ink-50 disabled:opacity-40"
-            disabled={selectBusy}
-            onClick={() => onSelectAll(true)}
+            disabled={selectAllBusy}
+            onClick={() => selectAll(true)}
           >
             All
           </button>
           <button
             type="button"
             className="rounded border border-ink-200 px-1.5 py-0.5 text-[9px] hover:bg-ink-50 disabled:opacity-40"
-            disabled={selectBusy}
-            onClick={() => onSelectAll(false)}
+            disabled={selectAllBusy}
+            onClick={() => selectAll(false)}
           >
             None
           </button>
         </div>
       </div>
       <p className="mt-1 text-[11px] text-ink-600">
-        Each row is one visual combo. Check what Magic should generate —
-        Magic’s list updates to match.
+        Each row is one visual combo.{" "}
+        <span className="text-ink-500">
+          Attire “original” = keep the spokesperson as filmed (BG swap only).
+        </span>{" "}
+        Check what Magic should generate — Magic’s list updates to match.
       </p>
 
       <div className="mt-2 overflow-x-auto rounded-lg border border-ink-200 bg-white">
@@ -164,7 +213,8 @@ export function HopperComboStep({
           </thead>
           <tbody>
             {cells.map((cell, idx) => {
-              const forGen = cell.selectedForGen !== false;
+              const forGen = isForGen(cell);
+              const rowBusy = busyId === `sel:${cell.cellId}` || selectAllBusy;
               return (
                 <tr
                   key={cell.cellId}
@@ -177,11 +227,13 @@ export function HopperComboStep({
                       type="checkbox"
                       className="accent-ink-900"
                       checked={forGen}
-                      disabled={selectBusy}
+                      disabled={rowBusy}
+                      title={cell.cellId}
                       aria-label={`Generate combo ${idx + 1}`}
-                      onChange={(e) =>
-                        onToggle(cell.cellId, e.target.checked)
-                      }
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        toggleRow(cell.cellId, e.target.checked);
+                      }}
                     />
                   </td>
                   <td className="px-1 py-1.5 align-middle font-mono text-ink-400">

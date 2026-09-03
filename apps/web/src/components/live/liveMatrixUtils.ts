@@ -29,7 +29,7 @@ export function cellComboLabel(cell: MatrixCell): string {
     cell.attireId
       ? `attire:${shortId(cell.attireId, 8)}`
       : cell.backgroundId || cell.propIds?.[0]
-        ? "attire:none"
+        ? "attire:original"
         : null,
     cell.backgroundId ? `bg:${shortId(cell.backgroundId, 8)}` : null,
     cell.propIds?.[0] ? `prop:${shortId(cell.propIds[0], 8)}` : null,

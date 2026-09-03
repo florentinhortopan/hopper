@@ -982,7 +982,7 @@ function finalizeMagicPrepareResult(args: {
       libById.get(cell.talentTakeId)?.label || cell.talentTakeId || "—";
     const attireLabel = cell.attireId
       ? libById.get(cell.attireId)?.label || cell.attireId
-      : "no attire";
+      : "original look";
     const bgLabel = cell.backgroundId
       ? libById.get(cell.backgroundId)?.label || cell.backgroundId
       : null;
@@ -993,7 +993,7 @@ function finalizeMagicPrepareResult(args: {
     if (cell.attireId) {
       fillNotes.push(`Attire ${attireLabel}`);
     } else if (cell.backgroundId) {
-      fillNotes.push("BG-only (Bria path when video)");
+      fillNotes.push("BG swap — keep talent as filmed (Bria)");
     }
     if (cell.backgroundId) {
       fillNotes.push(`BG ${bgLabel}`);

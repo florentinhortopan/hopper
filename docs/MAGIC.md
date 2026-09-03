@@ -26,7 +26,7 @@ Zip (or folder) may include:
 3. **Magic** generation matrix lists **selected** combos only and updates when Hopper toggles.
 4. **Generate** queues only `needsGen && selectedForGen` cells (per Settings sizes).
 
-Odd pairings stay available unchecked; sensible pairings (baker×restaurant, swimsuit×beach) are operator-selected.
+Odd pairings stay available unchecked; sensible pairings (baker×restaurant, swimsuit×beach) are operator-selected. Rows with **attire original** (null attire + background) use Bria BG replace and keep the talent take as filmed.
 
 Pipelines (unchanged picker):
 

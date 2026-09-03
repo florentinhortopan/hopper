@@ -138,6 +138,7 @@ import {
   saveCampaign,
   saveReviews,
   saveTokens,
+  updateCampaign,
   upsertJob,
 } from "./store.js";
 
@@ -1271,7 +1272,6 @@ app.put("/campaigns/:id/matrix", async (req, res) => {
 /** Per-row plate toggles + prompt overrides — does not rebuild the matrix. */
 app.patch("/campaigns/:id/cells/:cellId", async (req, res) => {
   try {
-    const campaign = await getCampaign(req.params.id);
     const body = z
       .object({
         genOmitIds: z.array(z.string()).optional(),
@@ -1284,42 +1284,72 @@ app.patch("/campaigns/:id/cells/:cellId", async (req, res) => {
         selectedForGen: z.boolean().optional(),
       })
       .parse(req.body);
-    const resolved = resolveMatrixCell(campaign, req.params.cellId);
-    if (!resolved) {
-      res.status(404).json({ error: "Cell not found" });
-      return;
-    }
-    const cell = resolved.cell;
-    if (body.genOmitIds !== undefined) {
-      cell.genOmitIds = [...new Set(body.genOmitIds.filter(Boolean))];
-    }
-    if (body.selectedForGen !== undefined) {
-      cell.selectedForGen = body.selectedForGen;
-    }
-    if (body.promptOverride !== undefined) {
-      const t = (body.promptOverride ?? "").trim();
-      cell.promptOverride = t ? t : null;
-    }
-    if (body.negativeOverride !== undefined) {
-      const t = (body.negativeOverride ?? "").trim();
-      cell.negativeOverride = t ? t : null;
-    }
-    if (body.sceneTag !== undefined) {
-      cell.sceneTag = body.sceneTag?.trim() || null;
-      if (cell.sceneTag) {
-        cell.sceneTag = ensureSceneTag(
-          { ...cell, sceneTag: cell.sceneTag },
-          campaign.assemblyRecipe,
-        );
+    const cellId = req.params.cellId;
+    const campaign = await updateCampaign(req.params.id, (camp) => {
+      const resolved = resolveMatrixCell(camp, cellId);
+      if (!resolved) {
+        throw new Error("Cell not found");
       }
-    } else if (body.sceneSlots !== undefined) {
-      // Legacy: migrate gen slot → sceneTag
-      cell.sceneSlots = body.sceneSlots;
-      cell.sceneTag = ensureSceneTag(cell, campaign.assemblyRecipe);
-    }
-    res.json(await saveCampaign(campaign));
+      const cell = resolved.cell;
+      if (body.genOmitIds !== undefined) {
+        cell.genOmitIds = [...new Set(body.genOmitIds.filter(Boolean))];
+      }
+      if (body.selectedForGen !== undefined) {
+        cell.selectedForGen = body.selectedForGen;
+      }
+      if (body.promptOverride !== undefined) {
+        const t = (body.promptOverride ?? "").trim();
+        cell.promptOverride = t ? t : null;
+      }
+      if (body.negativeOverride !== undefined) {
+        const t = (body.negativeOverride ?? "").trim();
+        cell.negativeOverride = t ? t : null;
+      }
+      if (body.sceneTag !== undefined) {
+        cell.sceneTag = body.sceneTag?.trim() || null;
+        if (cell.sceneTag) {
+          cell.sceneTag = ensureSceneTag(
+            { ...cell, sceneTag: cell.sceneTag },
+            camp.assemblyRecipe,
+          );
+        }
+      } else if (body.sceneSlots !== undefined) {
+        // Legacy: migrate gen slot → sceneTag
+        cell.sceneSlots = body.sceneSlots;
+        cell.sceneTag = ensureSceneTag(cell, camp.assemblyRecipe);
+      }
+    });
+    res.json(campaign);
   } catch (err) {
-    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(msg === "Cell not found" ? 404 : 400).json({ error: msg });
+  }
+});
+
+/** Batch Hopper combo select — one locked write (avoids parallel PATCH races). */
+app.post("/campaigns/:id/matrix/selected-for-gen", async (req, res) => {
+  try {
+    const body = z
+      .object({
+        selectedForGen: z.boolean(),
+        /** Omit / empty = all live matrix cells. */
+        cellIds: z.array(z.string()).optional(),
+      })
+      .parse(req.body);
+    const want = body.cellIds?.length
+      ? new Set(body.cellIds.map((id) => id.trim()).filter(Boolean))
+      : null;
+    const campaign = await updateCampaign(req.params.id, (camp) => {
+      for (const cell of camp.matrix.cells) {
+        if (want && !want.has(cell.cellId)) continue;
+        cell.selectedForGen = body.selectedForGen;
+      }
+    });
+    res.json(campaign);
+  } catch (err) {
+    res
+      .status(400)
+      .json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
 

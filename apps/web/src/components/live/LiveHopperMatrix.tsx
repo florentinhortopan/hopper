@@ -91,6 +91,19 @@ export function LiveHopperMatrix({
     () => cells.filter((c) => c.selectedForGen !== false),
     [cells],
   );
+  const reviewHasMedia = useMemo(
+    () =>
+      reviewCells.some((c) =>
+        sizes.some((s) => Boolean(sizeAssetMediaPath(c, s.id))),
+      ),
+    [reviewCells, sizes],
+  );
+  const [reviewOpen, setReviewOpen] = useState(false);
+  // Auto-open once plates exist; stay collapsed while still pending (combo table is enough)
+  useEffect(() => {
+    if (reviewHasMedia) setReviewOpen(true);
+  }, [reviewHasMedia]);
+
   const axes = useMemo(() => detectComboAxes(reviewCells), [reviewCells]);
   const xAxis = axes[0];
   const yAxis = axes[1] || null;
@@ -221,11 +234,7 @@ export function LiveHopperMatrix({
   async function setAllSelectedForGen(selectedForGen: boolean) {
     setBusyId("sel:all");
     try {
-      await Promise.all(
-        cells.map((c) =>
-          api.patchCell(campaignId, c.cellId, { selectedForGen }),
-        ),
-      );
+      await api.setSelectedForGen(campaignId, { selectedForGen });
       await onChanged();
     } finally {
       setBusyId(null);
@@ -244,14 +253,20 @@ export function LiveHopperMatrix({
 
       <section className="space-y-3 border-b border-ink-100 px-3 py-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-500">
-          Step · Review plates
-        </h3>
+        <button
+          type="button"
+          className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-500 hover:text-ink-800"
+          onClick={() => setReviewOpen((v) => !v)}
+          aria-expanded={reviewOpen}
+        >
+          {reviewOpen ? "▾" : "▸"} Step · Review plates
+        </button>
         <span className="text-[10px] text-ink-500">
           {selectedForGenCount
             ? `${selectedForGenCount} selected · Keep/Kill sizes for Celtra`
             : "Select combos above to review plates"}
         </span>
+        {reviewOpen ? (
         <div className="ml-auto flex gap-1">
           <button
             type="button"
@@ -282,8 +297,24 @@ export function LiveHopperMatrix({
             List
           </button>
         </div>
+        ) : (
+          <button
+            type="button"
+            className="ml-auto rounded border border-ink-200 px-1.5 py-0.5 text-[10px] hover:bg-ink-50"
+            onClick={() => setReviewOpen(true)}
+          >
+            Open review
+          </button>
+        )}
       </div>
 
+      {!reviewOpen ? (
+        <p className="text-[10px] text-ink-500">
+          Combo pick above is the source of truth. Open review after generate
+          to Keep/Kill sizes — avoids duplicating every row in this scroll.
+        </p>
+      ) : (
+      <>
       <p className="text-[10px] text-ink-500">
         Expand a selected combo to preview sizes and Keep/Kill. Combo pick is
         above.{" "}
@@ -478,6 +509,8 @@ export function LiveHopperMatrix({
           Prepare a matrix in Magic to review combinations here.
         </p>
       ) : null}
+      </>
+      )}
       </section>
 
       {lightbox ? (

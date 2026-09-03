@@ -191,37 +191,76 @@ export function LiveWorkspace({ campaignId }: Props) {
       detail: string;
       primaryLabel: string;
     }) => {
-      if (offeredKeysRef.current.has(input.key)) return;
-      offeredKeysRef.current.add(input.key);
-      const prompt: LiveChatPrompt = {
-        id: input.key,
-        column: input.column,
-        key: input.key,
-        summary: input.summary,
-        detail: input.detail,
-        primaryLabel: input.primaryLabel,
-        status: "open",
-        at: Date.now(),
-      };
       setChatPrompts((prev) => {
-        const sameFamily = input.key.split(":")[0] || "";
-        const cleared =
-          sameFamily === "generate" || sameFamily === "import"
-            ? prev.map((p) =>
-                p.status === "open" && p.key.startsWith(`${sameFamily}:`)
-                  ? { ...p, status: "dismissed" as const }
-                  : p,
-              )
-            : prev;
+        const family = input.key.split(":")[0] || "";
+        const openSameKey = prev.find(
+          (p) => p.key === input.key && p.status === "open",
+        );
+        // Same open prompt — refresh copy only (e.g. selected count), never stack
+        if (openSameKey) {
+          if (
+            openSameKey.detail === input.detail &&
+            openSameKey.summary === input.summary
+          ) {
+            return prev;
+          }
+          return prev.map((p) =>
+            p.key === input.key && p.status === "open"
+              ? {
+                  ...p,
+                  summary: input.summary,
+                  detail: input.detail,
+                  primaryLabel: input.primaryLabel,
+                }
+              : p,
+          );
+        }
+        // Already offered (dismissed / acted) — do not revive
+        if (offeredKeysRef.current.has(input.key)) return prev;
+        offeredKeysRef.current.add(input.key);
+
+        const prompt: LiveChatPrompt = {
+          id: input.key,
+          column: input.column,
+          key: input.key,
+          summary: input.summary,
+          detail: input.detail,
+          primaryLabel: input.primaryLabel,
+          status: "open",
+          at: Date.now(),
+        };
+        // One open nudge per family (combos / generate / …)
+        const cleared = prev.map((p) =>
+          p.status === "open" &&
+          p.key.startsWith(`${family}:`) &&
+          p.key !== input.key
+            ? { ...p, status: "dismissed" as const }
+            : p,
+        );
         return [...cleared.filter((p) => p.key !== input.key), prompt];
       });
     },
     [],
   );
 
-  const closeChatPrompt = useCallback((key: string, status: "acted" | "dismissed") => {
+  const closeChatPrompt = useCallback(
+    (key: string, status: "acted" | "dismissed") => {
+      offeredKeysRef.current.add(key);
+      setChatPrompts((prev) =>
+        prev.map((p) => (p.key === key ? { ...p, status } : p)),
+      );
+    },
+    [],
+  );
+
+  const dismissAllChatPrompts = useCallback((column?: LiveColumnId) => {
     setChatPrompts((prev) =>
-      prev.map((p) => (p.key === key ? { ...p, status } : p)),
+      prev.map((p) => {
+        if (p.status !== "open") return p;
+        if (column && p.column !== column) return p;
+        offeredKeysRef.current.add(p.key);
+        return { ...p, status: "dismissed" as const };
+      }),
     );
   }, []);
 
@@ -237,25 +276,40 @@ export function LiveWorkspace({ campaignId }: Props) {
     });
   }, [magicReady?.importReview, magicReady?.importId, offerChatPrompt]);
 
-  // After prepare / ingredients rebuild → pick combos in Hopper
+  // After prepare / matrix lands → one Hopper combo nudge (stable key = cell ids)
+  const matrixCellSig = useMemo(
+    () =>
+      (campaign?.matrix.cells ?? [])
+        .map((c) => c.cellId)
+        .slice()
+        .sort()
+        .join(","),
+    [campaign?.matrix.cells],
+  );
+  const matrixSelectedCount = useMemo(
+    () =>
+      (campaign?.matrix.cells ?? []).filter((c) => c.selectedForGen !== false)
+        .length,
+    [campaign?.matrix.cells],
+  );
+
   useEffect(() => {
-    if (!campaign?.matrix.cells.length) return;
-    const prepareEv = events.find((e) => e.type === "magic_prepare");
-    const matrixEpoch =
-      prepareEv?.id ||
-      campaign.matrix.cells.map((c) => c.cellId).join(",");
+    if (!matrixCellSig || !campaign?.matrix.cells.length) return;
     const available = campaign.matrix.cells.length;
-    const selected = campaign.matrix.cells.filter(
-      (c) => c.selectedForGen !== false,
-    ).length;
     offerChatPrompt({
       column: "hopper",
-      key: `combos:${matrixEpoch}`,
+      key: `combos:${matrixCellSig}`,
       summary: "Pick combinations in Hopper",
-      detail: `${available} combo(s) in the Pick combinations table · ${selected} selected. Scroll Hopper to check rows; Magic updates to match.`,
+      detail: `${available} combo(s) in the Pick combinations table · ${matrixSelectedCount} selected. Check rows above; Magic updates to match.`,
       primaryLabel: "Open Hopper",
     });
-  }, [campaign?.matrix.cells, events, offerChatPrompt]);
+  }, [
+    matrixCellSig,
+    matrixSelectedCount,
+    campaign?.matrix.cells.length,
+    campaign,
+    offerChatPrompt,
+  ]);
 
   // Magic: prepare ready → generate (once per prepare epoch; not after generate)
   useEffect(() => {
@@ -818,7 +872,7 @@ export function LiveWorkspace({ campaignId }: Props) {
                 <LiveChatPromptBar
                   column={id}
                   prompts={chatPrompts}
-                  disabled={busy !== null}
+                  actDisabled={busy !== null}
                   busyLabel={
                     busy === "generate"
                       ? "Generating…"
@@ -830,6 +884,7 @@ export function LiveWorkspace({ campaignId }: Props) {
                   }
                   onAct={handleChatAct}
                   onDismiss={(p) => closeChatPrompt(p.key, "dismissed")}
+                  onDismissAll={() => dismissAllChatPrompts(id)}
                 />
                 <ColumnComposer
                   column={id}

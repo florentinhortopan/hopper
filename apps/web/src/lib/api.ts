@@ -173,6 +173,15 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  /** Batch Hopper combo select (All / None / multi). */
+  setSelectedForGen: (
+    id: string,
+    body: { selectedForGen: boolean; cellIds?: string[] },
+  ) =>
+    req<Campaign>(`/campaigns/${id}/matrix/selected-for-gen`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   buildSparse: (id: string) =>
     req<Campaign>(`/campaigns/${id}/matrix/build-sparse`, { method: "POST", body: "{}" }),
   generatePlates: (

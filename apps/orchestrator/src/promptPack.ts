@@ -289,7 +289,7 @@ export async function buildPromptPack(
     let img = 1;
     if (attire) {
       parts.push(
-        `Image ${img} is wardrobe reference — dress the spokesperson in: ${phrase(attire)}`,
+        `Image ${img} is appearance / look reference — match the spokesperson’s look exactly to: ${phrase(attire)}. Follow that description literally (bare skin, minimal clothing, or full wardrobe as stated). Do not invent jackets, shirts, or other garments unless the reference asks for them`,
       );
       img += 1;
     }
@@ -342,7 +342,7 @@ export async function buildPromptPack(
     if (cell.copy.punchline) parts.push(`variant punchline: ${cell.copy.punchline}`);
     if (talent) parts.push(`spokesperson (identity lock): ${phrase(talent)}`);
     if (hands) parts.push(`hands / product hero: ${phrase(hands)}`);
-    if (attire) parts.push(`wardrobe: ${phrase(attire)}`);
+    if (attire) parts.push(`appearance / look: ${phrase(attire)}`);
     if (background) parts.push(`setting / background: ${phrase(background)}`);
     if (theme) parts.push(`theme: ${phrase(theme)}`);
     for (const p of props) parts.push(`${p.tags[0] || "prop"}: ${phrase(p)}`);
@@ -352,7 +352,7 @@ export async function buildPromptPack(
       );
     } else if (knob === "attire") {
       parts.push(
-        "spokesperson wardrobe plate, preserve face identity from reference, change clothing only",
+        "spokesperson appearance plate, preserve face identity from reference, change only the stated look — follow the appearance description literally; bare skin or minimal clothing is allowed when specified; do not invent jackets or shirts",
       );
     } else if (knob === "background") {
       parts.push(
@@ -826,7 +826,7 @@ export async function buildIngredientPromptPack(opts: {
       parts.push(`hands / product hero: ${phrase(hands)}`);
     }
     if (item.kind !== "attire" && attire && attire.id !== item.id) {
-      parts.push(`wardrobe: ${phrase(attire)}`);
+      parts.push(`appearance / look: ${phrase(attire)}`);
     }
     if (item.kind !== "background" && background && background.id !== item.id) {
       parts.push(`setting / background: ${phrase(background)}`);
@@ -899,11 +899,13 @@ export async function buildIngredientPromptPack(opts: {
     let img = 1;
     if (knob === "attire" && subjectStillRef) {
       parts.push(
-        `Image ${img} is wardrobe reference — dress the spokesperson in: ${phrase(item)}`,
+        `Image ${img} is appearance / look reference — match the spokesperson’s look exactly to: ${phrase(item)}. Follow that description literally (bare skin, minimal clothing, or full wardrobe as stated). Do not invent jackets, shirts, or other garments unless the reference asks for them`,
       );
       img += 1;
     } else if (knob === "attire") {
-      parts.push(`Change wardrobe only: ${phrase(item)}`);
+      parts.push(
+        `Change appearance / look only to: ${phrase(item)}. Follow literally — bare skin or minimal clothing when specified; do not invent jackets, shirts, or other garments`,
+      );
     }
     if ((knob === "hands" || knob === "prop") && subjectStillRef) {
       parts.push(`Image ${img} is a prop / product reference: ${phrase(item)}`);
@@ -919,7 +921,7 @@ export async function buildIngredientPromptPack(opts: {
     );
   } else if (!sceneStill && knob === "attire") {
     parts.push(
-      "spokesperson wardrobe plate, preserve face identity from reference, change clothing only",
+      "spokesperson appearance plate, preserve face identity from reference, change only the stated look — follow literally; bare skin or minimal clothing allowed when specified; do not invent jackets or shirts",
     );
   }
 

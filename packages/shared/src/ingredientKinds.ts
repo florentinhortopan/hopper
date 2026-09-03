@@ -93,14 +93,14 @@ export const INGREDIENT_KINDS: IngredientKindDef[] = [
   {
     id: "attire",
     label: "Attire",
-    description: "Wardrobe plates or refs; face-protect on gen.",
+    description: "Appearance / look plates or refs (wardrobe, bare look, etc.); face-protect on gen.",
     mediaModes: ["image", "video"],
     acceptUpload: true,
     rail: { pinHero: true, allowlist: true, openKnob: "attire" },
     comfy: { knob: "attire", workflowId: "talent_attire_v1", patchKey: "wardrobeRef" },
     promptRole: "wardrobe",
     assembleSlot: "none",
-    examples: ["hoodie", "blazer"],
+    examples: ["hoodie", "blazer", "bare torso"],
   },
   {
     id: "background",
