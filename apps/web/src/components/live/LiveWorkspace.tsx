@@ -11,7 +11,6 @@ import type {
 } from "@attatta/shared";
 import { connectionIdForColumn } from "@attatta/shared";
 import { CeltraPreviewPanel } from "@/components/live/CeltraPreviewPanel";
-import { ColumnComposer } from "@/components/live/ColumnComposer";
 import { ColumnConnectionChip } from "@/components/live/ColumnConnectionChip";
 import {
   EventFeed,
@@ -26,6 +25,8 @@ import { LiveHopperMatrix } from "@/components/live/LiveHopperMatrix";
 import { LiveQueuePreview } from "@/components/live/LiveQueuePreview";
 import { missingSizeSlotCount } from "@/components/live/liveMatrixUtils";
 import { MagicColumnPanel } from "@/components/live/MagicColumnPanel";
+import { WorkspaceComposer } from "@/components/live/WorkspaceComposer";
+import { routeLiveChatText } from "@/components/live/routeLiveChat";
 import { api } from "@/lib/api";
 
 type ColState = { open: boolean; flex: number };
@@ -610,39 +611,123 @@ export function LiveWorkspace({ campaignId }: Props) {
     closeChatPrompt(prompt.key, "acted");
   }
 
-  async function handleComposer(column: LiveColumnId, text: string) {
+  const [composerRoute, setComposerRoute] = useState<{
+    column: LiveColumnId;
+    label: string;
+  } | null>(null);
+
+  async function handleWorkspaceChat(text: string) {
     const trimmed = text.trim();
-    if (trimmed.startsWith("/")) {
-      const [cmd, ...rest] = trimmed.slice(1).split(/\s+/);
-      const arg = rest.join(" ").trim();
-      if (column === "magic" && cmd === "prepare") {
-        await runPrepare();
-        return;
-      }
-      if (column === "magic" && cmd === "generate") {
-        await runGenerate();
-        return;
-      }
-      if (column === "hopper" && (cmd === "keep" || cmd === "kill") && arg) {
-        await api.setReview(campaignId, arg, {
-          decision: cmd === "keep" ? "approved" : "rejected",
+    if (!trimmed) return;
+
+    // Slash commands: local router (instant). Free text: server route (LLM when on).
+    let intent = routeLiveChatText(trimmed);
+    let routeSource = "local";
+    if (!trimmed.startsWith("/")) {
+      try {
+        const remote = await api.liveRoute(campaignId, {
+          text: trimmed,
+          source: "workspace",
         });
-        await refresh();
-        setCeltraTick((n) => n + 1);
-        return;
-      }
-      if (column === "celtra" && cmd === "package") {
-        const result = await api.package(campaignId);
-        const { triggerApiDownload } = await import("@/lib/download");
-        await triggerApiDownload(result.downloadUrl, result.fileName);
-        setCeltraTick((n) => n + 1);
-        return;
+        routeSource = remote.source;
+        if (remote.intent === "prepare") {
+          intent = { kind: "prepare", column: "magic" };
+        } else if (remote.intent === "generate") {
+          intent = { kind: "generate", column: "magic" };
+        } else if (remote.intent === "package") {
+          intent = { kind: "package", column: "celtra" };
+        } else if (
+          (remote.intent === "keep" || remote.intent === "kill") &&
+          remote.cellId
+        ) {
+          intent = {
+            kind: remote.intent,
+            column: "hopper",
+            cellId: remote.cellId,
+          };
+        } else if (remote.intent === "brief") {
+          intent = {
+            kind: "brief",
+            column: "magic",
+            text: remote.text || trimmed,
+          };
+        } else if (remote.intent === "note") {
+          intent = {
+            kind: "note",
+            column: remote.column,
+            text: remote.text || trimmed,
+          };
+        } else {
+          intent = {
+            kind: "unknown",
+            column: remote.column,
+            text: trimmed,
+            hint: remote.rationale,
+          };
+        }
+      } catch {
+        /* keep local heuristic */
       }
     }
-    await api.liveNote(campaignId, { column, text: trimmed });
-    if (column === "magic" && !trimmed.startsWith("/")) {
-      setBriefDraft(trimmed);
+
+    const label =
+      intent.kind === "note" || intent.kind === "brief"
+        ? intent.kind
+        : intent.kind === "unknown"
+          ? "note"
+          : intent.kind;
+    setComposerRoute({ column: intent.column, label: `${label} (${routeSource})` });
+    focusColumn(intent.column);
+
+    if (intent.kind === "prepare") {
+      await runPrepare();
+      return;
     }
+    if (intent.kind === "generate") {
+      await runGenerate();
+      return;
+    }
+    if (intent.kind === "package") {
+      await runPackage();
+      return;
+    }
+    if (intent.kind === "keep" || intent.kind === "kill") {
+      await api.setReview(campaignId, intent.cellId, {
+        decision: intent.kind === "keep" ? "approved" : "rejected",
+      });
+      await refresh();
+      setCeltraTick((n) => n + 1);
+      await api.liveNote(campaignId, {
+        column: "hopper",
+        text: `/${intent.kind} ${intent.cellId}`,
+        source: "workspace",
+      });
+      return;
+    }
+    if (intent.kind === "brief") {
+      setBriefDraft(intent.text);
+      await api.liveNote(campaignId, {
+        column: "magic",
+        text: intent.text,
+        source: "workspace",
+      });
+      return;
+    }
+    if (intent.kind === "note") {
+      await api.liveNote(campaignId, {
+        column: intent.column,
+        text: intent.text,
+        source: "workspace",
+      });
+      if (intent.column === "magic") setBriefDraft(intent.text);
+      return;
+    }
+    setError(intent.hint || "Unknown command");
+    await api.liveNote(campaignId, {
+      column: intent.column,
+      text: trimmed,
+      source: "workspace",
+    });
   }
 
   const cells = campaign?.matrix?.cells ?? [];
@@ -886,17 +971,27 @@ export function LiveWorkspace({ campaignId }: Props) {
                   onDismiss={(p) => closeChatPrompt(p.key, "dismissed")}
                   onDismissAll={() => dismissAllChatPrompts(id)}
                 />
-                <ColumnComposer
-                  column={id}
-                  llmOn={llmOn}
-                  disabled={busy !== null}
-                  onSubmit={(t) => handleComposer(id, t)}
-                />
               </div>
             </section>
           );
         })}
       </div>
+
+      <WorkspaceComposer
+        llmOn={llmOn}
+        disabled={busy !== null}
+        busyLabel={
+          busy === "generate"
+            ? "Generating…"
+            : busy === "prepare"
+              ? "Preparing…"
+              : busy === "package"
+                ? "Packaging…"
+                : null
+        }
+        lastRoute={composerRoute}
+        onSubmit={handleWorkspaceChat}
+      />
     </div>
   );
 }

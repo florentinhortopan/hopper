@@ -376,12 +376,29 @@ export const api = {
     ),
   liveNote: (
     id: string,
-    body: { column: "magic" | "hopper" | "celtra"; text: string },
+    body: {
+      column: "magic" | "hopper" | "celtra";
+      text: string;
+      source?: string;
+    },
   ) =>
     req<import("@attatta/shared").CampaignEvent>(
       `/campaigns/${id}/live/note`,
       { method: "POST", body: JSON.stringify(body) },
     ),
+  liveRoute: (id: string, body: { text: string; source?: string }) =>
+    req<{
+      intent: string;
+      column: "magic" | "hopper" | "celtra";
+      cellId?: string;
+      text?: string;
+      source: string;
+      rationale: string;
+      channel: string;
+    }>(`/campaigns/${id}/live/route`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   liveOpen: (id: string) =>
     req<import("@attatta/shared").CampaignEvent>(
       `/campaigns/${id}/live/open`,

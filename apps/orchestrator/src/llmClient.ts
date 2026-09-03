@@ -32,6 +32,215 @@ export function getLlmStatus() {
   };
 }
 
+export type LiveRouteResult = {
+  intent:
+    | "prepare"
+    | "generate"
+    | "package"
+    | "keep"
+    | "kill"
+    | "brief"
+    | "note"
+    | "unknown";
+  column: "magic" | "hopper" | "celtra";
+  cellId?: string;
+  text?: string;
+  source: "llm" | "heuristic" | "slash";
+  rationale: string;
+};
+
+/** Shared live-chat router for workspace / future Teams·Slack adapters. */
+export function heuristicRouteLiveChat(raw: string): LiveRouteResult {
+  const text = raw.trim();
+  if (!text) {
+    return {
+      intent: "unknown",
+      column: "hopper",
+      source: "heuristic",
+      rationale: "Empty message",
+    };
+  }
+  if (text.startsWith("/")) {
+    const [cmdRaw, ...rest] = text.slice(1).split(/\s+/);
+    const cmd = (cmdRaw || "").toLowerCase();
+    const arg = rest.join(" ").trim();
+    if (cmd === "prepare" || cmd === "recheck") {
+      return {
+        intent: "prepare",
+        column: "magic",
+        source: "slash",
+        rationale: "Slash prepare",
+      };
+    }
+    if (cmd === "generate" || cmd === "gen") {
+      return {
+        intent: "generate",
+        column: "magic",
+        source: "slash",
+        rationale: "Slash generate",
+      };
+    }
+    if (cmd === "package" || cmd === "pack") {
+      return {
+        intent: "package",
+        column: "celtra",
+        source: "slash",
+        rationale: "Slash package",
+      };
+    }
+    if ((cmd === "keep" || cmd === "kill") && arg) {
+      return {
+        intent: cmd,
+        column: "hopper",
+        cellId: arg,
+        source: "slash",
+        rationale: `Slash ${cmd}`,
+      };
+    }
+    if (cmd === "brief" && arg) {
+      return {
+        intent: "brief",
+        column: "magic",
+        text: arg,
+        source: "slash",
+        rationale: "Slash brief",
+      };
+    }
+    if (cmd === "magic" || cmd === "hopper" || cmd === "celtra") {
+      return {
+        intent: "note",
+        column: cmd,
+        text: arg || text,
+        source: "slash",
+        rationale: `Slash column ${cmd}`,
+      };
+    }
+    if (cmd === "note") {
+      return {
+        intent: "note",
+        column: "hopper",
+        text: arg || text,
+        source: "slash",
+        rationale: "Slash note",
+      };
+    }
+    return {
+      intent: "unknown",
+      column: "hopper",
+      text,
+      source: "slash",
+      rationale: "Unknown slash command",
+    };
+  }
+  const lower = text.toLowerCase();
+  if (/\b(prepare|re-?check|import)\b/.test(lower)) {
+    return {
+      intent: "prepare",
+      column: "magic",
+      source: "heuristic",
+      rationale: "Keyword prepare",
+    };
+  }
+  if (/\b(generate|gen\b|run comfy|fill sizes)\b/.test(lower)) {
+    return {
+      intent: "generate",
+      column: "magic",
+      source: "heuristic",
+      rationale: "Keyword generate",
+    };
+  }
+  if (/\b(package|celtra|export zip|download pack)\b/.test(lower)) {
+    return {
+      intent: "package",
+      column: "celtra",
+      source: "heuristic",
+      rationale: "Keyword package",
+    };
+  }
+  if (/\b(brief|offer|audience|cta)\b/.test(lower)) {
+    return {
+      intent: "brief",
+      column: "magic",
+      text,
+      source: "heuristic",
+      rationale: "Keyword brief",
+    };
+  }
+  if (/\b(keep|kill|review|approve|reject)\b/.test(lower)) {
+    return {
+      intent: "note",
+      column: "hopper",
+      text,
+      source: "heuristic",
+      rationale: "Keyword review → Hopper note",
+    };
+  }
+  return {
+    intent: "note",
+    column: "hopper",
+    text,
+    source: "heuristic",
+    rationale: "Default workspace note",
+  };
+}
+
+/** LLM-assisted routing; falls back to heuristics when unavailable. */
+export async function routeLiveChatMessage(
+  raw: string,
+): Promise<LiveRouteResult> {
+  const text = raw.trim();
+  if (!text || text.startsWith("/")) {
+    return heuristicRouteLiveChat(text);
+  }
+  const heur = heuristicRouteLiveChat(text);
+  if (!llmConfigured()) return heur;
+
+  const parsed = await chatJson({
+    system:
+      "You route ATTATTA live-workspace chat to Magic, Hopper, or Celtra. JSON only.",
+    user: `Message: ${text}
+
+Return JSON:
+{"intent":"prepare|generate|package|keep|kill|brief|note","column":"magic|hopper|celtra","cellId":"optional","text":"optional note/brief body","rationale":"one short sentence"}
+
+Rules:
+- prepare/recheck/import → prepare + magic
+- generate/comfy/fill sizes → generate + magic
+- package/celtra zip → package + celtra
+- keep/kill need cellId when obvious from the message
+- brief/offer copy → brief + magic
+- otherwise note on the best column`,
+    temperature: 0.1,
+  });
+
+  if (!parsed) return heur;
+  const intent = String(parsed.intent || heur.intent);
+  const columnRaw = String(parsed.column || heur.column);
+  const column =
+    columnRaw === "magic" || columnRaw === "hopper" || columnRaw === "celtra"
+      ? columnRaw
+      : heur.column;
+  const allowed = new Set([
+    "prepare",
+    "generate",
+    "package",
+    "keep",
+    "kill",
+    "brief",
+    "note",
+    "unknown",
+  ]);
+  if (!allowed.has(intent)) return heur;
+  return {
+    intent: intent as LiveRouteResult["intent"],
+    column,
+    cellId: parsed.cellId ? String(parsed.cellId) : undefined,
+    text: parsed.text ? String(parsed.text) : text,
+    source: "llm",
+    rationale: String(parsed.rationale || "LLM route").slice(0, 200),
+  };
+}
+
 const KIND_CATALOG = INGREDIENT_KINDS.map(
   (k) => `- ${k.id}: ${k.description} (examples: ${k.examples.join(", ")})`,
 ).join("\n");

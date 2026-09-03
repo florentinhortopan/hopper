@@ -1924,16 +1924,39 @@ app.post("/campaigns/:id/live/note", async (req, res) => {
       return;
     }
     const isCmd = text.startsWith("/");
+    const source = String(req.body.source || "workspace");
     const event = emitCampaignEvent({
       campaignId: req.params.id,
       column,
       type: isCmd ? "user_command" : "user_note",
       summary: text.slice(0, 200),
-      payload: { text, column },
+      payload: { text, column, source },
     });
     res.json(event);
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+/** Route a live chat message to a column intent (workspace / future Teams adapters). */
+app.post("/campaigns/:id/live/route", async (req, res) => {
+  try {
+    await getCampaign(req.params.id);
+    const text = String(req.body.text || "").trim();
+    if (!text) {
+      res.status(400).json({ error: "text required" });
+      return;
+    }
+    const { routeLiveChatMessage } = await import("./llmClient.js");
+    const route = await routeLiveChatMessage(text);
+    res.json({
+      ...route,
+      channel: String(req.body.source || "workspace"),
+    });
+  } catch (err) {
+    res
+      .status(400)
+      .json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
 
