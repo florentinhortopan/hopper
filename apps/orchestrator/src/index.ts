@@ -142,6 +142,7 @@ import {
   saveTokens,
   updateCampaign,
   upsertJob,
+  upsertReviews,
 } from "./store.js";
 
 const app = express();
@@ -1819,53 +1820,103 @@ app.put("/campaigns/:id/reviews", async (req, res) => {
 });
 
 app.post("/campaigns/:id/reviews/:cellId", async (req, res) => {
-  const reviews = await getReviews(req.params.id);
+  const cellId = req.params.cellId;
+  const decision = String(req.body.decision ?? "pending");
+  const reasonTags = Array.isArray(req.body.reasonTags)
+    ? req.body.reasonTags
+    : [];
+  const notes = String(req.body.notes ?? "");
   const sizeIdRaw = req.body.sizeId;
   const sizeId =
     typeof sizeIdRaw === "string" && sizeIdRaw.trim()
       ? sizeIdRaw.trim()
       : null;
-  const next: ReviewEntry = ReviewEntrySchema.parse({
-    cellId: req.params.cellId,
-    sizeId,
-    decision: req.body.decision ?? "pending",
-    reasonTags: req.body.reasonTags ?? [],
-    notes: req.body.notes ?? "",
-    updatedAt: new Date().toISOString(),
-  });
-  const idx = reviews.findIndex(
-    (r) =>
-      r.cellId === next.cellId && (r.sizeId || null) === (next.sizeId || null),
-  );
-  if (idx >= 0) reviews[idx] = next;
-  else reviews.push(next);
-  await saveReviews(req.params.id, reviews);
+  /** Stamp many sizes for this cell in one atomic write (Keep/Kill/Reset all). */
+  const sizeIdsRaw = req.body.sizeIds;
+  const sizeIds = Array.isArray(sizeIdsRaw)
+    ? sizeIdsRaw
+        .filter((s: unknown): s is string => typeof s === "string" && Boolean(s.trim()))
+        .map((s: string) => s.trim())
+    : [];
+  const includeCell = req.body.includeCell !== false;
+
+  const patches: Array<{
+    cellId: string;
+    sizeId: string | null;
+    decision: string;
+    reasonTags: string[];
+    notes: string;
+  }> = [];
+
+  if (sizeIds.length) {
+    if (includeCell) {
+      patches.push({
+        cellId,
+        sizeId: null,
+        decision,
+        reasonTags,
+        notes,
+      });
+    }
+    for (const sid of sizeIds) {
+      patches.push({
+        cellId,
+        sizeId: sid,
+        decision,
+        reasonTags,
+        notes,
+      });
+    }
+  } else {
+    patches.push({
+      cellId,
+      sizeId,
+      decision,
+      reasonTags,
+      notes,
+    });
+  }
+
+  await upsertReviews(req.params.id, patches);
+  const primary = patches[0]!;
   const { emitCampaignEvent } = await import("./campaignEvents.js");
-  const scope = next.sizeId ? `${next.cellId}:${next.sizeId}` : next.cellId;
+  const scope =
+    sizeIds.length > 0
+      ? `${cellId}×${sizeIds.length} sizes`
+      : primary.sizeId
+        ? `${cellId}:${primary.sizeId}`
+        : cellId;
   emitCampaignEvent({
     campaignId: req.params.id,
     column: "hopper",
     type: "review_decision",
-    summary: `Review ${scope} → ${next.decision}`,
+    summary: `Review ${scope} → ${decision}`,
     payload: {
-      cellId: next.cellId,
-      sizeId: next.sizeId,
-      decision: next.decision,
-      notes: next.notes,
+      cellId,
+      sizeId: primary.sizeId,
+      sizeIds,
+      decision,
+      notes,
     },
   });
   emitCampaignEvent({
     campaignId: req.params.id,
     column: "celtra",
     type: "celtra_preview",
-    summary: `Matrix updated · ${scope} ${next.decision}`,
+    summary: `Matrix updated · ${scope} ${decision}`,
     payload: {
-      cellId: next.cellId,
-      sizeId: next.sizeId,
-      decision: next.decision,
+      cellId,
+      sizeId: primary.sizeId,
+      sizeIds,
+      decision,
     },
   });
-  res.json(next);
+  res.json(
+    ReviewEntrySchema.parse({
+      ...primary,
+      updatedAt: new Date().toISOString(),
+    }),
+  );
 });
 
 app.get("/campaigns/:id/events", async (req, res) => {

@@ -337,6 +337,9 @@ export const api = {
     body: {
       decision: string;
       sizeId?: string | null;
+      /** Stamp these sizes + cell in one atomic write (Keep/Kill/Reset all). */
+      sizeIds?: string[];
+      includeCell?: boolean;
       reasonTags?: string[];
       notes?: string;
     },

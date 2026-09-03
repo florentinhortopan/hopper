@@ -200,20 +200,19 @@ export function LiveHopperMatrix({
     const busyKey = sizeId ? `${cellId}:${sizeId}` : cellId;
     setBusyId(busyKey);
     try {
-      await api.setReview(campaignId, cellId, {
-        decision,
-        sizeId: sizeId ?? null,
-      });
-      // Whole-variant Keep/Kill also stamps every Settings size so Celtra pack matches.
       if (!sizeId && sizes.length) {
-        await Promise.all(
-          sizes.map((s) =>
-            api.setReview(campaignId, cellId, {
-              decision,
-              sizeId: s.id,
-            }),
-          ),
-        );
+        // One atomic write for this matrix line only — never fan out concurrent
+        // POSTs (those raced and wiped other Hopper/Celtra rows' Keep/Kill).
+        await api.setReview(campaignId, cellId, {
+          decision,
+          sizeIds: sizes.map((s) => s.id),
+          includeCell: true,
+        });
+      } else {
+        await api.setReview(campaignId, cellId, {
+          decision,
+          sizeId: sizeId ?? null,
+        });
       }
       await onChanged();
     } finally {

@@ -339,6 +339,48 @@ export async function saveReviews(campaignId: string, reviews: ReviewEntry[]) {
   await writeFile(file, JSON.stringify(reviews, null, 2));
 }
 
+/**
+ * Atomically merge review entries for one campaign.
+ * Prevents lost updates when Hopper Keep/Kill/Reset stamps many sizes at once.
+ */
+export async function upsertReviews(
+  campaignId: string,
+  patches: Array<{
+    cellId: string;
+    sizeId?: string | null;
+    decision: string;
+    reasonTags?: string[];
+    notes?: string;
+  }>,
+): Promise<ReviewEntry[]> {
+  return withCampaignLock(`reviews:${campaignId}`, async () => {
+    const reviews = await getReviews(campaignId);
+    const now = new Date().toISOString();
+    for (const patch of patches) {
+      const next = ReviewEntrySchema.parse({
+        cellId: patch.cellId,
+        sizeId:
+          typeof patch.sizeId === "string" && patch.sizeId.trim()
+            ? patch.sizeId.trim()
+            : null,
+        decision: patch.decision ?? "pending",
+        reasonTags: patch.reasonTags ?? [],
+        notes: patch.notes ?? "",
+        updatedAt: now,
+      });
+      const idx = reviews.findIndex(
+        (r) =>
+          r.cellId === next.cellId &&
+          (r.sizeId || null) === (next.sizeId || null),
+      );
+      if (idx >= 0) reviews[idx] = next;
+      else reviews.push(next);
+    }
+    await saveReviews(campaignId, reviews);
+    return reviews;
+  });
+}
+
 export async function getTokens(id: string): Promise<DesignTokens> {
   await ensureDefaultBrandTokens();
   const file = path.join(PATHS.tokens, `${id}.json`);
