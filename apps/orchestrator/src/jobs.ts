@@ -41,6 +41,12 @@ import { filterLibraryForCampaign } from "./policy.js";
 import { renderAd } from "./render.js";
 import { resolveDataMediaPath } from "./mediaPaths.js";
 import {
+  fitVideoToSize,
+  mediaAspectMatches,
+  stillCacheKey,
+} from "./mediaRefs.js";
+import { copyFile } from "node:fs/promises";
+import {
   campaignOutputPath,
   getCampaign,
   getJob,
@@ -549,13 +555,47 @@ function assertGenMatchesSize(assetPath: string, size: OutputSize): void {
   const dims = probeMediaDims(assetPath);
   if (!dims) return;
   const target = genDimsForSize(size);
-  const actualR = dims.w / dims.h;
-  const targetR = target.width / target.height;
-  if (Math.abs(actualR - targetR) / targetR > 0.12) {
-    throw new Error(
-      `Comfy plate is ${dims.w}×${dims.h} but ${size.aspect} needs ~${target.width}×${target.height}. Re-generate this size (do not reuse another aspect).`,
-    );
+  if (mediaAspectMatches(dims, target.width, target.height)) return;
+  throw new Error(
+    `Comfy plate is ${dims.w}×${dims.h} but ${size.aspect} needs ~${target.width}×${target.height}. Re-generate this size (do not reuse another aspect).`,
+  );
+}
+
+/**
+ * Last-mile guarantee for every delivery size (9:16 / 4:5 / 1:1 / 16:9):
+ * if Comfy (or a reused path) left talent-aspect pixels, center-crop to gen dims
+ * before we accept the plate. Video only — stills already wrap via stillToMp4.
+ */
+async function ensureGenMatchesSize(
+  assetPath: string,
+  size: OutputSize,
+  cellId: string,
+): Promise<void> {
+  const target = genDimsForSize(size);
+  const dims = probeMediaDims(assetPath);
+  if (dims && mediaAspectMatches(dims, target.width, target.height)) return;
+
+  const isVideo = /\.(mp4|webm|mov|m4v|mkv)$/i.test(assetPath);
+  if (!isVideo) {
+    assertGenMatchesSize(assetPath, size);
+    return;
   }
+
+  const key = stillCacheKey(
+    "ensureSize",
+    `${cellId}:${size.id}:${target.width}x${target.height}`,
+    assetPath,
+  );
+  const fitted = await fitVideoToSize(
+    assetPath,
+    target.width,
+    target.height,
+    key,
+  );
+  if (fitted !== assetPath) {
+    await copyFile(fitted, assetPath);
+  }
+  assertGenMatchesSize(assetPath, size);
 }
 
 /**
@@ -599,12 +639,14 @@ async function runComfyForCellSize(
     slot.promptHash === pack.promptHash &&
     !sizeNeedsComfyGen(cell, size)
   ) {
+    await ensureGenMatchesSize(slot.genPath, size, cellId);
     return {
       assetPath: slot.genPath,
       lineage: { reused: true, reason: "cell_asset", promptHash: pack.promptHash, sizeId: size.id },
     };
   }
   if (!forceRegen && slot?.genPath && !slot.promptHash && !sizeNeedsComfyGen(cell, size)) {
+    await ensureGenMatchesSize(slot.genPath, size, cellId);
     await persistGenPath(
       campaign.id,
       cellId,
@@ -623,6 +665,7 @@ async function runComfyForCellSize(
   if (!forceRegen) {
     const hit = await lookupPlateCache(pack.promptHash);
     if (hit) {
+      await ensureGenMatchesSize(hit.assetPath, size, cellId);
       await persistGenPath(
         campaign.id,
         cellId,
@@ -666,7 +709,7 @@ async function runComfyForCellSize(
         ? (promptId) => setJobComfyPromptId(control.jobId!, promptId)
         : undefined,
     });
-    assertGenMatchesSize(gen.assetPath, size);
+    await ensureGenMatchesSize(gen.assetPath, size, cellId);
     await persistGenPath(
       campaign.id,
       cellId,

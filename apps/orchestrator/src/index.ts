@@ -1960,6 +1960,57 @@ app.post("/campaigns/:id/live/route", async (req, res) => {
   }
 });
 
+/** Route + short assistant reply for the workspace composer (and future chat adapters). */
+app.post("/campaigns/:id/live/chat", async (req, res) => {
+  try {
+    const campaign = await getCampaign(req.params.id);
+    const text = String(req.body.text || "").trim();
+    if (!text) {
+      res.status(400).json({ error: "text required" });
+      return;
+    }
+    const {
+      routeLiveChatMessage,
+      replyToLiveChat,
+    } = await import("./llmClient.js");
+    const route = await routeLiveChatMessage(text);
+    const selected = (campaign.matrix.cells || []).filter(
+      (c) => c.selectedForGen !== false,
+    );
+    const sizes = campaign.outputSizes || [];
+    let missingSizes = 0;
+    for (const cell of selected) {
+      for (const s of sizes) {
+        const a = (cell.sizeAssets || []).find((x) => x.sizeId === s.id);
+        if (!a?.genPath?.trim() && !a?.outputPath?.trim()) missingSizes += 1;
+      }
+    }
+    const { reply, source: replySource } = await replyToLiveChat({
+      message: text,
+      route,
+      context: {
+        campaignName: campaign.name,
+        cellCount: campaign.matrix.cells?.length ?? 0,
+        selectedCount: selected.length,
+        missingSizes,
+        actionResult: String(req.body.actionResult || ""),
+      },
+    });
+    res.json({
+      route: {
+        ...route,
+        channel: String(req.body.source || "workspace"),
+      },
+      reply,
+      replySource,
+    });
+  } catch (err) {
+    res
+      .status(400)
+      .json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 app.post("/campaigns/:id/live/open", async (req, res) => {
   try {
     await getCampaign(req.params.id);

@@ -399,6 +399,27 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  /** Route + assistant reply for the workspace composer. */
+  liveChat: (
+    id: string,
+    body: { text: string; source?: string; actionResult?: string },
+  ) =>
+    req<{
+      route: {
+        intent: string;
+        column: "magic" | "hopper" | "celtra";
+        cellId?: string;
+        text?: string;
+        source: string;
+        rationale: string;
+        channel: string;
+      };
+      reply: string;
+      replySource: "llm" | "template";
+    }>(`/campaigns/${id}/live/chat`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   liveOpen: (id: string) =>
     req<import("@attatta/shared").CampaignEvent>(
       `/campaigns/${id}/live/open`,

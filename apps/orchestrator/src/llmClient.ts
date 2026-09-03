@@ -241,6 +241,84 @@ Rules:
   };
 }
 
+export type LiveChatContext = {
+  campaignName?: string;
+  selectedCount?: number;
+  cellCount?: number;
+  missingSizes?: number;
+  actionResult?: string;
+};
+
+function templateLiveChatReply(
+  route: LiveRouteResult,
+  ctx: LiveChatContext = {},
+): string {
+  const name = ctx.campaignName?.trim() || "this campaign";
+  const next =
+    route.intent === "prepare"
+      ? "Next: pick combos in Hopper, then /generate."
+      : route.intent === "generate"
+        ? "Watch the Magic queue; review plates in Hopper when ready."
+        : route.intent === "package"
+          ? "Celtra zip should download when packaging finishes."
+          : "Try /prepare, /generate, or /package — or ask what to do next.";
+
+  switch (route.intent) {
+    case "prepare":
+      return `Running Magic prepare for ${name}. ${next}`;
+    case "generate":
+      return `Queuing generate${
+        ctx.selectedCount != null ? ` for ${ctx.selectedCount} selected combo(s)` : ""
+      }. ${next}`;
+    case "package":
+      return `Packaging Celtra for ${name}. ${next}`;
+    case "keep":
+      return `Marked ${route.cellId || "that cell"} Keep in Hopper. ${next}`;
+    case "kill":
+      return `Marked ${route.cellId || "that cell"} Kill in Hopper. ${next}`;
+    case "brief":
+      return `Updated the Magic brief from your note. ${next}`;
+    case "note":
+      return `Logged on ${route.column}. ${next}`;
+    default:
+      return `I can run workspace actions (/prepare · /generate · /package · /keep · /kill) or take a note. ${next}`;
+  }
+}
+
+/**
+ * Short ATTATTA reply after a routed live-chat turn.
+ * Uses LLM when configured; always has a template fallback.
+ */
+export async function replyToLiveChat(opts: {
+  message: string;
+  route: LiveRouteResult;
+  context?: LiveChatContext;
+}): Promise<{ reply: string; source: "llm" | "template" }> {
+  const ctx = opts.context || {};
+  const fallback = templateLiveChatReply(opts.route, ctx);
+  if (!llmConfigured()) {
+    return { reply: fallback, source: "template" };
+  }
+
+  const parsed = await chatJson({
+    system:
+      "You are ATTATTA, a concise creative-ops assistant for a three-column live workspace (Magic · Hopper · Celtra). Reply in 1–3 short sentences. Confirm what you understood or did, and suggest one concrete next step (prefer slash commands when useful). No markdown fences.",
+    user: `User message: ${opts.message}
+Routed intent: ${opts.route.intent} → ${opts.route.column} (${opts.route.source})
+Rationale: ${opts.route.rationale}
+Campaign: ${ctx.campaignName || "—"}
+Matrix: ${ctx.cellCount ?? "?"} combos · ${ctx.selectedCount ?? "?"} selected · ${ctx.missingSizes ?? "?"} missing size slots
+Action result: ${ctx.actionResult || "pending / just requested"}
+
+Return JSON: {"reply":"…"}`,
+    temperature: 0.4,
+  });
+
+  const reply = parsed?.reply ? String(parsed.reply).trim().slice(0, 500) : "";
+  if (!reply) return { reply: fallback, source: "template" };
+  return { reply, source: "llm" };
+}
+
 const KIND_CATALOG = INGREDIENT_KINDS.map(
   (k) => `- ${k.id}: ${k.description} (examples: ${k.examples.join(", ")})`,
 ).join("\n");

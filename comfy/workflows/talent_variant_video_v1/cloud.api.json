@@ -35,7 +35,7 @@
       "model": "MiniMax H3",
       "model.prompt": "Use Video 1 as the spokesperson performance. Match identity and motion.",
       "model.resolution": "768P",
-      "model.ratio": "9:16",
+      "model.ratio": "adaptive",
       "model.duration": 5,
       "model.reference_videos.video_1": ["20", 0],
       "model.reference_images.image_1": ["21", 0],

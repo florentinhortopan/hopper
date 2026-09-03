@@ -26,9 +26,49 @@ import {
   waitForJob,
   type ComfyTarget,
 } from "./comfyClient.js";
-import { resolveStillPng, stillCacheKey } from "./mediaRefs.js";
+import { fitVideoToSize, resolveStillPng, stillCacheKey } from "./mediaRefs.js";
 import { listLibrary, libraryAbsolutePath } from "./store.js";
 import type { VideoPipeline } from "./promptPack.js";
+
+/** MiniMax H3 R2V combo ratios (no native 4:5 — Feed uses adaptive after talent fit). */
+function minimaxRatioForAspect(
+  aspect: unknown,
+  opts?: { talentFitted?: boolean; fallbackRatio?: unknown },
+): string {
+  const a = String(aspect || "");
+  // Prefer native enum values when available
+  if (a === "1:1" || a === "16:9" || a === "9:16") return a;
+  // No 4:5 in MiniMax — follow pre-fitted talent frame when possible
+  if (a === "4:5") return opts?.talentFitted ? "adaptive" : "3:4";
+  const allowed = new Set([
+    "adaptive",
+    "16:9",
+    "4:3",
+    "1:1",
+    "3:4",
+    "9:16",
+    "21:9",
+  ]);
+  if (
+    typeof opts?.fallbackRatio === "string" &&
+    allowed.has(opts.fallbackRatio)
+  ) {
+    return opts.fallbackRatio;
+  }
+  return opts?.talentFitted ? "adaptive" : "9:16";
+}
+
+function genSizeFromPatches(patches: Record<string, unknown>): {
+  width: number;
+  height: number;
+} | null {
+  const width = Number(patches.width);
+  const height = Number(patches.height);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 16 || height < 16) {
+    return null;
+  }
+  return { width: Math.round(width), height: Math.round(height) };
+}
 
 export type ComfyJobRequest = {
   workflowId: string;
@@ -347,7 +387,25 @@ async function runBriaReplaceJob(
   if (!talentAbs) throw new Error("Bria replace needs a talent video path");
   if (!bgAbs) throw new Error("Bria replace needs a background media path");
 
-  const talentUp = await uploadVideo(target, talentAbs, {
+  const genSize = genSizeFromPatches(semantic);
+  let talentForUpload = talentAbs;
+  if (genSize) {
+    const fitKey = stillCacheKey(
+      "talentFit",
+      String(semantic.promptHash || semantic.sizeId || "x"),
+      talentAbs,
+    );
+    const fitted = await fitVideoToSize(
+      talentAbs,
+      genSize.width,
+      genSize.height,
+      fitKey,
+    );
+    talentForUpload = fitted;
+    semantic.talentFittedTo = `${genSize.width}x${genSize.height}`;
+  }
+
+  const talentUp = await uploadVideo(target, talentForUpload, {
     subfolder: "attatta",
     overwrite: true,
   });
@@ -429,7 +487,29 @@ async function runMinimaxVariantJob(
   const talentAbs = await resolveLocalMedia(String(semantic.talentRef || ""));
   if (!talentAbs) throw new Error("MiniMax variant needs a talent video path");
 
-  const talentUp = await uploadVideo(target, talentAbs, {
+  // MiniMax R2V often follows the reference video aspect ("adaptive"). Pre-fit
+  // talent to this size's gen dims so 4:5 / 1:1 / 16:9 plates are not stuck
+  // at the talent take's 9:16 (e.g. 464×832).
+  const genSize = genSizeFromPatches(semantic);
+  let talentForUpload = talentAbs;
+  let talentFitted = false;
+  if (genSize) {
+    const fitKey = stillCacheKey(
+      "talentFit",
+      String(semantic.promptHash || semantic.sizeId || "x"),
+      talentAbs,
+    );
+    talentForUpload = await fitVideoToSize(
+      talentAbs,
+      genSize.width,
+      genSize.height,
+      fitKey,
+    );
+    talentFitted = true;
+    semantic.talentFittedTo = `${genSize.width}x${genSize.height}`;
+  }
+
+  const talentUp = await uploadVideo(target, talentForUpload, {
     subfolder: "attatta",
     overwrite: true,
   });
@@ -463,12 +543,18 @@ async function runMinimaxVariantJob(
     imageComfy.push(comfyImageRef(up));
   }
 
+  // 1:1 / 16:9 / 9:16 → native MiniMax ratios; 4:5 → adaptive after talent fit
+  const ratio = minimaxRatioForAspect(semantic.aspect, {
+    talentFitted,
+    fallbackRatio: semantic.ratio,
+  });
+
   let patched = applyPatches(prompt, map, {
     seed: semantic.seed,
     prompt: semantic.prompt,
     talentVideo: talentComfy,
     resolution: semantic.resolution || "768P",
-    ratio: semantic.ratio || "9:16",
+    ratio,
     duration: Number(semantic.duration || 5),
     refImage1: imageComfy[0],
     refImage2: imageComfy[1],
@@ -507,6 +593,7 @@ async function runMinimaxVariantJob(
     profileId,
     semantic: {
       ...semantic,
+      ratio,
       talentVideo: talentComfy,
       refImages: imageComfy,
     },
@@ -546,6 +633,26 @@ async function persistVideoOutput(
   const ext = path.extname(primary.filename) || ".mp4";
   const assetPath = path.join(outDir, `${assetId}${ext}`);
   await downloadOutput(target, primary, assetPath);
+
+  // Safety net: MiniMax/Bria may still emit talent-aspect pixels. Normalize this
+  // size's plate to the requested gen dims (do not leave a 9:16 file in a 4:5 slot).
+  const genSize = genSizeFromPatches(req.patches);
+  if (genSize && isVideoFilename(assetPath)) {
+    const normKey = stillCacheKey(
+      "outFit",
+      String(req.patches.promptHash || req.cellId || assetId),
+      assetPath,
+    );
+    const fitted = await fitVideoToSize(
+      assetPath,
+      genSize.width,
+      genSize.height,
+      normKey,
+    );
+    if (fitted !== assetPath) {
+      await copyFile(fitted, assetPath);
+    }
+  }
 
   const lineage = {
     assetId,

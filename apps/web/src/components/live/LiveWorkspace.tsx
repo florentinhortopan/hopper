@@ -12,6 +12,7 @@ import type {
 import { connectionIdForColumn } from "@attatta/shared";
 import { CeltraPreviewPanel } from "@/components/live/CeltraPreviewPanel";
 import { ColumnConnectionChip } from "@/components/live/ColumnConnectionChip";
+import { ColumnStickScroll } from "@/components/live/ColumnStickScroll";
 import {
   EventFeed,
   eventVisibleInColumn,
@@ -50,6 +51,7 @@ export function LiveWorkspace({ campaignId }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [celtraTick, setCeltraTick] = useState(0);
   const [queueTick, setQueueTick] = useState(0);
+  const [queueScrollTick, setQueueScrollTick] = useState(0);
   const [briefDraft, setBriefDraft] = useState("");
   const [magicReady, setMagicReady] = useState<{
     ready: boolean;
@@ -95,8 +97,20 @@ export function LiveWorkspace({ campaignId }: Props) {
   }, [refresh]);
 
   const jobsTerminalSigRef = useRef<string>("");
+  const jobsProgressSigRef = useRef<string>("");
   const handleJobsChange = useCallback(
     (jobs: Job[]) => {
+      const progress = jobs
+        .map(
+          (j) =>
+            `${j.id}:${j.status}:${Math.round((j.progress || 0) * 100)}:${j.message || ""}`,
+        )
+        .sort()
+        .join("|");
+      if (progress !== jobsProgressSigRef.current) {
+        jobsProgressSigRef.current = progress;
+        setQueueScrollTick((n) => n + 1);
+      }
       const terminal = jobs
         .filter(
           (j) =>
@@ -629,58 +643,82 @@ export function LiveWorkspace({ campaignId }: Props) {
     label: string;
   } | null>(null);
 
-  async function handleWorkspaceChat(text: string) {
+  async function handleWorkspaceChat(text: string): Promise<{
+    reply: string;
+    route: { column: LiveColumnId; label: string };
+    replySource: "llm" | "template";
+  }> {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      return {
+        reply: "Say something, or try /prepare · /generate · /package.",
+        route: { column: "hopper", label: "idle" },
+        replySource: "template",
+      };
+    }
 
-    // Slash commands: local router (instant). Free text: server route (LLM when on).
     let intent = routeLiveChatText(trimmed);
     let routeSource = "local";
-    if (!trimmed.startsWith("/")) {
-      try {
-        const remote = await api.liveRoute(campaignId, {
+    let reply =
+      "Working on it…";
+    let replySource: "llm" | "template" = "template";
+
+    // Always ask the server for a reply (template if LLM off); free text also gets routing.
+    try {
+      const chat = await api.liveChat(campaignId, {
+        text: trimmed,
+        source: "workspace",
+      });
+      reply = chat.reply;
+      replySource = chat.replySource;
+      routeSource = chat.route.source;
+      const remote = chat.route;
+      if (remote.intent === "prepare") {
+        intent = { kind: "prepare", column: "magic" };
+      } else if (remote.intent === "generate") {
+        intent = { kind: "generate", column: "magic" };
+      } else if (remote.intent === "package") {
+        intent = { kind: "package", column: "celtra" };
+      } else if (
+        (remote.intent === "keep" || remote.intent === "kill") &&
+        remote.cellId
+      ) {
+        intent = {
+          kind: remote.intent,
+          column: "hopper",
+          cellId: remote.cellId,
+        };
+      } else if (remote.intent === "brief") {
+        intent = {
+          kind: "brief",
+          column: "magic",
+          text: remote.text || trimmed,
+        };
+      } else if (remote.intent === "note") {
+        intent = {
+          kind: "note",
+          column: remote.column,
+          text: remote.text || trimmed,
+        };
+      } else if (trimmed.startsWith("/")) {
+        // Keep local slash parse if server returned unknown
+        intent = routeLiveChatText(trimmed);
+      } else {
+        intent = {
+          kind: "unknown",
+          column: remote.column,
           text: trimmed,
-          source: "workspace",
-        });
-        routeSource = remote.source;
-        if (remote.intent === "prepare") {
-          intent = { kind: "prepare", column: "magic" };
-        } else if (remote.intent === "generate") {
-          intent = { kind: "generate", column: "magic" };
-        } else if (remote.intent === "package") {
-          intent = { kind: "package", column: "celtra" };
-        } else if (
-          (remote.intent === "keep" || remote.intent === "kill") &&
-          remote.cellId
-        ) {
-          intent = {
-            kind: remote.intent,
-            column: "hopper",
-            cellId: remote.cellId,
-          };
-        } else if (remote.intent === "brief") {
-          intent = {
-            kind: "brief",
-            column: "magic",
-            text: remote.text || trimmed,
-          };
-        } else if (remote.intent === "note") {
-          intent = {
-            kind: "note",
-            column: remote.column,
-            text: remote.text || trimmed,
-          };
-        } else {
-          intent = {
-            kind: "unknown",
-            column: remote.column,
-            text: trimmed,
-            hint: remote.rationale,
-          };
-        }
-      } catch {
-        /* keep local heuristic */
+          hint: remote.rationale,
+        };
       }
+    } catch {
+      /* local intent + generic reply */
+      if (intent.kind === "prepare") reply = "Running Magic prepare…";
+      else if (intent.kind === "generate") reply = "Queuing generate…";
+      else if (intent.kind === "package") reply = "Packaging Celtra…";
+      else
+        reply =
+          "Logged that locally. Set ATTATTA_LLM_API_KEY on the orchestrator for richer replies.";
     }
 
     const label =
@@ -689,58 +727,59 @@ export function LiveWorkspace({ campaignId }: Props) {
         : intent.kind === "unknown"
           ? "note"
           : intent.kind;
-    setComposerRoute({ column: intent.column, label: `${label} (${routeSource})` });
+    const route = {
+      column: intent.column,
+      label: `${label} (${routeSource})`,
+    };
+    setComposerRoute(route);
     focusColumn(intent.column);
 
-    if (intent.kind === "prepare") {
-      await runPrepare();
-      return;
+    try {
+      if (intent.kind === "prepare") {
+        await runPrepare();
+      } else if (intent.kind === "generate") {
+        await runGenerate();
+      } else if (intent.kind === "package") {
+        await runPackage();
+      } else if (intent.kind === "keep" || intent.kind === "kill") {
+        await api.setReview(campaignId, intent.cellId, {
+          decision: intent.kind === "keep" ? "approved" : "rejected",
+        });
+        await refresh();
+        setCeltraTick((n) => n + 1);
+        await api.liveNote(campaignId, {
+          column: "hopper",
+          text: `/${intent.kind} ${intent.cellId}`,
+          source: "workspace",
+        });
+      } else if (intent.kind === "brief") {
+        setBriefDraft(intent.text);
+        await api.liveNote(campaignId, {
+          column: "magic",
+          text: intent.text,
+          source: "workspace",
+        });
+      } else if (intent.kind === "note") {
+        await api.liveNote(campaignId, {
+          column: intent.column,
+          text: intent.text,
+          source: "workspace",
+        });
+        if (intent.column === "magic") setBriefDraft(intent.text);
+      } else {
+        setError(intent.hint || "Unknown command");
+        await api.liveNote(campaignId, {
+          column: intent.column,
+          text: trimmed,
+          source: "workspace",
+        });
+      }
+    } catch (e) {
+      reply = e instanceof Error ? e.message : String(e);
+      replySource = "template";
     }
-    if (intent.kind === "generate") {
-      await runGenerate();
-      return;
-    }
-    if (intent.kind === "package") {
-      await runPackage();
-      return;
-    }
-    if (intent.kind === "keep" || intent.kind === "kill") {
-      await api.setReview(campaignId, intent.cellId, {
-        decision: intent.kind === "keep" ? "approved" : "rejected",
-      });
-      await refresh();
-      setCeltraTick((n) => n + 1);
-      await api.liveNote(campaignId, {
-        column: "hopper",
-        text: `/${intent.kind} ${intent.cellId}`,
-        source: "workspace",
-      });
-      return;
-    }
-    if (intent.kind === "brief") {
-      setBriefDraft(intent.text);
-      await api.liveNote(campaignId, {
-        column: "magic",
-        text: intent.text,
-        source: "workspace",
-      });
-      return;
-    }
-    if (intent.kind === "note") {
-      await api.liveNote(campaignId, {
-        column: intent.column,
-        text: intent.text,
-        source: "workspace",
-      });
-      if (intent.column === "magic") setBriefDraft(intent.text);
-      return;
-    }
-    setError(intent.hint || "Unknown command");
-    await api.liveNote(campaignId, {
-      column: intent.column,
-      text: trimmed,
-      source: "workspace",
-    });
+
+    return { reply, route, replySource };
   }
 
   const cells = campaign?.matrix?.cells ?? [];
@@ -919,6 +958,35 @@ export function LiveWorkspace({ campaignId }: Props) {
                 ref={scrollRef}
                 className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
               >
+                <ColumnStickScroll
+                  scrollerRef={scrollRef}
+                  contentKey={
+                    id === "magic"
+                      ? `m:${queueScrollTick}:${queueTick}:${events[0]?.id || ""}:${chatPrompts.filter((p) => p.column === "magic" && p.status === "open").length}`
+                      : id === "hopper"
+                        ? `h:${queueTick}:${reviews.length}:${cells.length}:${matrixSelectedCount}:${events[0]?.id || ""}`
+                        : `c:${celtraTick}:${events[0]?.id || ""}:${reviews.length}`
+                  }
+                  forceKey={
+                    id === "magic"
+                      ? busy === "generate" || busy === "prepare"
+                        ? `force-m-${busy}-${queueTick}`
+                        : events.find((e) => e.type === "magic_generate")?.id ||
+                          null
+                      : id === "hopper"
+                        ? events.find(
+                            (e) =>
+                              e.type === "magic_generate" ||
+                              e.type === "review_decision",
+                          )?.id || null
+                        : events.find(
+                            (e) =>
+                              e.type === "celtra_package" ||
+                              e.type === "celtra_preview" ||
+                              e.type === "review_decision",
+                          )?.id || null
+                  }
+                />
                 {id === "magic" ? (
                   <MagicColumnPanel
                     campaignId={campaignId}
@@ -965,6 +1033,8 @@ export function LiveWorkspace({ campaignId }: Props) {
                     onJobsChange={handleJobsChange}
                   />
                 ) : null}
+                {/* Anchor so stick-scroll lands on the latest block */}
+                <div aria-hidden className="h-px w-full shrink-0" />
               </div>
 
               <div className="shrink-0">
