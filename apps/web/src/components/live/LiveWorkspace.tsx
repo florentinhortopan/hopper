@@ -960,6 +960,7 @@ export function LiveWorkspace({ campaignId }: Props) {
               >
                 <ColumnStickScroll
                   scrollerRef={scrollRef}
+                  anchorId={id === "magic" ? "live-queue-stick" : null}
                   contentKey={
                     id === "magic"
                       ? `m:${queueScrollTick}:${queueTick}:${events[0]?.id || ""}:${chatPrompts.filter((p) => p.column === "magic" && p.status === "open").length}`

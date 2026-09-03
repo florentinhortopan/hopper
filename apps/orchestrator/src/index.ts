@@ -135,6 +135,7 @@ import {
   listJobs,
   listLibrary,
   listTokenPacks,
+  nextJobCreatedAt,
   saveCampaign,
   saveReviews,
   saveTokens,
@@ -580,7 +581,7 @@ app.post("/library/:id/generate", async (req, res) => {
       message: `${existing.kind} ${outputMode} · ~${Math.round(etaSeconds / 60)}m`,
       resultPath: null,
       etaSeconds,
-      createdAt: new Date().toISOString(),
+      createdAt: nextJobCreatedAt(),
       updatedAt: new Date().toISOString(),
     };
     upsertJob(job);

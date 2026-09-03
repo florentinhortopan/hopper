@@ -53,6 +53,7 @@ import {
   getTokens,
   libraryAbsolutePath,
   listLibrary,
+  nextJobCreatedAt,
   saveCampaign,
   updateCampaign,
   upsertJob,
@@ -767,7 +768,7 @@ export async function enqueueCellSizeJob(
       : `Queued ${size.label}`,
     resultPath: null,
     etaSeconds,
-    createdAt: new Date().toISOString(),
+    createdAt: nextJobCreatedAt(),
     updatedAt: new Date().toISOString(),
   };
   upsertJob(job);
@@ -1062,7 +1063,7 @@ export async function enqueueVariantBatch(
         stage: "plates",
         includesComfy: true,
       }),
-      createdAt: new Date().toISOString(),
+      createdAt: nextJobCreatedAt(),
       updatedAt: new Date().toISOString(),
     };
     upsertJob(job);
@@ -1191,7 +1192,7 @@ export async function enqueueMissingSizeVariantBatch(
         stage: "plates",
         includesComfy: true,
       }),
-      createdAt: new Date().toISOString(),
+      createdAt: nextJobCreatedAt(),
       updatedAt: new Date().toISOString(),
     };
     upsertJob(job);

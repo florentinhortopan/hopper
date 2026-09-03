@@ -413,6 +413,34 @@ export function libraryAbsolutePath(item: LibraryItem): string {
 
 const jobs = new Map<string, Job>();
 
+/** Monotonic stamps so batch-enqueued jobs keep FIFO order (same-ms collision safe). */
+let jobClockMs = 0;
+export function nextJobCreatedAt(): string {
+  const now = Date.now();
+  jobClockMs = Math.max(now, jobClockMs + 1);
+  return new Date(jobClockMs).toISOString();
+}
+
+/**
+ * Natural queue order: work at the top (running → queued, oldest first),
+ * finished below (oldest first). Top row is what finishes next.
+ */
+export function compareJobsNatural(a: Job, b: Job): number {
+  const rank = (s: Job["status"]) => {
+    if (s === "running") return 0;
+    if (s === "queued") return 1;
+    if (s === "done") return 2;
+    if (s === "failed") return 3;
+    return 4; // cancelled
+  };
+  const byStatus = rank(a.status) - rank(b.status);
+  if (byStatus !== 0) return byStatus;
+  const ta = Date.parse(a.createdAt) || 0;
+  const tb = Date.parse(b.createdAt) || 0;
+  if (ta !== tb) return ta - tb;
+  return a.id.localeCompare(b.id);
+}
+
 export function upsertJob(job: Job) {
   const parsed = JobSchema.parse(job);
   jobs.set(parsed.id, parsed);
@@ -428,13 +456,7 @@ export function listJobs(campaignId?: string) {
   const filtered = campaignId
     ? all.filter((j) => j.campaignId === campaignId)
     : all;
-  // Natural enqueue order (oldest first) — matches chat / generate list order.
-  return filtered.sort((a, b) => {
-    const ta = Date.parse(a.createdAt) || 0;
-    const tb = Date.parse(b.createdAt) || 0;
-    if (ta !== tb) return ta - tb;
-    return a.id.localeCompare(b.id);
-  });
+  return filtered.sort(compareJobsNatural);
 }
 
 export function campaignOutputPath(

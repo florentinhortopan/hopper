@@ -9,6 +9,12 @@ type Props = {
   /** When this changes, force pin + scroll (e.g. generate started). */
   forceKey?: string | number | null;
   thresholdPx?: number;
+  /**
+   * Optional element id inside the scroller. When present, pin to that
+   * anchor (e.g. active queue band) instead of the absolute bottom —
+   * keeps “next to finish” in view instead of a pile of DONE rows.
+   */
+  anchorId?: string | null;
 };
 
 /**
@@ -20,6 +26,7 @@ export function ColumnStickScroll({
   contentKey,
   forceKey = null,
   thresholdPx = 96,
+  anchorId = null,
 }: Props) {
   const pinnedRef = useRef(true);
 
@@ -35,26 +42,36 @@ export function ColumnStickScroll({
     return () => el.removeEventListener("scroll", onScroll);
   }, [scrollerRef, thresholdPx]);
 
+  function scrollPinned() {
+    const el = scrollerRef.current;
+    if (!el || !pinnedRef.current) return;
+    const anchor =
+      anchorId && typeof document !== "undefined"
+        ? document.getElementById(anchorId)
+        : null;
+    if (anchor && el.contains(anchor)) {
+      // Keep anchor near the lower third of the viewport (active work).
+      const target =
+        anchor.offsetTop - Math.max(48, Math.floor(el.clientHeight * 0.55));
+      el.scrollTop = Math.max(0, target);
+      return;
+    }
+    el.scrollTop = el.scrollHeight;
+  }
+
   useEffect(() => {
     if (forceKey == null || forceKey === "") return;
     pinnedRef.current = true;
-    const el = scrollerRef.current;
-    if (!el) return;
-    const id = window.requestAnimationFrame(() => {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    });
+    const id = window.requestAnimationFrame(() => scrollPinned());
     return () => window.cancelAnimationFrame(id);
-  }, [forceKey, scrollerRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pin on forceKey only
+  }, [forceKey, scrollerRef, anchorId]);
 
   useEffect(() => {
-    if (!pinnedRef.current) return;
-    const el = scrollerRef.current;
-    if (!el) return;
-    const id = window.requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
-    });
+    const id = window.requestAnimationFrame(() => scrollPinned());
     return () => window.cancelAnimationFrame(id);
-  }, [contentKey, scrollerRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contentKey, scrollerRef, anchorId]);
 
   return null;
 }

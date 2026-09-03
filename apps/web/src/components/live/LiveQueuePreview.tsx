@@ -14,12 +14,26 @@ type Props = {
 };
 
 function sortJobsNatural(jobs: Job[]): Job[] {
+  // Match orchestrator listJobs: work at top (next to finish first), done below.
+  const rank = (s: Job["status"]) => {
+    if (s === "running") return 0;
+    if (s === "queued") return 1;
+    if (s === "done") return 2;
+    if (s === "failed") return 3;
+    return 4;
+  };
   return [...jobs].sort((a, b) => {
+    const byStatus = rank(a.status) - rank(b.status);
+    if (byStatus !== 0) return byStatus;
     const ta = Date.parse(a.createdAt) || 0;
     const tb = Date.parse(b.createdAt) || 0;
     if (ta !== tb) return ta - tb;
     return a.id.localeCompare(b.id);
   });
+}
+
+function jobActive(job: Job) {
+  return job.status === "queued" || job.status === "running";
 }
 
 export function LiveQueuePreview({
@@ -52,11 +66,13 @@ export function LiveQueuePreview({
   }, [load, refreshToken]);
 
   const ordered = useMemo(() => sortJobsNatural(jobs), [jobs]);
-  const active = ordered.filter(
-    (j) => j.status === "queued" || j.status === "running",
+  const active = useMemo(() => ordered.filter(jobActive), [ordered]);
+  const terminal = useMemo(
+    () => ordered.filter((j) => !jobActive(j)),
+    [ordered],
   );
-  const done = ordered.filter((j) => j.status === "done").length;
-  const failed = ordered.filter((j) => j.status === "failed").length;
+  const done = terminal.filter((j) => j.status === "done").length;
+  const failed = terminal.filter((j) => j.status === "failed").length;
 
   async function stopAll() {
     setStopping(true);
@@ -98,21 +114,40 @@ export function LiveQueuePreview({
         </pre>
       ) : null}
       {ordered.length > 0 ? (
-        <ul className="space-y-1">
-          {ordered.slice(0, 24).map((job) => (
-            <JobProgressRow
-              key={job.id}
-              job={job}
-              compact
-              onCancelled={load}
-            />
-          ))}
-          {ordered.length > 24 ? (
-            <li className="text-[10px] text-ink-500">
-              +{ordered.length - 24} more — open Advanced → Queue for full list
-            </li>
+        <div className="space-y-1">
+          {active.length > 0 ? (
+            <ul className="space-y-1">
+              {active.map((job) => (
+                <JobProgressRow
+                  key={job.id}
+                  job={job}
+                  compact
+                  onCancelled={load}
+                />
+              ))}
+            </ul>
           ) : null}
-        </ul>
+          {/* Pin target: just under live work (not under a stack of DONE). */}
+          <div id="live-queue-stick" aria-hidden className="h-px w-full" />
+          {terminal.length > 0 ? (
+            <ul className="space-y-1">
+              {terminal.slice(0, 16).map((job) => (
+                <JobProgressRow
+                  key={job.id}
+                  job={job}
+                  compact
+                  onCancelled={load}
+                />
+              ))}
+              {terminal.length > 16 ? (
+                <li className="text-[10px] text-ink-500">
+                  +{terminal.length - 16} earlier — open Advanced → Queue
+                </li>
+              ) : null}
+            </ul>
+          ) : null}
+          <div id="live-queue-end" aria-hidden className="h-px w-full" />
+        </div>
       ) : null}
     </div>
   );

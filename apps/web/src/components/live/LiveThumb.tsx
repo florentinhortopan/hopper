@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { LibraryItem, MatrixCell } from "@attatta/shared";
 import { isPlateReady } from "@/lib/plateStatus";
 import { api } from "@/lib/api";
@@ -135,6 +135,31 @@ function ratiosMatch(a: number, b: number, tol = 0.12): boolean {
   return Math.abs(a - b) / Math.max(a, b) <= tol;
 }
 
+/**
+ * Lightbox stage that keeps the claimed delivery aspect.
+ * Avoid `width:100%` + `max-height` alone — that flattens 9:16 / 4:5 into a
+ * near-square box. Cap width by both viewport and `70vh * (w/h)` instead.
+ */
+function lightboxFrameStyle(
+  aspect?: string | null,
+  width?: number,
+  height?: number,
+): CSSProperties {
+  const r = aspectRatioNumber(aspect, width, height) ?? 9 / 16;
+  const ratioCss =
+    width && height
+      ? `${width} / ${height}`
+      : aspect?.includes(":")
+        ? aspect.replace(":", " / ")
+        : "9 / 16";
+  return {
+    aspectRatio: ratioCss,
+    width: `min(100%, 42rem, calc(70vh * ${r}))`,
+    maxHeight: "70vh",
+    height: "auto",
+  };
+}
+
 /** Size gallery lightbox — arrow keys + chevrons cycle delivery sizes. */
 export function MediaLightbox({
   state,
@@ -207,15 +232,11 @@ export function MediaLightbox({
     }
   }
 
-  const frameStyle =
-    current.width && current.height
-      ? { aspectRatio: `${current.width} / ${current.height}`, maxHeight: "70vh" }
-      : current.aspect?.includes(":")
-        ? {
-            aspectRatio: current.aspect.replace(":", " / "),
-            maxHeight: "70vh",
-          }
-        : { maxHeight: "70vh" };
+  const frameStyle = lightboxFrameStyle(
+    current.aspect,
+    current.width,
+    current.height,
+  );
 
   function go(delta: number) {
     if (!onSelect || gallery.length < 2) return;
@@ -257,7 +278,7 @@ export function MediaLightbox({
         </button>
       ) : null}
       <div
-        className="relative max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-ink-950 shadow-xl"
+        className="relative flex max-h-[92vh] w-auto max-w-[min(100%,42rem)] flex-col overflow-hidden rounded-2xl bg-ink-950 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -267,7 +288,7 @@ export function MediaLightbox({
         >
           Close
         </button>
-        <div className="border-b border-white/10 px-3 py-2 pr-16">
+        <div className="shrink-0 border-b border-white/10 px-3 py-2 pr-16">
           <p className="text-xs text-warm-paper">{current.label}</p>
           {claimed ? (
             <p className="font-mono text-[10px] text-warm-paper/70">{claimed}</p>
@@ -288,35 +309,47 @@ export function MediaLightbox({
             </p>
           ) : null}
         </div>
-        <div className="mx-auto w-full max-w-xl bg-ink-900" style={frameStyle}>
-          {image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={cacheKey}
-              src={url}
-              alt={current.label}
-              className="h-full w-full object-cover"
-              onLoad={(e) =>
-                noteNativeSize(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)
-              }
-            />
-          ) : (
-            <video
-              key={cacheKey}
-              src={url}
-              className="h-full w-full object-cover"
-              controls
-              autoPlay
-              playsInline
-              preload="auto"
-              onLoadedMetadata={(e) =>
-                noteNativeSize(e.currentTarget.videoWidth, e.currentTarget.videoHeight)
-              }
-            />
-          )}
+        <div className="flex min-h-0 flex-1 items-center justify-center bg-ink-900 px-3 py-3">
+          <div
+            key={`${current.sizeId || ""}:${current.aspect || ""}:${cacheKey}`}
+            className="relative overflow-hidden bg-black shadow-inner"
+            style={frameStyle}
+          >
+            {image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={cacheKey}
+                src={url}
+                alt={current.label}
+                className="h-full w-full object-cover"
+                onLoad={(e) =>
+                  noteNativeSize(
+                    e.currentTarget.naturalWidth,
+                    e.currentTarget.naturalHeight,
+                  )
+                }
+              />
+            ) : (
+              <video
+                key={cacheKey}
+                src={url}
+                className="h-full w-full object-cover"
+                controls
+                autoPlay
+                playsInline
+                preload="auto"
+                onLoadedMetadata={(e) =>
+                  noteNativeSize(
+                    e.currentTarget.videoWidth,
+                    e.currentTarget.videoHeight,
+                  )
+                }
+              />
+            )}
+          </div>
         </div>
         {gallery.length > 1 ? (
-          <div className="flex flex-wrap justify-center gap-1 border-t border-white/10 px-3 py-2">
+          <div className="flex shrink-0 flex-wrap justify-center gap-1 border-t border-white/10 px-3 py-2">
             {gallery.map((it, i) => (
               <button
                 key={it.sizeId || it.path}
@@ -333,7 +366,7 @@ export function MediaLightbox({
             ))}
           </div>
         ) : null}
-        <div className="flex gap-3 border-t border-white/10 px-3 py-2 text-xs">
+        <div className="flex shrink-0 gap-3 border-t border-white/10 px-3 py-2 text-xs">
           <a className="text-warm-paper underline" href={url} download>
             Download
           </a>
@@ -593,9 +626,13 @@ export function SizeMediaFrame({
     return (
       <div
         className={`flex items-center justify-center rounded border border-dashed border-ink-200 bg-ink-50 text-[9px] text-ink-400 ${
-          bay ? frame : "h-9 w-7"
+          bay ? frame : "h-full w-full min-h-[2.25rem] min-w-[1.5rem]"
         } ${className}`}
-        style={style}
+        style={
+          bay
+            ? undefined
+            : style || { aspectRatio: cssAspect(aspect) || "9 / 16" }
+        }
         title={label}
       >
         —

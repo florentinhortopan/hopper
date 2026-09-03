@@ -638,7 +638,7 @@ function VariantSizeDetail({
                 }`}
               >
                 <div
-                  className="h-10 shrink-0 overflow-hidden"
+                  className="h-12 shrink-0 overflow-hidden rounded border border-ink-100 bg-ink-50"
                   style={{
                     aspectRatio: cssAspect(s.aspect) || "9 / 16",
                   }}
