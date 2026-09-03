@@ -136,23 +136,29 @@ export function WorkspaceComposer({
 
   return (
     <div
-      className={`relative z-30 shrink-0 border-t border-ink-200 bg-warm-paper/95 shadow-[0_-8px_24px_rgba(26,26,26,0.06)] ${
-        expanded
-          ? "-mt-40 px-3 pb-3 pt-3 backdrop-blur-sm"
-          : "px-3 py-2"
+      className={`ws-composer relative z-30 shrink-0 border-t-2 border-ink-900 bg-ink-900 text-warm-paper ${
+        expanded ? "-mt-36 px-3 pb-3 pt-3" : "px-3 py-2.5"
       }`}
     >
-      <div className="mx-auto flex max-w-[96rem] flex-col gap-1.5">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-ink-500">
-          <span className="min-w-0 truncate" title={LIVE_CHAT_SLASH_HINT}>
-            ATTATTA · {LIVE_CHAT_SLASH_HINT}
-          </span>
-          <div className="flex items-center gap-2">
+      <div className="mx-auto flex max-w-[96rem] flex-col gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="font-display text-sm font-semibold tracking-tight text-warm-paper">
+              Say the quiet part
+            </p>
+            <p
+              className="truncate text-[10px] uppercase tracking-[0.12em] text-warm-paper/55"
+              title={LIVE_CHAT_SLASH_HINT}
+            >
+              {LIVE_CHAT_SLASH_HINT}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] text-warm-paper/60">
             <span className="hidden sm:inline">{status}</span>
             {turns.length ? (
               <button
                 type="button"
-                className="text-[10px] text-ink-500 underline"
+                className="text-warm-paper/70 underline decoration-warm-paper/30 underline-offset-2 hover:text-warm-paper"
                 onClick={() => setTurns([])}
               >
                 Clear
@@ -160,7 +166,7 @@ export function WorkspaceComposer({
             ) : null}
             <button
               type="button"
-              className="rounded border border-ink-200 bg-white px-1.5 py-0.5 text-[10px] text-ink-600 hover:bg-ink-50"
+              className="ws-chip rounded-sm border border-warm-paper/25 bg-transparent px-2 py-0.5 font-semibold uppercase tracking-[0.1em] text-warm-paper/80 hover:border-warm-paper/50 hover:text-warm-paper"
               onClick={() => setExpanded((v) => !v)}
             >
               {expanded ? "Collapse" : "Expand"}
@@ -169,8 +175,10 @@ export function WorkspaceComposer({
         </div>
 
         {!expanded && latestAssistant ? (
-          <p className="rounded-md border border-ink-100 bg-white/80 px-2 py-1.5 text-[11px] text-ink-700">
-            <span className="font-medium text-ink-500">ATTATTA · </span>
+          <p className="rounded-sm border border-warm-paper/15 bg-ink-800/80 px-2.5 py-1.5 text-[12px] leading-snug text-warm-paper/90">
+            <span className="font-display font-semibold text-ember-500">
+              ATTATTA ·{" "}
+            </span>
             {latestAssistant.text}
           </p>
         ) : null}
@@ -178,16 +186,18 @@ export function WorkspaceComposer({
         {expanded && turns.length ? (
           <div
             ref={threadRef}
-            className="max-h-36 space-y-1.5 overflow-y-auto rounded-lg border border-ink-100 bg-white/90 px-2 py-2"
+            className="max-h-36 space-y-2 overflow-y-auto rounded-sm border border-warm-paper/15 bg-ink-800/70 px-2.5 py-2"
           >
             {turns.map((turn) => (
               <div
                 key={turn.id}
-                className={`text-[11px] leading-snug ${
-                  turn.role === "user" ? "text-ink-800" : "text-ink-600"
+                className={`text-[12px] leading-snug ${
+                  turn.role === "user"
+                    ? "text-warm-paper"
+                    : "text-warm-paper/75"
                 }`}
               >
-                <span className="font-medium text-ink-500">
+                <span className="font-display text-[11px] font-semibold text-ember-500">
                   {turn.role === "user" ? "You" : "ATTATTA"}
                   {turn.meta ? ` · ${turn.meta}` : ""}
                   {": "}
@@ -196,7 +206,9 @@ export function WorkspaceComposer({
               </div>
             ))}
             {busy ? (
-              <p className="text-[11px] text-ink-400">ATTATTA is thinking…</p>
+              <p className="text-[11px] text-warm-paper/45">
+                ATTATTA is thinking…
+              </p>
             ) : null}
           </div>
         ) : null}
@@ -208,7 +220,7 @@ export function WorkspaceComposer({
             <textarea
               ref={taRef}
               rows={3}
-              className="min-h-[4.5rem] min-w-0 flex-1 resize-y rounded-lg border border-ink-200 bg-white px-3 py-2 text-xs leading-relaxed shadow-sm"
+              className="min-h-[4.5rem] min-w-0 flex-1 resize-y rounded-sm border border-warm-paper/20 bg-warm-paper px-3 py-2 text-xs leading-relaxed text-ink-900 placeholder:text-ink-600/50"
               value={text}
               disabled={disabled || busy}
               placeholder="Talk to ATTATTA — ask what to do next, or /prepare · /generate · /package…"
@@ -222,7 +234,7 @@ export function WorkspaceComposer({
             />
           ) : (
             <input
-              className="min-w-0 flex-1 rounded-lg border border-ink-200 bg-white px-3 py-2 text-xs shadow-sm"
+              className="min-w-0 flex-1 rounded-sm border border-warm-paper/20 bg-warm-paper px-3 py-2.5 text-xs text-ink-900 placeholder:text-ink-600/50"
               value={text}
               disabled={disabled || busy}
               placeholder="Message ATTATTA… (/prepare · /generate · /package)"
@@ -237,7 +249,7 @@ export function WorkspaceComposer({
           )}
           <button
             type="button"
-            className="shrink-0 rounded-lg bg-ink-900 px-4 py-2 text-xs text-white disabled:opacity-40"
+            className="ws-chip shrink-0 rounded-sm bg-ember-500 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.08em] text-warm-paper hover:bg-ember-600 disabled:opacity-40"
             disabled={disabled || busy || !text.trim()}
             onClick={() => void send()}
           >
@@ -245,7 +257,7 @@ export function WorkspaceComposer({
           </button>
         </div>
         {expanded ? (
-          <p className="text-[10px] text-ink-400">
+          <p className="text-[10px] uppercase tracking-[0.1em] text-warm-paper/40">
             ⌘/Ctrl+Enter to send · same surface later for Teams / other chats
           </p>
         ) : null}

@@ -38,6 +38,31 @@ const DEFAULT_COLS: Record<LiveColumnId, ColState> = {
   celtra: { open: true, flex: 1 },
 };
 
+/** Witty stage copy — presentation only; column ids / logic unchanged. */
+const COLUMN_STAGE: Record<
+  LiveColumnId,
+  { label: string; verb: string; role: string; hint: string }
+> = {
+  magic: {
+    label: "Magic",
+    verb: "Cast",
+    role: "Pre-production",
+    hint: "Brief → plates",
+  },
+  hopper: {
+    label: "Hopper",
+    verb: "Cull",
+    role: "Refinement",
+    hint: "Keep · Kill · sizes",
+  },
+  celtra: {
+    label: "Celtra",
+    verb: "Ship",
+    role: "Distribution",
+    hint: "Pack for Meta",
+  },
+};
+
 type Props = {
   campaignId: string;
 };
@@ -785,80 +810,102 @@ export function LiveWorkspace({ campaignId }: Props) {
   const cells = campaign?.matrix?.cells ?? [];
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-[#f3efe6] text-ink-900">
-      <header className="flex flex-wrap items-center gap-3 border-b border-ink-200 bg-warm-paper/95 px-4 py-2">
-        <a href="/" className="font-display text-lg tracking-tight no-underline">
+    <div className="ws-shell fixed inset-0 z-40 flex flex-col text-ink-900">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-ink-900/10 bg-warm-paper/90 px-4 py-2.5 backdrop-blur-[2px]">
+        <a
+          href="/"
+          className="font-display text-xl font-semibold tracking-tight text-ink-900 no-underline transition-colors hover:text-ember-600"
+        >
           ATTATTA
         </a>
-        <span className="text-[10px] uppercase tracking-[0.16em] text-ink-500">
-          Live workspace
-        </span>
-        <span className="max-w-[12rem] truncate text-sm font-medium" title={campaign?.name}>
+        <span className="ws-label-caps hidden sm:inline">Live workspace</span>
+        <div className="hidden h-4 w-px bg-ink-900/15 sm:block" aria-hidden />
+        <span
+          className="max-w-[14rem] truncate font-display text-base font-semibold tracking-tight text-ink-900"
+          title={campaign?.name}
+        >
           {campaign?.name || "…"}
         </span>
-        <span className="font-mono text-[10px] text-ink-500">{campaignId}</span>
+        <span className="font-mono text-[10px] text-ink-600/80">{campaignId}</span>
         <span
-          className={`rounded px-2 py-0.5 text-[10px] font-medium uppercase ${
+          className={`inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
             connected
-              ? "bg-emerald-100 text-emerald-900"
-              : "bg-ink-100 text-ink-600"
+              ? "border-emerald-800/20 bg-emerald-50 text-emerald-900"
+              : "border-ink-200 bg-ink-50 text-ink-600"
           }`}
         >
-          {connected ? "live" : "reconnecting"}
+          {connected ? <span className="ws-live-dot" aria-hidden /> : null}
+          {connected ? "Live" : "Reconnecting"}
         </span>
-        <div className="ml-auto flex flex-wrap gap-2 text-xs">
-          {(["magic", "hopper", "celtra"] as LiveColumnId[]).map((id) => (
-            <button
-              key={id}
-              type="button"
-              className={`rounded border px-2 py-1 capitalize ${
-                cols[id].open
-                  ? "border-ink-900 bg-ink-900 text-white"
-                  : "border-ink-200 bg-white text-ink-600"
-              }`}
-              onClick={() => toggleCol(id)}
-            >
-              {id}
-            </button>
-          ))}
+        <div className="ml-auto flex flex-wrap items-center gap-1.5 text-xs">
+          {(["magic", "hopper", "celtra"] as LiveColumnId[]).map((id) => {
+            const stage = COLUMN_STAGE[id];
+            return (
+              <button
+                key={id}
+                type="button"
+                className={`ws-chip rounded-sm border px-2.5 py-1 text-[11px] font-medium ${
+                  cols[id].open
+                    ? "border-ink-900 bg-ink-900 text-warm-paper"
+                    : "border-ink-900/15 bg-warm-paper text-ink-600 hover:border-ink-900/40"
+                }`}
+                onClick={() => toggleCol(id)}
+                title={`${stage.verb} · ${stage.hint}`}
+              >
+                <span className="font-display text-[13px] font-semibold">
+                  {stage.verb}
+                </span>
+                <span className="ml-1 opacity-70">{stage.label}</span>
+              </button>
+            );
+          })}
           <a
             href={`/campaigns/${campaignId}/brief`}
-            className="rounded border border-ink-200 bg-white px-2 py-1 no-underline"
+            className="ws-chip rounded-sm border border-ink-900/15 bg-warm-paper px-2.5 py-1 text-[11px] font-medium text-ink-700 no-underline hover:border-ink-900/40"
           >
             Advanced
           </a>
-          <a href="/" className="rounded border border-ink-200 bg-white px-2 py-1 no-underline">
+          <a
+            href="/"
+            className="ws-chip rounded-sm border border-transparent px-2 py-1 text-[11px] font-medium text-ember-600 no-underline hover:text-ember-700"
+          >
             Exit
           </a>
         </div>
       </header>
 
       {error ? (
-        <pre className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800">
+        <pre className="shrink-0 border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800">
           {error}
         </pre>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 gap-1 p-1">
+      <div className="flex min-h-0 flex-1 gap-2 p-2 sm:gap-2.5 sm:p-2.5">
         {(
           [
-            ["magic", "Magic"],
-            ["hopper", "Hopper"],
-            ["celtra", "Celtra"],
+            ["magic", COLUMN_STAGE.magic],
+            ["hopper", COLUMN_STAGE.hopper],
+            ["celtra", COLUMN_STAGE.celtra],
           ] as const
-        ).map(([id, label]) => {
+        ).map(([id, stage]) => {
           const state = cols[id];
           if (!state.open) {
             return (
               <button
                 key={id}
                 type="button"
-                className="flex w-10 shrink-0 flex-col items-center gap-2 rounded-lg border border-ink-200 bg-warm-paper py-3 text-[10px] uppercase tracking-wide text-ink-600"
+                className="ws-col-rail flex w-11 shrink-0 flex-col items-center gap-3 rounded-sm border border-ink-900/12 bg-warm-paper py-4 text-ink-600"
                 onClick={() => toggleCol(id)}
-                title={`Expand ${label}`}
+                title={`Expand ${stage.label} — ${stage.verb}`}
               >
-                <span className="rotate-180" style={{ writingMode: "vertical-rl" }}>
-                  {label}
+                <span className="font-display text-sm font-semibold tracking-tight">
+                  {stage.verb}
+                </span>
+                <span
+                  className="ws-label-caps rotate-180"
+                  style={{ writingMode: "vertical-rl" }}
+                >
+                  {stage.label}
                 </span>
               </button>
             );
@@ -871,40 +918,54 @@ export function LiveWorkspace({ campaignId }: Props) {
           return (
             <section
               key={id}
-              className="relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-ink-200 bg-warm-paper/90"
+              className="ws-col relative flex min-w-0 flex-col overflow-hidden rounded-sm border border-ink-900/12 bg-warm-paper/95"
               style={{ flex: state.flex * (openCount === 1 ? 1.2 : 1) }}
             >
-              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-ink-200 px-3 py-2">
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <h2 className="text-sm font-medium">{label}</h2>
-                  <ColumnConnectionChip
-                    connectionId={connectionIdForColumn(id)}
-                    connection={
-                      connections[connectionIdForColumn(id)] ?? null
-                    }
-                    campaignId={campaignId}
-                    onResynced={(next) => {
-                      setConnections((prev) => ({
-                        ...prev,
-                        [next.id]: next,
-                      }));
-                      if (next.id === "celtra") {
-                        setCeltraTick((n) => n + 1);
+              <div className="flex shrink-0 items-start justify-between gap-2 border-b border-ink-900/10 px-3.5 py-2.5">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <h2 className="font-display text-2xl font-semibold leading-none tracking-tight text-ink-900">
+                      {stage.verb}
+                    </h2>
+                    <span className="font-display text-sm font-medium text-ink-600">
+                      {stage.label}
+                    </span>
+                  </div>
+                  <span className="ws-title-rule mt-1.5" aria-hidden />
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    <span className="ws-label-caps">{stage.role}</span>
+                    <span className="text-[10px] text-ink-600/70">
+                      {stage.hint}
+                    </span>
+                    <ColumnConnectionChip
+                      connectionId={connectionIdForColumn(id)}
+                      connection={
+                        connections[connectionIdForColumn(id)] ?? null
                       }
-                      if (next.id === "hopper" || next.id === "comfy") {
-                        setQueueTick((n) => n + 1);
-                        void refresh().catch(() => undefined);
-                      }
-                    }}
-                  />
+                      campaignId={campaignId}
+                      onResynced={(next) => {
+                        setConnections((prev) => ({
+                          ...prev,
+                          [next.id]: next,
+                        }));
+                        if (next.id === "celtra") {
+                          setCeltraTick((n) => n + 1);
+                        }
+                        if (next.id === "hopper" || next.id === "comfy") {
+                          setQueueTick((n) => n + 1);
+                          void refresh().catch(() => undefined);
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
                   <button
                     type="button"
-                    className={`rounded border px-2 py-0.5 text-[10px] ${
+                    className={`ws-chip rounded-sm border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] ${
                       showActivity
-                        ? "border-ink-900 bg-ink-900 text-white"
-                        : "border-ink-200 bg-white text-ink-600"
+                        ? "border-ink-900 bg-ink-900 text-warm-paper"
+                        : "border-ink-900/15 bg-transparent text-ink-600 hover:border-ink-900/35"
                     }`}
                     onClick={() =>
                       setActivityOpen((prev) => ({
@@ -914,12 +975,12 @@ export function LiveWorkspace({ campaignId }: Props) {
                     }
                     title="Show column activity log"
                   >
-                    Activity
+                    Log
                     {activityCount > 0 ? ` · ${activityCount}` : ""}
                   </button>
                   <button
                     type="button"
-                    className="text-[10px] text-ink-500 underline"
+                    className="ws-chip rounded-sm px-1.5 py-0.5 text-[10px] font-medium text-ember-600 hover:text-ember-700"
                     onClick={() => toggleCol(id)}
                   >
                     Collapse
@@ -928,14 +989,12 @@ export function LiveWorkspace({ campaignId }: Props) {
               </div>
 
               {showActivity ? (
-                <div className="absolute inset-x-0 top-10 z-20 flex max-h-[min(22rem,50%)] flex-col border-b border-ink-200 bg-warm-paper shadow-lg">
-                  <div className="flex shrink-0 items-center justify-between border-b border-ink-100 px-3 py-1.5">
-                    <span className="text-[10px] font-medium uppercase tracking-wide text-ink-500">
-                      Activity
-                    </span>
+                <div className="absolute inset-x-0 top-[4.25rem] z-20 flex max-h-[min(22rem,50%)] flex-col border-b-2 border-ink-900 bg-warm-paper">
+                  <div className="flex shrink-0 items-center justify-between border-b border-ink-900/10 px-3 py-1.5">
+                    <span className="ws-label-caps">Activity</span>
                     <button
                       type="button"
-                      className="text-[10px] text-ink-500 underline"
+                      className="text-[10px] font-medium text-ember-600 hover:text-ember-700"
                       onClick={() =>
                         setActivityOpen((prev) => ({ ...prev, [id]: false }))
                       }

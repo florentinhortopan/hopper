@@ -6,9 +6,14 @@
   color-scheme: light;
   --color-primary: #d45d40;
   --color-ink: #1a1a1a;
-  --color-canvas: #f5f2ee;
+  --color-canvas: #f3efe6;
   --color-paper: #fff8f0;
   --color-line: #eae4dc;
+  --color-muted: #7a756b;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-fast: 180ms;
+  --motion-med: 320ms;
+  --motion-slow: 480ms;
 }
 
 body {
@@ -46,6 +51,49 @@ a:hover {
   }
 }
 
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes ws-col-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ws-rail-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ws-underline {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 .attatta-spinner {
   display: inline-block;
   width: 0.75rem;
@@ -55,4 +103,106 @@ a:hover {
   border-radius: 9999px;
   animation: attatta-spin 0.7s linear infinite;
   vertical-align: -0.1em;
+}
+
+/* —— Live workspace (Parchment & Ink) —— */
+.ws-shell {
+  background-color: var(--color-canvas);
+  background-image:
+    linear-gradient(180deg, rgba(255, 248, 240, 0.55), transparent 28%),
+    radial-gradient(ellipse 55% 40% at 0% 0%, rgba(212, 93, 64, 0.07), transparent),
+    radial-gradient(ellipse 40% 30% at 100% 8%, rgba(26, 26, 26, 0.03), transparent);
+}
+
+.ws-label-caps {
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  line-height: 1.2;
+}
+
+.ws-live-dot {
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 9999px;
+  background: #059669;
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
+.ws-col {
+  animation: ws-col-in var(--motion-slow) var(--ease-out-expo) both;
+  transition:
+    flex var(--motion-med) var(--ease-out-expo),
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease;
+}
+
+.ws-col:nth-child(1) {
+  animation-delay: 40ms;
+}
+.ws-col:nth-child(2) {
+  animation-delay: 110ms;
+}
+.ws-col:nth-child(3) {
+  animation-delay: 180ms;
+}
+
+.ws-col-rail {
+  animation: ws-rail-in var(--motion-med) var(--ease-out-expo) both;
+  transition:
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+
+.ws-col-rail:hover {
+  background-color: #ebe7dc;
+  border-color: rgba(26, 26, 26, 0.35);
+  color: var(--color-ink);
+}
+
+.ws-title-rule {
+  display: block;
+  height: 1px;
+  width: 2.25rem;
+  background: var(--color-ink);
+  transform-origin: left center;
+  animation: ws-underline 520ms var(--ease-out-expo) both;
+  animation-delay: 220ms;
+}
+
+.ws-chip {
+  transition:
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    transform var(--motion-fast) var(--ease-out-expo);
+}
+
+.ws-chip:hover {
+  transform: translateY(-1px);
+}
+
+.ws-chip:active {
+  transform: translateY(0);
+}
+
+.ws-composer {
+  transition:
+    padding var(--motion-med) var(--ease-out-expo),
+    margin var(--motion-med) var(--ease-out-expo),
+    background-color var(--motion-fast) ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-col,
+  .ws-col-rail,
+  .ws-title-rule,
+  .ws-live-dot {
+    animation: none !important;
+  }
 }
