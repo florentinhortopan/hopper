@@ -31,6 +31,8 @@ type Props = {
   onBriefChange: (v: string) => void;
   busy: string | null;
   onPrepare: () => Promise<void>;
+  /** Enqueue Comfy for Hopper-selected combos (fills the Magic queue). */
+  onGenerate?: () => Promise<void>;
   /** Called after import commit so parent can refresh campaign. */
   onImported?: () => Promise<void>;
   /** Surfaced when prepare readiness / import review changes (for chat offers). */
@@ -52,6 +54,7 @@ export function MagicColumnPanel({
   onBriefChange,
   busy,
   onPrepare,
+  onGenerate,
   onImported,
   onReadinessChange,
   coverageToken = 0,
@@ -521,22 +524,43 @@ export function MagicColumnPanel({
       </div>
 
       <div>
-        <h3 className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-500">
-          Generation matrix (
-          {plan?.variants.length ??
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-500">
+            Generation matrix (
+            {plan?.variants.length ??
+              campaign?.matrix.cells.filter((c) => c.selectedForGen !== false)
+                .length ??
+              0}
+            {campaign?.matrix.cells.length
+              ? ` selected · ${campaign.matrix.cells.length} available`
+              : ""}
+            )
+            {plan?.workflowSource ? (
+              <span className="ml-1 normal-case tracking-normal text-ink-400">
+                · workflow {plan.workflowSource}
+              </span>
+            ) : null}
+          </h3>
+          {onGenerate &&
+          (plan?.variants.length ??
             campaign?.matrix.cells.filter((c) => c.selectedForGen !== false)
               .length ??
-            0}
-          {campaign?.matrix.cells.length
-            ? ` selected · ${campaign.matrix.cells.length} available`
-            : ""}
-          )
-          {plan?.workflowSource ? (
-            <span className="ml-1 normal-case tracking-normal text-ink-400">
-              · workflow {plan.workflowSource}
-            </span>
+            0) > 0 ? (
+            <button
+              type="button"
+              className="ml-auto rounded-md bg-ink-900 px-2.5 py-1 text-[11px] text-white disabled:opacity-40"
+              disabled={busy !== null || importBusy || !plan?.canContinue}
+              title={
+                plan?.canContinue
+                  ? "Enqueue selected combos into the Magic queue"
+                  : plan?.reasons[0] || "Finish prepare checklist first"
+              }
+              onClick={() => void onGenerate()}
+            >
+              {busy === "generate" ? "Generating…" : "Generate"}
+            </button>
           ) : null}
-        </h3>
+        </div>
         {(plan?.variants.length ?? 0) === 0 ? (
           <p className="mt-1 text-[10px] text-ink-500">
             {campaign?.matrix.cells.length

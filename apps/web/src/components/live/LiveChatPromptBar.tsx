@@ -25,6 +25,22 @@ type Props = {
   onDismissAll?: () => void;
 };
 
+/** Prefer actionable nudges over post-hoc status cards. */
+function nudgePriority(key: string): number {
+  const family = key.split(":")[0] || "";
+  if (
+    family === "generate" ||
+    family === "fill-sizes" ||
+    family === "import" ||
+    family === "package" ||
+    family === "combos"
+  ) {
+    return 3;
+  }
+  if (family === "review-batch") return 2;
+  return 1; // gen-done, etc.
+}
+
 /** Ephemeral suggested actions for a column — at most one open card shown. */
 export function LiveChatPromptBar({
   prompts,
@@ -37,10 +53,14 @@ export function LiveChatPromptBar({
 }: Props) {
   const open = prompts
     .filter((p) => p.column === column && p.status === "open")
-    .sort((a, b) => b.at - a.at);
+    .sort((a, b) => {
+      const pd = nudgePriority(b.key) - nudgePriority(a.key);
+      if (pd !== 0) return pd;
+      return b.at - a.at;
+    });
   if (!open.length) return null;
 
-  // Only the newest open nudge — older ones are noise
+  // Highest-priority open nudge (Generate beats “Generation finished”)
   const latest = open[0]!;
   const hiddenCount = open.length - 1;
 

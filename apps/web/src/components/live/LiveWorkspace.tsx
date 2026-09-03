@@ -297,11 +297,22 @@ export function LiveWorkspace({ campaignId }: Props) {
   useEffect(() => {
     if (!matrixCellSig || !campaign?.matrix.cells.length) return;
     const available = campaign.matrix.cells.length;
+    // Drop leftover Hopper-column combo nudges (table is already on that column)
+    setChatPrompts((prev) =>
+      prev.map((p) =>
+        p.column === "hopper" &&
+        p.key.startsWith("combos:") &&
+        p.status === "open"
+          ? { ...p, status: "dismissed" as const }
+          : p,
+      ),
+    );
+    // Nudge lives on Magic — Hopper already shows the Pick combinations table
     offerChatPrompt({
-      column: "hopper",
+      column: "magic",
       key: `combos:${matrixCellSig}`,
       summary: "Pick combinations in Hopper",
-      detail: `${available} combo(s) in the Pick combinations table · ${matrixSelectedCount} selected. Check rows above; Magic updates to match.`,
+      detail: `${available} combo(s) available · ${matrixSelectedCount} selected. Check rows in Hopper; this generation list updates to match.`,
       primaryLabel: "Open Hopper",
     });
   }, [
@@ -312,25 +323,27 @@ export function LiveWorkspace({ campaignId }: Props) {
     offerChatPrompt,
   ]);
 
-  // Magic: prepare ready → generate (once per prepare epoch; not after generate)
+  // Magic: ready to generate — re-offer when selection / missing work changes
   useEffect(() => {
     if (!magicReady?.ready || !campaign) return;
-    const prepareEv = events.find((e) => e.type === "magic_prepare");
-    const prepareAt = prepareEv?.at || "";
-    const generatedAfter = events.some(
-      (e) =>
-        e.type === "magic_generate" &&
-        (!prepareAt || e.at >= prepareAt),
-    );
-    if (generatedAfter) return;
     const selectedCells = campaign.matrix.cells.filter(
       (c) => c.selectedForGen !== false,
     );
     if (!selectedCells.length) return;
     const sizes = campaign.outputSizes || [];
     const missing = missingSizeSlotCount(selectedCells, sizes);
+    const needsPlate = selectedCells.some((c) => c.needsGen);
+    if (missing <= 0 && !needsPlate) return;
+
+    const prepareEv = events.find((e) => e.type === "magic_prepare");
+    const selectionSig = selectedCells
+      .map((c) => c.cellId)
+      .slice()
+      .sort()
+      .join(",");
     const sizeLabel = sizes.map((s) => s.aspect).join(", ") || "none";
-    const key = `generate:${prepareEv?.id || `v${magicReady.variantCount}`}`;
+    // Include selection so new Hopper checks get a fresh Generate nudge
+    const key = `generate:${prepareEv?.id || "prep"}:${selectionSig}`;
     offerChatPrompt({
       column: "magic",
       key,
@@ -914,6 +927,7 @@ export function LiveWorkspace({ campaignId }: Props) {
                     onBriefChange={setBriefDraft}
                     busy={busy}
                     onPrepare={runPrepare}
+                    onGenerate={runGenerate}
                     onReadinessChange={setMagicReady}
                     coverageToken={queueTick + celtraTick}
                     onImported={async () => {
