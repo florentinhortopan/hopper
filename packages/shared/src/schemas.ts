@@ -579,6 +579,13 @@ export const CampaignSchema = z.object({
     .default("guarantee_tranche3_social_video_v1"),
   /** Campaign Comfy guidelines + between-node step prompts / binds */
   comfyTemplate: ComfyTemplateSchema.default(DEFAULT_COMFY_TEMPLATE),
+  /**
+   * Live workspace chrome theme (vanilla parchment vs brand skins).
+   * Separate from Remotion designTokenPackId; themes may suggest a companion pack.
+   */
+  workspaceThemeId: z
+    .enum(["vanilla", "att"])
+    .default("vanilla"),
   /** standard = full StepNav; magic = two-step popup flow */
   mode: z.enum(["standard", "magic"]).default("standard"),
   archived: z.boolean().default(false),

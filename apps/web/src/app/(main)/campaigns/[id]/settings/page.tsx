@@ -13,8 +13,10 @@ import {
   type ComfyTemplate,
   type ComfyTemplateStep,
   type OutputSize,
+  type WorkspaceThemeId,
 } from "@attatta/shared";
 import { StepNav } from "@/components/StepNav";
+import { WorkspaceThemeSwitcher } from "@/components/live/WorkspaceThemeSwitcher";
 import { api } from "@/lib/api";
 
 function newSceneId() {
@@ -43,6 +45,8 @@ export default function SettingsPage() {
   const [comfyTemplate, setComfyTemplate] = useState<ComfyTemplate>({
     ...DEFAULT_COMFY_TEMPLATE,
   });
+  const [workspaceThemeId, setWorkspaceThemeId] =
+    useState<WorkspaceThemeId>("vanilla");
   const [copyForSuggest, setCopyForSuggest] = useState<{
     setup?: string;
     punchline?: string;
@@ -79,6 +83,9 @@ export default function SettingsPage() {
       campaignGuidelines: ct.campaignGuidelines ?? "",
       steps: ct.steps ?? [],
     });
+    setWorkspaceThemeId(
+      (campaign.workspaceThemeId as WorkspaceThemeId) || "vanilla",
+    );
     const cellCopy = campaign.matrix?.cells?.[0]?.copy;
     setCopyForSuggest({
       setup: cellCopy?.setup || campaign.brief?.prompt || undefined,
@@ -167,6 +174,7 @@ export default function SettingsPage() {
         libraryId,
         assemblyRecipe: recipe,
         comfyTemplate,
+        workspaceThemeId,
       });
       await refresh();
       setError(null);
@@ -194,6 +202,23 @@ export default function SettingsPage() {
           {error}
         </div>
       ) : null}
+
+      <div className="mt-6 rounded-xl border border-ink-200 bg-white/90 p-4">
+        <h2 className="font-display text-lg">Workspace theme</h2>
+        <p className="mt-1 text-xs text-ink-700">
+          Live workspace chrome for this campaign. Switching also updates the
+          Remotion design-token pack when it still matches the previous theme&apos;s
+          companion (Vanilla → brand_default_v3, AT&amp;T → brand_att_v1).
+        </p>
+        <div className="mt-3">
+          <WorkspaceThemeSwitcher
+            variant="cards"
+            value={workspaceThemeId}
+            disabled={busy}
+            onChange={setWorkspaceThemeId}
+          />
+        </div>
+      </div>
 
       <div className="mt-6 rounded-xl border border-ink-200 bg-white/90 p-4">
         <h2 className="font-display text-lg">Library pack</h2>

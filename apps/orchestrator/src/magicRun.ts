@@ -124,6 +124,7 @@ export async function createMagicCampaign(opts: {
     },
     celtraTemplateProfileId: "guarantee_tranche3_social_video_v1",
     comfyTemplate: normalizeComfyTemplate(MAGIC_COMFY_TEMPLATE),
+    workspaceThemeId: "vanilla",
     mode: "magic",
     archived: false,
     createdAt: now,

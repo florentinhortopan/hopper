@@ -4,12 +4,32 @@
 
 :root {
   color-scheme: light;
+  /* Semantic (body / shell) */
   --color-primary: #d45d40;
   --color-ink: #1a1a1a;
   --color-canvas: #f3efe6;
   --color-paper: #fff8f0;
   --color-line: #eae4dc;
   --color-muted: #7a756b;
+  /* Tailwind ink / ember / warm — themeable via CSS vars */
+  --ink-50: #fff8f0;
+  --ink-100: #f5f2ee;
+  --ink-200: #eae4dc;
+  --ink-300: #d4cbc0;
+  --ink-600: #6e5c55;
+  --ink-700: #57423d;
+  --ink-800: #33302b;
+  --ink-900: #1a1a1a;
+  --ember-500: #d45d40;
+  --ember-600: #a2391f;
+  --ember-700: #85240b;
+  --ember-800: #6b1c08;
+  --ember-950: #3d1005;
+  --warm-canvas: #f5f2ee;
+  --warm-paper: #fff8f0;
+  --warm-line: #eae4dc;
+  --ws-glow-a: rgba(212, 93, 64, 0.08);
+  --ws-glow-b: rgba(26, 26, 26, 0.04);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --motion-fast: 180ms;
   --motion-med: 320ms;
@@ -23,17 +43,17 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-image:
-    radial-gradient(ellipse 70% 45% at 8% -8%, rgba(212, 93, 64, 0.08), transparent),
-    radial-gradient(ellipse 50% 35% at 100% 0%, rgba(26, 26, 26, 0.04), transparent);
+    radial-gradient(ellipse 70% 45% at 8% -8%, var(--ws-glow-a), transparent),
+    radial-gradient(ellipse 50% 35% at 100% 0%, var(--ws-glow-b), transparent);
   min-height: 100vh;
 }
 
 a {
-  color: #a2391f;
+  color: var(--ember-600);
 }
 
 a:hover {
-  color: #d45d40;
+  color: var(--ember-500);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -105,13 +125,74 @@ a:hover {
   vertical-align: -0.1em;
 }
 
-/* —— Live workspace (Parchment & Ink) —— */
+/* —— Live workspace themes —— */
 .ws-shell {
   background-color: var(--color-canvas);
   background-image:
-    linear-gradient(180deg, rgba(255, 248, 240, 0.55), transparent 28%),
-    radial-gradient(ellipse 55% 40% at 0% 0%, rgba(212, 93, 64, 0.07), transparent),
-    radial-gradient(ellipse 40% 30% at 100% 8%, rgba(26, 26, 26, 0.03), transparent);
+    linear-gradient(180deg, color-mix(in srgb, var(--warm-paper) 55%, transparent), transparent 28%),
+    radial-gradient(ellipse 55% 40% at 0% 0%, var(--ws-glow-a), transparent),
+    radial-gradient(ellipse 40% 30% at 100% 8%, var(--ws-glow-b), transparent);
+  transition:
+    background-color var(--motion-med) ease,
+    color var(--motion-med) ease;
+}
+
+.ws-shell[data-ws-theme="vanilla"] {
+  /* inherits :root parchment tokens */
+}
+
+.ws-shell[data-ws-theme="att"] {
+  /* AT&T Blue #067AB4 · Blue Highlight #3AA5DC · New Orange #FF7200 · Orange Highlight #FCB314 */
+  --color-primary: #067ab4;
+  --color-ink: #000000;
+  --color-canvas: #e8f1f6;
+  --color-paper: #ffffff;
+  --color-line: #c5d6e0;
+  --color-muted: #5c6b73;
+  --ink-50: #f0f7fb;
+  --ink-100: #e4eef4;
+  --ink-200: #c5d6e0;
+  --ink-300: #96b1d0;
+  --ink-600: #5c6b73;
+  --ink-700: #3d4a52;
+  --ink-800: #1a2228;
+  --ink-900: #000000;
+  --ember-500: #067ab4;
+  --ember-600: #055a86;
+  --ember-700: #044568;
+  --ember-800: #033552;
+  --ember-950: #021f30;
+  --warm-canvas: #e8f1f6;
+  --warm-paper: #ffffff;
+  --warm-line: #c5d6e0;
+  --ws-glow-a: rgba(6, 122, 180, 0.14);
+  --ws-glow-b: rgba(255, 114, 0, 0.08);
+  --ws-accent-hot: #ff7200;
+  --ws-accent-hot-hi: #fcb314;
+  --ws-blue-hi: #3aa5dc;
+  /* Corporate: display collapses to sans */
+  --font-display: var(--font-sans);
+}
+
+.ws-shell[data-ws-theme="att"] .ws-live-dot {
+  background: var(--ws-blue-hi);
+}
+
+.ws-shell[data-ws-theme="att"] .ws-title-rule {
+  background: linear-gradient(90deg, var(--ember-500), var(--ws-accent-hot));
+  height: 2px;
+}
+
+.ws-shell[data-ws-theme="att"] .ws-composer {
+  background: #000000 !important;
+}
+
+.ws-shell[data-ws-theme="att"] .ws-composer button.ws-chip.bg-ember-500 {
+  background-color: var(--ws-accent-hot) !important;
+}
+
+.ws-shell[data-ws-theme="att"] .ws-composer button.ws-chip.bg-ember-500:hover {
+  background-color: color-mix(in srgb, var(--ws-accent-hot) 88%, #000) !important;
 }
 
 .ws-label-caps {
@@ -160,8 +241,8 @@ a:hover {
 }
 
 .ws-col-rail:hover {
-  background-color: #ebe7dc;
-  border-color: rgba(26, 26, 26, 0.35);
+  background-color: color-mix(in srgb, var(--warm-canvas) 85%, var(--ink-900));
+  border-color: color-mix(in srgb, var(--ink-900) 35%, transparent);
   color: var(--color-ink);
 }
 
@@ -196,6 +277,63 @@ a:hover {
     padding var(--motion-med) var(--ease-out-expo),
     margin var(--motion-med) var(--ease-out-expo),
     background-color var(--motion-fast) ease;
+}
+
+/* Theme switcher */
+.ws-theme-switch {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--ink-900) 12%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--warm-paper) 80%, transparent);
+}
+
+.ws-theme-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 1px;
+  background: transparent;
+  color: var(--ink-600);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+
+.ws-theme-opt[aria-pressed="true"] {
+  background: var(--ink-900);
+  color: var(--warm-paper);
+}
+
+.ws-theme-opt:hover:not([aria-pressed="true"]) {
+  color: var(--ink-900);
+  background: color-mix(in srgb, var(--ink-900) 6%, transparent);
+}
+
+.ws-theme-swatches {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.ws-theme-swatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.ws-shell[data-ws-theme="att"] .ws-theme-opt[aria-pressed="true"] {
+  background: #000000;
+  color: #ffffff;
 }
 
 @media (prefers-reduced-motion: reduce) {

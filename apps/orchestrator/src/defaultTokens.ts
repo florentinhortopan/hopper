@@ -5,6 +5,7 @@ import { PATHS, REPO_ROOT } from "./config.js";
 
 /** Canonical default pack id — campaigns / cells / Remotion defaults reference this. */
 export const DEFAULT_BRAND_TOKEN_ID = "brand_default_v3";
+export const ATT_BRAND_TOKEN_ID = "brand_att_v1";
 
 export const DEFAULT_BRAND_TOKENS: DesignTokens = {
   id: DEFAULT_BRAND_TOKEN_ID,
@@ -27,6 +28,31 @@ export const DEFAULT_BRAND_TOKENS: DesignTokens = {
   comfyStyleHints: [],
 };
 
+export const ATT_BRAND_TOKENS: DesignTokens = {
+  id: ATT_BRAND_TOKEN_ID,
+  label: "AT&T Brand v1",
+  colors: {
+    background: "#000000",
+    foreground: "#FFFFFF",
+    accent: "#067AB4",
+    muted: "#5C6B73",
+  },
+  fonts: {
+    display: "system-ui, sans-serif",
+    body: "system-ui, sans-serif",
+  },
+  endCardLayout: {
+    ctaStyle: "solid",
+    logoPosition: "bottom",
+  },
+  socialChrome: false,
+  comfyStyleHints: [
+    "AT&T Blue #067AB4 primary",
+    "AT&T New Orange #FF7200 accent CTA",
+    "clean corporate flat, high contrast black/white",
+  ],
+};
+
 async function exists(file: string): Promise<boolean> {
   try {
     await access(file);
@@ -36,20 +62,17 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
-/**
- * Ensure brand_default_v3.json exists under data/tokens.
- * Railway volumes often start empty or partial — entrypoint may have been skipped
- * or only created the directory via ensureDataDirs.
- */
-export async function ensureDefaultBrandTokens(): Promise<void> {
+async function ensureTokenPack(
+  id: string,
+  embedded: DesignTokens,
+): Promise<void> {
   await mkdir(PATHS.tokens, { recursive: true });
-  const dest = path.join(PATHS.tokens, `${DEFAULT_BRAND_TOKEN_ID}.json`);
+  const dest = path.join(PATHS.tokens, `${id}.json`);
   if (await exists(dest)) return;
 
   const candidates = [
-    path.join(REPO_ROOT, "data-seed", "tokens", `${DEFAULT_BRAND_TOKEN_ID}.json`),
-    // Local / image path when volume is not masking a pre-seeded tree
-    path.join(REPO_ROOT, "data", "tokens", `${DEFAULT_BRAND_TOKEN_ID}.json`),
+    path.join(REPO_ROOT, "data-seed", "tokens", `${id}.json`),
+    path.join(REPO_ROOT, "data", "tokens", `${id}.json`),
   ];
   for (const src of candidates) {
     if (!(await exists(src)) || src === dest) continue;
@@ -58,6 +81,16 @@ export async function ensureDefaultBrandTokens(): Promise<void> {
     return;
   }
 
-  await writeFile(dest, JSON.stringify(DEFAULT_BRAND_TOKENS, null, 2));
+  await writeFile(dest, JSON.stringify(embedded, null, 2));
   console.log(`Wrote embedded design tokens → ${dest}`);
+}
+
+/**
+ * Ensure brand token packs exist under data/tokens.
+ * Railway volumes often start empty or partial — entrypoint may have been skipped
+ * or only created the directory via ensureDataDirs.
+ */
+export async function ensureDefaultBrandTokens(): Promise<void> {
+  await ensureTokenPack(DEFAULT_BRAND_TOKEN_ID, DEFAULT_BRAND_TOKENS);
+  await ensureTokenPack(ATT_BRAND_TOKEN_ID, ATT_BRAND_TOKENS);
 }

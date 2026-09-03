@@ -139,6 +139,8 @@ export const api = {
       assemblyRecipe?: import("@attatta/shared").AssemblyRecipe;
       celtraTemplateProfileId?: string;
       comfyTemplate?: import("@attatta/shared").ComfyTemplate;
+      workspaceThemeId?: import("@attatta/shared").WorkspaceThemeId;
+      syncDesignTokens?: boolean;
     },
   ) => req<Campaign>(`/campaigns/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteCampaign: (id: string) =>

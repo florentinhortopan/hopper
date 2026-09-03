@@ -9,4 +9,5 @@ export * from "./libraryPacks.js";
 export * from "./celtraProfiles.js";
 export * from "./magicPreset.js";
 export * from "./liveWorkspace.js";
+export * from "./workspaceThemes.js";
 // Node-only helpers: import from "@attatta/shared/paths" (not the browser barrel).

@@ -406,6 +406,7 @@ async function main() {
       steps: [],
     },
     mode: "standard",
+    workspaceThemeId: "vanilla",
     designTokenPackId: DEFAULT_BRAND_TOKEN_ID,
     rail: {
       hero: {

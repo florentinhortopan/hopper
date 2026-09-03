@@ -29,6 +29,7 @@ import {
   SceneSlotSchema,
   DesignTokensSchema,
   ensureSceneTag,
+  getWorkspaceTheme,
   importTokensFromText,
   normalizeAssemblyRecipe,
   normalizeComfyTemplate,
@@ -1060,6 +1061,9 @@ app.patch("/campaigns/:id", async (req, res) => {
         assemblyRecipe: AssemblyRecipeSchema.optional(),
         celtraTemplateProfileId: z.string().optional(),
         comfyTemplate: ComfyTemplateSchema.optional(),
+        workspaceThemeId: z.enum(["vanilla", "att"]).optional(),
+        /** When true with workspaceThemeId, also set companion Remotion token pack. */
+        syncDesignTokens: z.boolean().optional(),
       })
       .parse(req.body);
     if (body.name !== undefined) campaign.name = body.name;
@@ -1080,6 +1084,23 @@ app.patch("/campaigns/:id", async (req, res) => {
     }
     if (body.comfyTemplate !== undefined) {
       campaign.comfyTemplate = normalizeComfyTemplate(body.comfyTemplate);
+    }
+    if (body.workspaceThemeId !== undefined) {
+      const prevThemeId = campaign.workspaceThemeId || "vanilla";
+      campaign.workspaceThemeId = body.workspaceThemeId;
+      const sync =
+        body.syncDesignTokens !== false; /* default: keep Remotion pack in sync */
+      if (sync) {
+        const prevPack = getWorkspaceTheme(prevThemeId).designTokenPackId;
+        const nextPack = getWorkspaceTheme(body.workspaceThemeId)
+          .designTokenPackId;
+        if (
+          !campaign.designTokenPackId ||
+          campaign.designTokenPackId === prevPack
+        ) {
+          campaign.designTokenPackId = nextPack;
+        }
+      }
     }
     res.json(await saveCampaign(campaign));
   } catch (err) {

@@ -8,8 +8,12 @@ import type {
   LiveConnection,
   LiveConnectionId,
   ReviewEntry,
+  WorkspaceThemeId,
 } from "@attatta/shared";
-import { connectionIdForColumn } from "@attatta/shared";
+import {
+  connectionIdForColumn,
+  resolveWorkspaceThemeId,
+} from "@attatta/shared";
 import { CeltraPreviewPanel } from "@/components/live/CeltraPreviewPanel";
 import { ColumnConnectionChip } from "@/components/live/ColumnConnectionChip";
 import { ColumnStickScroll } from "@/components/live/ColumnStickScroll";
@@ -27,6 +31,7 @@ import { LiveQueuePreview } from "@/components/live/LiveQueuePreview";
 import { missingSizeSlotCount } from "@/components/live/liveMatrixUtils";
 import { MagicColumnPanel } from "@/components/live/MagicColumnPanel";
 import { WorkspaceComposer } from "@/components/live/WorkspaceComposer";
+import { WorkspaceThemeSwitcher } from "@/components/live/WorkspaceThemeSwitcher";
 import { routeLiveChatText } from "@/components/live/routeLiveChat";
 import { api } from "@/lib/api";
 
@@ -808,9 +813,29 @@ export function LiveWorkspace({ campaignId }: Props) {
   }
 
   const cells = campaign?.matrix?.cells ?? [];
+  const workspaceThemeId = resolveWorkspaceThemeId(campaign?.workspaceThemeId);
+
+  async function setWorkspaceTheme(next: WorkspaceThemeId) {
+    if (!campaign || next === workspaceThemeId) return;
+    setBusy("theme");
+    try {
+      const updated = await api.patchCampaign(campaignId, {
+        workspaceThemeId: next,
+      });
+      setCampaign(updated);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
-    <div className="ws-shell fixed inset-0 z-40 flex flex-col text-ink-900">
+    <div
+      className="ws-shell fixed inset-0 z-40 flex flex-col text-ink-900"
+      data-ws-theme={workspaceThemeId}
+    >
       <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-ink-900/10 bg-warm-paper/90 px-4 py-2.5 backdrop-blur-[2px]">
         <a
           href="/"
@@ -838,6 +863,11 @@ export function LiveWorkspace({ campaignId }: Props) {
           {connected ? "Live" : "Reconnecting"}
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-1.5 text-xs">
+          <WorkspaceThemeSwitcher
+            value={workspaceThemeId}
+            disabled={busy === "theme" || !campaign}
+            onChange={(id) => void setWorkspaceTheme(id)}
+          />
           {(["magic", "hopper", "celtra"] as LiveColumnId[]).map((id) => {
             const stage = COLUMN_STAGE[id];
             return (
