@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BRAND_NAME } from "@attatta/shared";
 import { api } from "@/lib/api";
 
 type Caps = Awaited<ReturnType<typeof api.comfyCapabilities>>;
@@ -35,7 +36,7 @@ export default function ComfyCapabilitiesPage() {
     <div className="mx-auto max-w-4xl px-6 py-10">
       <p className="text-xs uppercase tracking-wider text-ink-600">
         <a href="/" className="underline">
-          ATTATTA
+          {BRAND_NAME}
         </a>{" "}
         · Comfy
       </p>
@@ -124,7 +125,7 @@ export default function ComfyCapabilitiesPage() {
       </section>
 
       <section className="mt-10">
-        <h2 className="font-display text-xl">ATTATTA Comfy API</h2>
+        <h2 className="font-display text-xl">{BRAND_NAME} Comfy API</h2>
         <ul className="mt-3 space-y-2 text-sm">
           {caps.attattaEndpoints.map((e) => (
             <li key={`${e.method}${e.path}`} className="rounded-lg border border-ink-100 px-3 py-2">

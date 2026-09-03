@@ -13,7 +13,7 @@ type Props = {
 };
 
 /**
- * Polls designer Comfy → ATTATTA publishes and surfaces a banner for
+ * Polls designer Comfy → SCOTTY publishes and surfaces a banner for
  * Advanced Ingredients and Magic.
  */
 export function DesignerPublishBanner({

@@ -10,6 +10,7 @@ import type {
   ReviewEntry,
 } from "@attatta/shared";
 import { connectionIdForColumn } from "@attatta/shared";
+import { BrandMark } from "@/components/BrandMark";
 import { CeltraPreviewPanel } from "@/components/live/CeltraPreviewPanel";
 import { ColumnConnectionChip } from "@/components/live/ColumnConnectionChip";
 import { ColumnStickScroll } from "@/components/live/ColumnStickScroll";
@@ -743,7 +744,7 @@ export function LiveWorkspace({ campaignId }: Props) {
       else if (intent.kind === "package") reply = "Packaging Celtra…";
       else
         reply =
-          "Logged that locally. Set ATTATTA_LLM_API_KEY on the orchestrator for richer replies.";
+          "Logged that locally. Set ATTATTA_LLM_API_KEY on the orchestrator for richer replies (env key unchanged).";
     }
 
     const label =
@@ -812,12 +813,11 @@ export function LiveWorkspace({ campaignId }: Props) {
   return (
     <div className="ws-shell fixed inset-0 z-40 flex flex-col text-ink-900">
       <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-ink-900/10 bg-warm-paper/90 px-4 py-2.5 backdrop-blur-[2px]">
-        <a
+        <BrandMark
+          size="compact"
           href="/"
-          className="font-display text-xl font-semibold tracking-tight text-ink-900 no-underline transition-colors hover:text-ember-600"
-        >
-          ATTATTA
-        </a>
+          className="mr-1 transition-colors hover:opacity-90"
+        />
         <span className="ws-label-caps hidden sm:inline">Live workspace</span>
         <div className="hidden h-4 w-px bg-ink-900/15 sm:block" aria-hidden />
         <span

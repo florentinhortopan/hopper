@@ -2193,6 +2193,6 @@ app.listen(PORT, "0.0.0.0", () => {
   void reclaimStaleGenerating().then((n) => {
     if (n) console.log(`Reclaimed ${n} stale generating plate(s) → failed`);
   });
-  console.log(`ATTATTA orchestrator on ${PUBLIC_BASE}`);
+  console.log(`SCOTTY orchestrator on ${PUBLIC_BASE} (Paul's name on the IP)`);
   console.log(`Data: ${PATHS.data}`);
 });

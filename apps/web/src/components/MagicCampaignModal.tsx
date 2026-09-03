@@ -768,7 +768,7 @@ export function MagicCampaignModal({
                     )
                   </h3>
                   <p className="mt-1 text-xs text-ink-600">
-                    Media plates get ingredient kinds. Valid Comfy/ATTATTA
+                    Media plates get ingredient kinds. Valid Comfy/SCOTTY
                     workflow JSON shows as{" "}
                     <span className="font-medium">workflow</span> with a sanity
                     check — not as talent/prop/etc.

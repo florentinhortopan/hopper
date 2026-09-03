@@ -81,9 +81,9 @@ async function probeHopper(
   checkedAt: string,
   campaignId?: string | null,
 ): Promise<LiveConnection> {
-  let detail = "ATTATTA review bus (simulated API)";
+  let detail = "SCOTTY review bus (simulated API)";
   const notes = [
-    "Hopper is ATTATTA-owned — Keep/Kill + jobs, no external API yet",
+    "Hopper is SCOTTY-owned — Keep/Kill + jobs, no external API yet",
     "Resync refreshes jobs/reviews for this campaign",
   ];
   if (campaignId) {
@@ -201,7 +201,7 @@ export async function resyncLiveConnection(
     });
     return {
       connection: LiveConnectionSchema.parse(connection),
-      message: "Hopper state refreshed from ATTATTA (simulated API)",
+      message: "Hopper state refreshed from SCOTTY (simulated API)",
     };
   }
 

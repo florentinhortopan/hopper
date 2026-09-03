@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Playfair_Display, DM_Sans, Poppins } from "next/font/google";
+import { brandTitle } from "@attatta/shared";
 import "./globals.css";
 
 const display = Playfair_Display({
@@ -22,8 +23,9 @@ const att = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "ATTATTA — Celtra hopper",
-  description: "Assemble modular paid-social variants for Celtra distribution",
+  title: brandTitle(),
+  description:
+    "Assemble modular paid-social variants for Celtra distribution — SCOTTY, Paul's name on the IP",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

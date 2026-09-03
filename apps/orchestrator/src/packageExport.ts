@@ -226,7 +226,7 @@ function stampLocal(d = new Date()): string {
 
 /**
  * Package zip naming:
- *   ATTATTA_<Campaign>_Celtra_vNN_<YYYYMMDD-HHmm>_<N>rows.zip
+ *   SCOTTY_<Campaign>_Celtra_vNN_<YYYYMMDD-HHmm>_<N>rows.zip
  * Version increments per campaign slug from existing files in data/packages.
  */
 export async function nextCeltraPackageFileName(
@@ -234,14 +234,20 @@ export async function nextCeltraPackageFileName(
   rowCount: number,
 ): Promise<string> {
   const slug = campaignSlug(campaign);
-  const prefix = `ATTATTA_${slug}_Celtra_v`;
+  const prefix = `SCOTTY_${slug}_Celtra_v`;
+  const legacyPrefix = `ATTATTA_${slug}_Celtra_v`;
   let nextVer = 1;
   try {
     const { readdir } = await import("node:fs/promises");
     const names = await readdir(PATHS.packages);
     for (const name of names) {
-      if (!name.startsWith(prefix) || !name.endsWith(".zip")) continue;
-      const m = name.slice(prefix.length).match(/^(\d+)_/);
+      const hit = name.startsWith(prefix)
+        ? prefix
+        : name.startsWith(legacyPrefix)
+          ? legacyPrefix
+          : null;
+      if (!hit || !name.endsWith(".zip")) continue;
+      const m = name.slice(hit.length).match(/^(\d+)_/);
       if (m) nextVer = Math.max(nextVer, Number(m[1]) + 1);
     }
   } catch {

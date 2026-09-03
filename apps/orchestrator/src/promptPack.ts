@@ -935,7 +935,7 @@ export async function buildIngredientPromptPack(opts: {
         hasHands: knob === "hands" || knob === "prop",
       }),
     );
-    parts.push("English, photoreal plate for ATTATTA ingredient library");
+    parts.push("English, photoreal plate for SCOTTY ingredient library");
   }
 
   const positive = parts.filter(Boolean).join(". ").replace(/\.\./g, ".");

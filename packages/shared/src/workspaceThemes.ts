@@ -23,7 +23,7 @@ export const WORKSPACE_THEMES: Record<WorkspaceThemeId, WorkspaceThemeDef> = {
   vanilla: {
     id: "vanilla",
     label: "Vanilla",
-    description: "Parchment & ink — ATTATTA house style",
+    description: "Parchment & ink — SCOTTY house style (Paul's name on the IP)",
     designTokenPackId: "brand_default_v3",
     swatches: ["#f3efe6", "#1a1a1a", "#d45d40"],
   },

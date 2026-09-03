@@ -197,7 +197,7 @@ export async function routeLiveChatMessage(
 
   const parsed = await chatJson({
     system:
-      "You route ATTATTA live-workspace chat to Magic, Hopper, or Celtra. JSON only.",
+      "You route SCOTTY live-workspace chat to Magic, Hopper, or Celtra. JSON only.",
     user: `Message: ${text}
 
 Return JSON:
@@ -286,7 +286,7 @@ function templateLiveChatReply(
 }
 
 /**
- * Short ATTATTA reply after a routed live-chat turn.
+ * Short SCOTTY reply after a routed live-chat turn.
  * Uses LLM when configured; always has a template fallback.
  */
 export async function replyToLiveChat(opts: {
@@ -302,7 +302,7 @@ export async function replyToLiveChat(opts: {
 
   const parsed = await chatJson({
     system:
-      "You are ATTATTA, a concise creative-ops assistant for a three-column live workspace (Magic · Hopper · Celtra). Reply in 1–3 short sentences. Confirm what you understood or did, and suggest one concrete next step (prefer slash commands when useful). No markdown fences.",
+      "You are SCOTTY, a concise creative-ops assistant for a three-column live workspace (Magic · Hopper · Celtra). Paul's name is on the IP; you're just the engineer. Reply in 1–3 short sentences. Confirm what you understood or did, and suggest one concrete next step (prefer slash commands when useful). No markdown fences.",
     user: `User message: ${opts.message}
 Routed intent: ${opts.route.intent} → ${opts.route.column} (${opts.route.source})
 Rationale: ${opts.route.rationale}
@@ -378,7 +378,7 @@ export async function classifyIngredientMedia(opts: {
   const content: Array<Record<string, unknown>> = [
     {
       type: "text",
-      text: `You categorize production media into ATTATTA ingredient kinds for paid social ads.
+      text: `You categorize production media into SCOTTY ingredient kinds for paid social ads.
 
 Kinds:
 ${KIND_CATALOG}

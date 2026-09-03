@@ -23,7 +23,7 @@ export async function triggerApiDownload(
   a.download =
     fileName ||
     decodeURIComponent(href.split("/").pop() || "") ||
-    "ATTATTA_Celtra_package.zip";
+    "SCOTTY_Celtra_package.zip";
   a.rel = "noopener";
   a.style.display = "none";
   document.body.appendChild(a);

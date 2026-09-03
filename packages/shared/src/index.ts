@@ -10,4 +10,5 @@ export * from "./celtraProfiles.js";
 export * from "./magicPreset.js";
 export * from "./liveWorkspace.js";
 export * from "./workspaceThemes.js";
+export * from "./brand.js";
 // Node-only helpers: import from "@attatta/shared/paths" (not the browser barrel).

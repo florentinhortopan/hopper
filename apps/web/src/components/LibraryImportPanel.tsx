@@ -367,7 +367,7 @@ export function LibraryImportPanel({ libraryId, onCommitted, onError }: Props) {
                       type="text"
                       value={dropboxPath}
                       onChange={(e) => setDropboxPath(e.target.value)}
-                      placeholder="/ATTATTA/Pizza-Q3"
+                      placeholder="/SCOTTY/Pizza-Q3"
                       className="min-w-0 flex-1 rounded-md border border-ink-200 px-3 py-2 text-sm"
                     />
                     <button

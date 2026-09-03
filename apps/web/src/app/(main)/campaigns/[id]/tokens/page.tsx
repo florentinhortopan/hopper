@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import type { Campaign, DesignTokens } from "@attatta/shared";
+import { BRAND_NAME } from "@attatta/shared";
 import { StepNav } from "@/components/StepNav";
 import { PreviewPlayer } from "@/components/PreviewPlayer";
 import { api } from "@/lib/api";
@@ -382,7 +383,7 @@ export default function TokensPage() {
           <div className="rounded-xl border border-ink-200 bg-white/90 p-4">
             <h2 className="font-display text-lg">Import</h2>
             <p className="mt-1 text-xs text-ink-600">
-              Paste ATTATTA token JSON or CSS with{" "}
+              Paste {BRAND_NAME} token JSON or CSS with{" "}
               <code className="text-[11px]">--color-accent</code> /{" "}
               <code className="text-[11px]">--font-display</code> variables.
             </p>
@@ -395,7 +396,7 @@ export default function TokensPage() {
                 }
               >
                 <option value="css">CSS variables</option>
-                <option value="json">ATTATTA JSON</option>
+                <option value="json">{BRAND_NAME} JSON</option>
               </select>
               <input
                 className="rounded-md border border-ink-200 px-2 py-1.5 text-sm"

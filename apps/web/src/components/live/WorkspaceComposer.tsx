@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { LiveColumnId } from "@attatta/shared";
+import { BRAND_ASSISTANT, BRAND_NAME, type LiveColumnId } from "@attatta/shared";
 import { LIVE_CHAT_SLASH_HINT } from "@/components/live/routeLiveChat";
 
 export type WorkspaceChatTurn = {
@@ -177,7 +177,7 @@ export function WorkspaceComposer({
         {!expanded && latestAssistant ? (
           <p className="rounded-sm border border-warm-paper/15 bg-ink-800/80 px-2.5 py-1.5 text-[12px] leading-snug text-warm-paper/90">
             <span className="font-display font-semibold text-ember-500">
-              ATTATTA ·{" "}
+              {BRAND_ASSISTANT} ·{" "}
             </span>
             {latestAssistant.text}
           </p>
@@ -198,7 +198,7 @@ export function WorkspaceComposer({
                 }`}
               >
                 <span className="font-display text-[11px] font-semibold text-ember-500">
-                  {turn.role === "user" ? "You" : "ATTATTA"}
+                  {turn.role === "user" ? "You" : BRAND_ASSISTANT}
                   {turn.meta ? ` · ${turn.meta}` : ""}
                   {": "}
                 </span>
@@ -207,7 +207,7 @@ export function WorkspaceComposer({
             ))}
             {busy ? (
               <p className="text-[11px] text-warm-paper/45">
-                ATTATTA is thinking…
+                {BRAND_NAME} is givin&apos; her all she&apos;s got…
               </p>
             ) : null}
           </div>
@@ -223,7 +223,7 @@ export function WorkspaceComposer({
               className="min-h-[4.5rem] min-w-0 flex-1 resize-y rounded-sm border border-warm-paper/20 bg-warm-paper px-3 py-2 text-xs leading-relaxed text-ink-900 placeholder:text-ink-600/50"
               value={text}
               disabled={disabled || busy}
-              placeholder="Talk to ATTATTA — ask what to do next, or /prepare · /generate · /package…"
+              placeholder={`Talk to ${BRAND_NAME} — ask what to do next, or /prepare · /generate · /package…`}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -237,7 +237,7 @@ export function WorkspaceComposer({
               className="min-w-0 flex-1 rounded-sm border border-warm-paper/20 bg-warm-paper px-3 py-2.5 text-xs text-ink-900 placeholder:text-ink-600/50"
               value={text}
               disabled={disabled || busy}
-              placeholder="Message ATTATTA… (/prepare · /generate · /package)"
+              placeholder={`Message ${BRAND_NAME}… (/prepare · /generate · /package)`}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {

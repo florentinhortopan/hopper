@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { BRAND_SUBLINE } from "@attatta/shared";
+import { BrandMark } from "@/components/BrandMark";
 import { siteAuthEnabled } from "@/lib/siteAuth";
 
 export default async function LoginPage({
@@ -17,9 +19,9 @@ export default async function LoginPage({
   return (
     <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(1200px_600px_at_20%_-10%,#f3e7d9_0%,transparent_55%),linear-gradient(180deg,#faf7f2_0%,#f0ebe3_100%)] px-5 py-12">
       <div className="w-full max-w-sm">
-        <div className="font-display text-4xl tracking-tight text-ink-900">ATTATTA</div>
-        <p className="mt-1 text-[11px] uppercase tracking-[0.22em] text-ink-600">
-          Enter site password
+        <BrandMark size="display" />
+        <p className="mt-3 text-[11px] uppercase tracking-[0.22em] text-ink-600">
+          Enter site password · {BRAND_SUBLINE}
         </p>
 
         <form
