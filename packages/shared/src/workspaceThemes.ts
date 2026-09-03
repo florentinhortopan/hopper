@@ -30,9 +30,10 @@ export const WORKSPACE_THEMES: Record<WorkspaceThemeId, WorkspaceThemeDef> = {
   att: {
     id: "att",
     label: "AT&T",
-    description: "AT&T Blue · New Orange — corporate clean",
+    description:
+      "Aleck-style Poppins · globe stripe · Blue #067AB4 · New Orange #FF7200",
     designTokenPackId: "brand_att_v1",
-    swatches: ["#E8F1F6", "#067AB4", "#FF7200"],
+    swatches: ["#000000", "#067AB4", "#FF7200"],
   },
 };
 

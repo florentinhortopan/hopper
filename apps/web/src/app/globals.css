@@ -30,6 +30,9 @@
   --warm-line: #eae4dc;
   --ws-glow-a: rgba(212, 93, 64, 0.08);
   --ws-glow-b: rgba(26, 26, 26, 0.04);
+  --ws-accent-hot: #d45d40;
+  --ws-accent-hot-hi: #ea580c;
+  --ws-blue-hi: #059669;
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --motion-fast: 180ms;
   --motion-med: 320ms;
@@ -46,6 +49,9 @@ body {
     radial-gradient(ellipse 70% 45% at 8% -8%, var(--ws-glow-a), transparent),
     radial-gradient(ellipse 50% 35% at 100% 0%, var(--ws-glow-b), transparent);
   min-height: 100vh;
+  transition:
+    background-color var(--motion-med) ease,
+    color var(--motion-med) ease;
 }
 
 a {
@@ -125,31 +131,19 @@ a:hover {
   vertical-align: -0.1em;
 }
 
-/* —— Live workspace themes —— */
-.ws-shell {
-  background-color: var(--color-canvas);
-  background-image:
-    linear-gradient(180deg, color-mix(in srgb, var(--warm-paper) 55%, transparent), transparent 28%),
-    radial-gradient(ellipse 55% 40% at 0% 0%, var(--ws-glow-a), transparent),
-    radial-gradient(ellipse 40% 30% at 100% 8%, var(--ws-glow-b), transparent);
-  transition:
-    background-color var(--motion-med) ease,
-    color var(--motion-med) ease;
-}
-
-.ws-shell[data-ws-theme="vanilla"] {
-  /* inherits :root parchment tokens */
-}
-
-.ws-shell[data-ws-theme="att"] {
-  /* AT&T Blue #067AB4 · Blue Highlight #3AA5DC · New Orange #FF7200 · Orange Highlight #FCB314 */
+/*
+ * Campaign theme (html[data-campaign-theme]) — set by CampaignThemeRoot.
+ * Applies across campaign pages + live workspace.
+ */
+:root[data-campaign-theme="att"] {
+  /* Official-ish digital palette: Blue / Blue Highlight / New Orange / Orange Highlight */
   --color-primary: #067ab4;
   --color-ink: #000000;
-  --color-canvas: #e8f1f6;
+  --color-canvas: #eef4f8;
   --color-paper: #ffffff;
-  --color-line: #c5d6e0;
+  --color-line: #b8cdd9;
   --color-muted: #5c6b73;
-  --ink-50: #f0f7fb;
+  --ink-50: #f3f8fb;
   --ink-100: #e4eef4;
   --ink-200: #c5d6e0;
   --ink-300: #96b1d0;
@@ -162,37 +156,164 @@ a:hover {
   --ember-700: #044568;
   --ember-800: #033552;
   --ember-950: #021f30;
-  --warm-canvas: #e8f1f6;
+  --warm-canvas: #eef4f8;
   --warm-paper: #ffffff;
   --warm-line: #c5d6e0;
-  --ws-glow-a: rgba(6, 122, 180, 0.14);
-  --ws-glow-b: rgba(255, 114, 0, 0.08);
+  --ws-glow-a: rgba(6, 122, 180, 0.16);
+  --ws-glow-b: rgba(255, 114, 0, 0.1);
   --ws-accent-hot: #ff7200;
   --ws-accent-hot-hi: #fcb314;
   --ws-blue-hi: #3aa5dc;
-  /* Corporate: display collapses to sans */
-  --font-display: var(--font-sans);
+  --font-display: var(--font-att), var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-att), ui-sans-serif, system-ui, sans-serif;
 }
 
-.ws-shell[data-ws-theme="att"] .ws-live-dot {
+:root[data-campaign-theme="att"] body {
+  font-family: var(--font-att), ui-sans-serif, system-ui, sans-serif;
+  background-image:
+    /* Globe-stripe echo — bold brand bar across the top */
+    linear-gradient(
+      90deg,
+      #000000 0%,
+      #000000 18%,
+      #067ab4 18%,
+      #067ab4 36%,
+      #3aa5dc 36%,
+      #3aa5dc 54%,
+      #ff7200 54%,
+      #ff7200 72%,
+      #fcb314 72%,
+      #fcb314 88%,
+      #ffffff 88%
+    ),
+    radial-gradient(ellipse 60% 40% at 0% 12%, var(--ws-glow-a), transparent),
+    radial-gradient(ellipse 45% 30% at 100% 0%, var(--ws-glow-b), transparent);
+  background-size:
+    100% 5px,
+    auto,
+    auto;
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  background-position:
+    0 0,
+    0 0,
+    0 0;
+  background-color: var(--color-canvas);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+:root[data-campaign-theme="att"] .font-display {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* —— Live workspace shell —— */
+.ws-shell {
+  background-color: var(--color-canvas);
+  background-image:
+    linear-gradient(180deg, color-mix(in srgb, var(--warm-paper) 55%, transparent), transparent 28%),
+    radial-gradient(ellipse 55% 40% at 0% 0%, var(--ws-glow-a), transparent),
+    radial-gradient(ellipse 40% 30% at 100% 8%, var(--ws-glow-b), transparent);
+  transition:
+    background-color var(--motion-med) ease,
+    color var(--motion-med) ease;
+}
+
+:root[data-campaign-theme="att"] .ws-shell {
+  background-image:
+    linear-gradient(
+      90deg,
+      #000 0 14%,
+      #067ab4 14% 28%,
+      #3aa5dc 28% 42%,
+      #ff7200 42% 56%,
+      #fcb314 56% 70%,
+      transparent 70%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), transparent 32%),
+    radial-gradient(ellipse 55% 40% at 0% 8%, var(--ws-glow-a), transparent),
+    radial-gradient(ellipse 40% 30% at 100% 0%, var(--ws-glow-b), transparent);
+  background-size:
+    100% 4px,
+    auto,
+    auto,
+    auto;
+  background-repeat: no-repeat;
+  background-position:
+    0 0,
+    0 0,
+    0 0,
+    0 0;
+}
+
+:root[data-campaign-theme="att"] .ws-shell > header {
+  border-bottom-color: rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+:root[data-campaign-theme="att"] .ws-shell > header a.font-display {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  font-size: 1.05rem;
+}
+
+:root[data-campaign-theme="att"] .ws-live-dot {
   background: var(--ws-blue-hi);
 }
 
-.ws-shell[data-ws-theme="att"] .ws-title-rule {
-  background: linear-gradient(90deg, var(--ember-500), var(--ws-accent-hot));
-  height: 2px;
+:root[data-campaign-theme="att"] .ws-title-rule {
+  width: 3rem;
+  height: 3px;
+  background: linear-gradient(90deg, #067ab4, #ff7200);
 }
 
-.ws-shell[data-ws-theme="att"] .ws-composer {
+:root[data-campaign-theme="att"] .ws-label-caps {
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #067ab4;
+}
+
+:root[data-campaign-theme="att"] .ws-col {
+  border-radius: 0;
+  border-color: rgba(0, 0, 0, 0.14);
+  box-shadow: 0 1px 0 rgba(6, 122, 180, 0.08);
+}
+
+:root[data-campaign-theme="att"] .ws-col > div:first-child h2 {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  font-size: 1.35rem;
+}
+
+:root[data-campaign-theme="att"] .ws-composer {
   background: #000000 !important;
+  border-radius: 0;
 }
 
-.ws-shell[data-ws-theme="att"] .ws-composer button.ws-chip.bg-ember-500 {
+:root[data-campaign-theme="att"] .ws-composer button.ws-chip {
+  border-radius: 0;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+:root[data-campaign-theme="att"] .ws-composer button.ws-chip.bg-ember-500 {
   background-color: var(--ws-accent-hot) !important;
 }
 
-.ws-shell[data-ws-theme="att"] .ws-composer button.ws-chip.bg-ember-500:hover {
+:root[data-campaign-theme="att"] .ws-composer button.ws-chip.bg-ember-500:hover {
   background-color: color-mix(in srgb, var(--ws-accent-hot) 88%, #000) !important;
+}
+
+:root[data-campaign-theme="att"] .ws-chip {
+  border-radius: 0;
+  font-weight: 600;
+}
+
+/* Primary filled chips go black (AT&T solid) when selected */
+:root[data-campaign-theme="att"] .ws-chip.border-ink-900.bg-ink-900 {
+  background: #000 !important;
 }
 
 .ws-label-caps {
@@ -279,61 +400,28 @@ a:hover {
     background-color var(--motion-fast) ease;
 }
 
-/* Theme switcher */
-.ws-theme-switch {
-  display: inline-flex;
-  align-items: stretch;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid color-mix(in srgb, var(--ink-900) 12%, transparent);
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--warm-paper) 80%, transparent);
+/* Campaign theme cards (settings) */
+.theme-card-att-preview {
+  height: 6px;
+  width: 100%;
+  border-radius: 0;
+  background: linear-gradient(
+    90deg,
+    #000 0 16%,
+    #067ab4 16% 32%,
+    #3aa5dc 32% 48%,
+    #ff7200 48% 64%,
+    #fcb314 64% 80%,
+    #fff 80%
+  );
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-.ws-theme-opt {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border: none;
+.theme-card-vanilla-preview {
+  height: 6px;
+  width: 100%;
   border-radius: 1px;
-  background: transparent;
-  color: var(--ink-600);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition:
-    background-color var(--motion-fast) ease,
-    color var(--motion-fast) ease;
-}
-
-.ws-theme-opt[aria-pressed="true"] {
-  background: var(--ink-900);
-  color: var(--warm-paper);
-}
-
-.ws-theme-opt:hover:not([aria-pressed="true"]) {
-  color: var(--ink-900);
-  background: color-mix(in srgb, var(--ink-900) 6%, transparent);
-}
-
-.ws-theme-swatches {
-  display: inline-flex;
-  gap: 2px;
-}
-
-.ws-theme-swatch {
-  width: 7px;
-  height: 7px;
-  border-radius: 1px;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
-}
-
-.ws-shell[data-ws-theme="att"] .ws-theme-opt[aria-pressed="true"] {
-  background: #000000;
-  color: #ffffff;
+  background: linear-gradient(90deg, #f3efe6, #1a1a1a 40%, #d45d40);
 }
 
 @media (prefers-reduced-motion: reduce) {

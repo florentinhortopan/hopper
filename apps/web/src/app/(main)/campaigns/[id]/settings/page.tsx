@@ -17,6 +17,7 @@ import {
 } from "@attatta/shared";
 import { StepNav } from "@/components/StepNav";
 import { WorkspaceThemeSwitcher } from "@/components/live/WorkspaceThemeSwitcher";
+import { notifyCampaignTheme } from "@/components/campaign/CampaignThemeRoot";
 import { api } from "@/lib/api";
 
 function newSceneId() {
@@ -176,6 +177,7 @@ export default function SettingsPage() {
         comfyTemplate,
         workspaceThemeId,
       });
+      notifyCampaignTheme(id, workspaceThemeId);
       await refresh();
       setError(null);
     } catch (e) {
@@ -204,18 +206,21 @@ export default function SettingsPage() {
       ) : null}
 
       <div className="mt-6 rounded-xl border border-ink-200 bg-white/90 p-4">
-        <h2 className="font-display text-lg">Workspace theme</h2>
+        <h2 className="font-display text-lg">Campaign theme</h2>
         <p className="mt-1 text-xs text-ink-700">
-          Live workspace chrome for this campaign. Switching also updates the
-          Remotion design-token pack when it still matches the previous theme&apos;s
-          companion (Vanilla → brand_default_v3, AT&amp;T → brand_att_v1).
+          Client brand skin for this campaign (settings, matrix, live workspace).
+          Switching also updates the Remotion design-token pack when it still
+          matches the previous theme&apos;s companion (Vanilla → brand_default_v3,
+          AT&amp;T → brand_att_v1).
         </p>
         <div className="mt-3">
           <WorkspaceThemeSwitcher
-            variant="cards"
             value={workspaceThemeId}
             disabled={busy}
-            onChange={setWorkspaceThemeId}
+            onChange={(next) => {
+              setWorkspaceThemeId(next);
+              notifyCampaignTheme(id, next);
+            }}
           />
         </div>
       </div>

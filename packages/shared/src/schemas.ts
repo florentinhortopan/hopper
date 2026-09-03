@@ -580,7 +580,7 @@ export const CampaignSchema = z.object({
   /** Campaign Comfy guidelines + between-node step prompts / binds */
   comfyTemplate: ComfyTemplateSchema.default(DEFAULT_COMFY_TEMPLATE),
   /**
-   * Live workspace chrome theme (vanilla parchment vs brand skins).
+   * Live / campaign chrome theme (vanilla parchment vs brand skins).
    * Separate from Remotion designTokenPackId; themes may suggest a companion pack.
    */
   workspaceThemeId: z
